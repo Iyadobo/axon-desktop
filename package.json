@@ -1,0 +1,13 @@
+{
+  "name": "axion",
+  "version": "0.1.0",
+  "description": "Axion is a local agent workspace powered by Claude Code and a selected Ollama model",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node src/selfcheck.js"
+  },
+  "devDependencies": {
+    "electron": "^36.0.0"
+  }
+}

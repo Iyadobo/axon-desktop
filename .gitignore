@@ -1,0 +1,4 @@
+node_modules/
+.electron-data/
+src/assets/axion-logo-source.png
+npm-debug.log*
