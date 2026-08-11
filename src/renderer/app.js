@@ -192,7 +192,11 @@ function setModelByName(name) {
 
 // ---- conversations / recents ----------------------------------------------
 function loadConvs() { try { conversations = Array.isArray(persisted.oconvs) ? persisted.oconvs : []; } catch { conversations = []; } }
-function saveConvs() { saveState('oconvs', conversations.slice(0, 50)); }
+function saveConvs() {
+  // ponytail: keep readable history, never bulky base64 attachments or unlimited logs.
+  const stored = conversations.slice(0, 50).map((c) => ({ ...c, turns: (c.turns || []).slice(-80).map((t) => ({ role: t.role, content: String(t.content || '').slice(0, 64000), attachmentCount: t.attachmentCount || 0 })) }));
+  saveState('oconvs', stored);
+}
 function renderRecents() {
   const box = $('recents'); box.innerHTML = '';
   const visible = conversations.filter((c) => (c.projectId || null) === activeProjectId);
@@ -218,7 +222,12 @@ function openConv(id) {
   if (conv.model && [...$('model').options].some((o) => o.value === conv.model)) $('model').value = conv.model;
   showChatView();
   $('log').innerHTML = '';
-  addSysNote('Resumed "' + conv.title + '" — earlier context is retained by the agent (prior messages aren’t re-shown).');
+  if (Array.isArray(conv.turns) && conv.turns.length) {
+    for (const turn of conv.turns) {
+      if (turn.role === 'user') addUserTurn(turn.content + (turn.attachmentCount ? '  +' + turn.attachmentCount + ' attachment' + (turn.attachmentCount === 1 ? '' : 's') : ''), [], false);
+      else addStoredAiTurn(turn.content, conv.model);
+    }
+  } else addSysNote('This older chat has no saved transcript. New turns are saved locally from now on.');
   renderRecents();
   scrollBottom();
 }
@@ -238,7 +247,7 @@ function showChatView() {
 function newChat() { activeId = null; $('log').innerHTML = ''; showHomeView(); renderRecents(); }
 
 // ---- log helpers -----------------------------------------------------------
-function addUserTurn(text, images = []) {
+function addUserTurn(text, images = [], persist = true) {
   const t = document.createElement('div'); t.className = 'turn user';
   const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
   t.appendChild(b); $('log').appendChild(t);
@@ -247,6 +256,14 @@ function addUserTurn(text, images = []) {
     for (const image of images) { const pic = document.createElement('img'); pic.src = 'data:' + image.type + ';base64,' + image.data; pic.alt = image.name || 'Attached image'; gallery.appendChild(pic); }
     t.appendChild(gallery);
   }
+  if (persist && activeId) {
+    const conv = conversations.find((c) => c.id === activeId);
+    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'user', content: text, attachmentCount: images.length }); saveConvs(); }
+  }
+}
+function addStoredAiTurn(text, model) {
+  const turn = newAiTurn(model); turn.think?.remove(); turn.think = null; turn.started = true;
+  renderMarkdown(turn.bubbleEl, text); addCopyBtn(turn.turnEl, text);
 }
 function newAiTurn(model) {
   const t = document.createElement('div'); t.className = 'turn ai';
@@ -273,6 +290,7 @@ function addStep(s) {
     const d = document.createElement('div'); d.className = 'step tool active';
     d.innerHTML = '▸ <span class="fn">' + esc(s.fn) + '</span> ' + esc(typeof s.args === 'string' ? s.args : JSON.stringify(s.args));
     active.stepsEl.appendChild(d);
+    if (s.fn === 'WebFetch' && typeof s.args?.url === 'string') openBrowserAt(s.args.url);
   } else if (s.type === 'tool_result') {
     const d = document.createElement('div'); d.className = 'step';
     const r = String(s.result).slice(0, 500);
@@ -345,6 +363,10 @@ window.ollama.on('chat-done', ({ sessionId } = {}) => {
     active.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
     if (!active.started && !active.turnEl.classList.contains('error')) active.bubbleEl.textContent = '(no response)';
     else if (active.started) { renderMarkdown(active.bubbleEl, active.content); addCopyBtn(active.turnEl, active.content); }
+    if (active.started && activeId) {
+      const conv = conversations.find((c) => c.id === activeId);
+      if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: active.content }); saveConvs(); }
+    }
   }
   active = null; setBusy(false); stopping = false;
   if (sessionId && activeId) {
@@ -408,11 +430,11 @@ async function send() {
   // create / reuse conversation
   let conv = activeId ? conversations.find((c) => c.id === activeId) : null;
   if (!conv) {
-    conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, ts: Date.now(), projectId: activeProjectId };
+    conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, ts: Date.now(), projectId: activeProjectId, turns: [] };
     conversations.unshift(conv); activeId = conv.id; renderRecents();
   }
   showChatView();
-  addUserTurn(text + (fileCount ? '  +' + fileCount + ' attachment' + (fileCount === 1 ? '' : 's') : ''), images);
+  addUserTurn(text, images);
   active = newAiTurn(model);
   setBusy(true);
   await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt: projectSystemPrompt(), cwd: projectCwd(), images });
@@ -516,6 +538,29 @@ $('prompt').addEventListener('blur', () => setTimeout(closeCmdList, 150));
 $('chips').addEventListener('click', (e) => {
   if (e.target.classList.contains('chip')) { $('prompt').value = e.target.textContent + ': '; autosize(); closeCmdList(); $('prompt').focus(); }
 });
+
+// ---- native agent browser --------------------------------------------------
+let browserOpen = false;
+function syncBrowserBounds() {
+  if (!browserOpen) return;
+  const r = $('browserSlot').getBoundingClientRect();
+  window.ollama.browserShow({ x: r.x, y: r.y, width: r.width, height: r.height });
+}
+function setBrowserOpen(open) {
+  browserOpen = open; $('browserPanel').classList.toggle('show', open); $('browserToggle').classList.toggle('active', open);
+  if (open) requestAnimationFrame(syncBrowserBounds); else window.ollama.browserHide();
+}
+function openBrowserAt(url) {
+  setBrowserOpen(true); $('browserUrl').value = url; window.ollama.browserNavigate(url);
+}
+$('browserToggle').onclick = () => setBrowserOpen(!browserOpen);
+$('browserClose').onclick = () => setBrowserOpen(false);
+$('browserBack').onclick = () => window.ollama.browserAction('back');
+$('browserForward').onclick = () => window.ollama.browserAction('forward');
+$('browserReload').onclick = () => window.ollama.browserAction('reload');
+$('browserUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') openBrowserAt($('browserUrl').value.trim()); });
+window.addEventListener('resize', () => requestAnimationFrame(syncBrowserBounds));
+window.ollama.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; });
 
 // attachments
 $('attachBtn').onclick = () => $('fileInput').click();

@@ -62,10 +62,18 @@
   .mode-badge.client { color:#007d5a; border-color:#007d5a; }
 
   /* main column */
-  #main { flex:1; display:flex; flex-direction:column; overflow:hidden; background:transparent; }
-  .titlebar { height:32px; flex-shrink:0; display:flex; align-items:center; padding:0 14px; }
+  #main { flex:1; display:flex; flex-direction:column; overflow:hidden; background:transparent; position:relative; }
+  .titlebar { height:32px; flex-shrink:0; display:flex; align-items:center; justify-content:space-between; padding:0 14px; }
   .titlebar .tl { display:flex; gap:7px; }
   .titlebar .tl span { width:10px; height:10px; border-radius:50%; border:1.5px solid var(--color-divider); }
+  #browserPanel { position:absolute; z-index:10; top:32px; right:0; bottom:0; width:min(420px,46vw); display:none; flex-direction:column; background:var(--color-bg); border-left:1px solid var(--color-divider); }
+  #browserPanel.show { display:flex; }
+  .browserbar { height:42px; flex-shrink:0; display:flex; align-items:center; gap:5px; padding:6px 8px; border-bottom:1px solid var(--color-divider); }
+  .browserbar button { width:27px; height:27px; border:1px solid var(--color-divider); border-radius:6px; background:var(--color-surface); cursor:pointer; color:var(--color-text); }
+  .browserbar input { min-width:0; flex:1; height:27px; padding:0 8px; border:1px solid var(--color-divider); border-radius:6px; background:var(--color-bg); color:var(--color-text); font:inherit; font-size:12px; }
+  #browserSlot { flex:1; min-height:1px; }
+  #browserToggle { border:1px solid var(--color-divider); background:var(--color-bg); color:var(--color-neutral); border-radius:6px; padding:3px 7px; font:inherit; font-size:11px; cursor:pointer; }
+  #browserToggle.active { color:var(--color-accent); border-color:var(--color-accent); }
 
   /* home (empty state) */
   #home { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:40px; }
@@ -291,7 +299,7 @@
   </div>
 
   <div id="main">
-    <div class="titlebar"><div class="tl"><span></span><span></span><span></span></div></div>
+    <div class="titlebar"><div class="tl"><span></span><span></span><span></span></div><button id="browserToggle" title="Toggle agent browser">Browser</button></div>
 
     <!-- home (empty) -->
     <div id="home">
@@ -326,6 +334,10 @@
       <div id="scroller"><div id="log"></div></div>
       <div id="composerSlot"></div>
     </div>
+    <aside id="browserPanel" aria-label="Agent browser">
+      <div class="browserbar"><button id="browserBack" title="Back">←</button><button id="browserForward" title="Forward">→</button><button id="browserReload" title="Reload">↻</button><input id="browserUrl" aria-label="Browser address" placeholder="https://…" /><button id="browserClose" title="Close browser">×</button></div>
+      <div id="browserSlot"></div>
+    </aside>
   </div>
 </div>
 

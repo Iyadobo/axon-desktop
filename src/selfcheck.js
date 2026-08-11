@@ -75,6 +75,8 @@ ok('assistant with no content -> null', parseEvent(JSON.stringify({ type: 'assis
     ok('config persists approved app state', loaded.osettings.systemPrompt === 'Be concise.' && loaded.omodel === 'qwen3:4b');
     ok('config persists a bounded composer draft', loaded.odraft === 'unfinished note');
     ok('config rejects unapproved state keys', !Object.hasOwn(loaded, 'blocked'));
+    fs.unlinkSync(path.join(dir, 'settings.json'));
+    ok('config restores from its backup', store.load().odraft === 'unfinished note');
   } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
 })();
 

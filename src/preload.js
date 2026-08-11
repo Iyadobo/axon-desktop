@@ -19,5 +19,9 @@ contextBridge.exposeInMainWorld('ollama', {
   respondUpdateRequest: (id, approved) => ipcRenderer.invoke('update-respond-request', id, approved),
   acceptUpdateOffer: (id, approved) => ipcRenderer.invoke('update-accept-offer', id, approved),
   openUpdateInstaller: (file) => ipcRenderer.invoke('update-open-installer', file),
+  browserShow: (bounds) => ipcRenderer.invoke('browser-show', bounds),
+  browserHide: () => ipcRenderer.invoke('browser-hide'),
+  browserNavigate: (url) => ipcRenderer.invoke('browser-navigate', url),
+  browserAction: (action) => ipcRenderer.invoke('browser-action', action),
   on: (ch, cb) => { ipcRenderer.on(ch, (_e, v) => cb(v)); },
 });

@@ -1,5 +1,5 @@
 // Electron main: tray + window + ollama serve lifecycle + chat via the Claude Code harness.
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -12,6 +12,9 @@ const { createConfigStore } = require('./config');
 
 // ponytail: set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('com.iyad.axion'); } catch {}
+// A stable display name also stabilizes Electron's userData folder across dev
+// and packaged launches (Windows otherwise kept both `axion` and `Axion`).
+try { app.setName('Axion'); } catch {}
 // Keep a launch click focused on the existing Axion window instead of opening
 // another Electron group (which also keeps the taskbar pleasantly tidy).
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -27,7 +30,7 @@ const OLLAMA_BASE = OLLAMA_URL.replace(/\/$/, ''); // claude talks to Ollama's n
 // ponytail: scoped auto-approve instead of blanket --dangerously-skip-permissions; user wanted auto-run.
 const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 
-let tray = null, win = null, ollamaProc = null;
+let tray = null, win = null, ollamaProc = null, browserPanel = null;
 let trayLabel = 'Axion: starting…';
 const localHolder = { child: null };  // current local claude subprocess (remote LAN sockets track their own)
 
@@ -94,6 +97,26 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.show());
   win.on('close', (e) => { e.preventDefault(); win.hide(); }); // ponytail: hide-to-tray
+}
+function validBrowserURL(value) {
+  try { const url = new URL(String(value)); return ['http:', 'https:'].includes(url.protocol) ? url.href : null; } catch { return null; }
+}
+function ensureBrowserPanel() {
+  if (browserPanel) return browserPanel;
+  browserPanel = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  win.contentView.addChildView(browserPanel);
+  browserPanel.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  const report = () => win?.webContents.send('browser-status', { url: browserPanel.webContents.getURL(), title: browserPanel.webContents.getTitle(), canBack: browserPanel.webContents.canGoBack(), canForward: browserPanel.webContents.canGoForward() });
+  browserPanel.webContents.on('did-navigate', report);
+  browserPanel.webContents.on('page-title-updated', report);
+  browserPanel.webContents.loadURL('https://www.google.com/');
+  return browserPanel;
+}
+function setBrowserBounds(bounds) {
+  const panel = ensureBrowserPanel();
+  const x = Math.max(0, Math.floor(bounds?.x || 0)), y = Math.max(0, Math.floor(bounds?.y || 0));
+  const width = Math.max(1, Math.floor(bounds?.width || 1)), height = Math.max(1, Math.floor(bounds?.height || 1));
+  panel.setBounds({ x, y, width, height });
 }
 
 // ---- custom slash-command discovery --------------------------------------
@@ -187,6 +210,19 @@ ipcMain.handle('load-state', () => config?.load() || {});
 ipcMain.handle('save-state', (_e, updates) => config?.save(updates) || {});
 // 'clear' is retained for compatibility; the renderer now owns conversation state.
 ipcMain.handle('clear', () => true);
+ipcMain.handle('browser-show', (_e, bounds) => { setBrowserBounds(bounds); return true; });
+ipcMain.handle('browser-hide', () => { if (browserPanel) browserPanel.setBounds({ x: 0, y: 0, width: 1, height: 1 }); return true; });
+ipcMain.handle('browser-navigate', (_e, value) => {
+  const url = validBrowserURL(value); if (!url) return { error: 'Enter a full http:// or https:// address.' };
+  ensureBrowserPanel().webContents.loadURL(url); return { ok: true };
+});
+ipcMain.handle('browser-action', (_e, action) => {
+  const view = ensureBrowserPanel().webContents;
+  if (action === 'back' && view.canGoBack()) view.goBack();
+  else if (action === 'forward' && view.canGoForward()) view.goForward();
+  else if (action === 'reload') view.reload();
+  return true;
+});
 
 // ---- LAN: same-WiFi link, one instance as server ----------------------------
 // ponytail: raw TCP + NDJSON (src/lan.js). Server runs claude locally and streams
@@ -382,11 +418,20 @@ ipcMain.handle('refresh-commands', (_e, model) => { cachedCommands = null; retur
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
   config = createConfigStore(userDataPath);
-  // Preserve settings created before the Axion package identity was introduced.
-  if (!Object.keys(config.load()).length) {
-    const legacyFile = path.join(path.dirname(userDataPath), 'ollama-desktop-harness', 'settings.json');
-    try { if (fs.existsSync(legacyFile)) config.save(JSON.parse(fs.readFileSync(legacyFile, 'utf8'))); } catch {}
+  // Preserve all known predecessors. Merge only missing keys so the canonical
+  // Axion folder wins while a dev/package casing change cannot lose history.
+  const state = config.load(); const parent = path.dirname(userDataPath);
+  const candidates = [
+    path.join(parent, 'axion', 'settings.json'),
+    path.join(parent, 'Axion', 'settings.json'),
+    path.join(parent, 'ollama-desktop-harness', 'settings.json'),
+  ];
+  const merged = {};
+  for (const file of candidates) {
+    if (path.resolve(file) === path.join(userDataPath, 'settings.json')) continue;
+    try { Object.assign(merged, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch {}
   }
+  config.save({ ...merged, ...state });
   CLAUDE_PATH = findClaude();
   createTray();
   createWindow();
