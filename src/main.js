@@ -1,5 +1,5 @@
 // Electron main: tray + window + ollama serve lifecycle + chat via the Claude Code harness.
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -193,13 +193,89 @@ ipcMain.handle('clear', () => true);
 // events back over the socket; client forwards chats and maps events to the renderer,
 // so the renderer UI is identical on either side. No HTTP, no web GUI.
 let lanServer = null, lanClient = null, lanClientConnected = false;
+let hostInstaller = null;
+const pendingUpdateRequests = new Map();
+const pendingUpdateOffers = new Map();
+let inboundUpdate = null;
 function lanStatus(obj) { win?.webContents.send('lan-status', obj); }
+function updateEvent(channel, value) { win?.webContents.send(channel, value); }
+function safeInstallerName(name) { return path.basename(String(name || '')).replace(/[^a-zA-Z0-9._-]/g, '_'); }
+async function hashFile(file) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256'); const stream = fs.createReadStream(file);
+    stream.on('data', (chunk) => hash.update(chunk)); stream.on('end', () => resolve(hash.digest('hex')));
+    stream.on('error', reject);
+  });
+}
+async function selectInstaller() {
+  const picked = await dialog.showOpenDialog(win, { title: 'Choose the newer Axion installer', properties: ['openFile'], filters: [{ name: 'Axion installer', extensions: ['exe'] }] });
+  if (picked.canceled || !picked.filePaths[0]) return null;
+  const file = picked.filePaths[0]; const stat = await fs.promises.stat(file);
+  if (stat.size < 1024 || stat.size > 750 * 1024 * 1024) throw new Error('Installer must be between 1 KB and 750 MB.');
+  hostInstaller = { path: file, name: safeInstallerName(path.basename(file)), bytes: stat.size, sha256: await hashFile(file) };
+  return { name: hostInstaller.name, bytes: hostInstaller.bytes, sha256: hostInstaller.sha256 };
+}
+function offerInstaller(sock) {
+  if (!hostInstaller) throw new Error('Choose a newer Axion installer first.');
+  const id = crypto.randomUUID();
+  const offer = { type: 'update-offer', id, name: hostInstaller.name, bytes: hostInstaller.bytes, sha256: hostInstaller.sha256 };
+  if (sock) lan.sendTo(sock, offer); else lanServer?.broadcast(offer);
+  return offer;
+}
+function sendInstaller(sock, id) {
+  if (!hostInstaller || !sock) return;
+  lan.sendTo(sock, { type: 'update-begin', id, name: hostInstaller.name, bytes: hostInstaller.bytes, sha256: hostInstaller.sha256 });
+  let sent = 0; const stream = fs.createReadStream(hostInstaller.path, { highWaterMark: 48 * 1024 });
+  stream.on('data', (chunk) => {
+    stream.pause();
+    sent += chunk.length;
+    const resume = () => { updateEvent('lan-update-progress', { role: 'host', id, received: sent, total: hostInstaller.bytes }); stream.resume(); };
+    try { if (sock.write(JSON.stringify({ type: 'update-chunk', id, data: chunk.toString('base64') }) + '\n')) resume(); else sock.once('drain', resume); } catch { stream.destroy(); }
+  });
+  stream.on('end', () => lan.sendTo(sock, { type: 'update-end', id }));
+  stream.on('error', (e) => lan.sendTo(sock, { type: 'update-error', id, message: e.message }));
+}
+function beginInboundUpdate(msg) {
+  const offer = pendingUpdateOffers.get(msg.id);
+  if (!offer || offer.name !== msg.name || offer.bytes !== msg.bytes || offer.sha256 !== msg.sha256) throw new Error('Unapproved update transfer was refused.');
+  if (!msg || !/^[a-f0-9]{64}$/i.test(msg.sha256) || !Number.isSafeInteger(msg.bytes) || msg.bytes < 1024 || msg.bytes > 750 * 1024 * 1024) throw new Error('Invalid update metadata.');
+  const dir = path.join(app.getPath('userData'), 'updates'); fs.mkdirSync(dir, { recursive: true });
+  const name = safeInstallerName(msg.name);
+  const temp = path.join(dir, '.' + msg.id + '.part');
+  inboundUpdate?.stream?.destroy();
+  pendingUpdateOffers.delete(msg.id);
+  inboundUpdate = { id: msg.id, name, bytes: msg.bytes, sha256: msg.sha256, received: 0, temp, final: path.join(dir, name), hash: crypto.createHash('sha256'), stream: fs.createWriteStream(temp) };
+}
+function writeInboundChunk(msg) {
+  if (!inboundUpdate || msg.id !== inboundUpdate.id || typeof msg.data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(msg.data)) return;
+  const chunk = Buffer.from(msg.data, 'base64');
+  if (!chunk.length || inboundUpdate.received + chunk.length > inboundUpdate.bytes) throw new Error('Invalid update chunk.');
+  inboundUpdate.received += chunk.length; inboundUpdate.hash.update(chunk); inboundUpdate.stream.write(chunk);
+  updateEvent('lan-update-progress', { role: 'client', id: msg.id, received: inboundUpdate.received, total: inboundUpdate.bytes });
+}
+function finishInboundUpdate(id) {
+  if (!inboundUpdate || id !== inboundUpdate.id) return;
+  const update = inboundUpdate; inboundUpdate = null;
+  update.stream.end(() => {
+    const valid = update.received === update.bytes && update.hash.digest('hex') === update.sha256;
+    if (!valid) { try { fs.unlinkSync(update.temp); } catch {} updateEvent('lan-update-error', { message: 'Update verification failed; the installer was discarded.' }); return; }
+    try { if (fs.existsSync(update.final)) fs.unlinkSync(update.final); fs.renameSync(update.temp, update.final); updateEvent('lan-update-ready', { path: update.final, name: update.name }); }
+    catch (e) { updateEvent('lan-update-error', { message: e.message }); }
+  });
+}
 
 ipcMain.handle('lan-server-toggle', (_e, enabled) => {
   if (enabled) {
     if (lanServer) return { on: true, ips: lan.lanIPs(), port: lan.PORT };
     lanServer = lan.startServer({
-      onChat: (msg, sock, st) => {
+      onMessage: (msg, sock, st) => {
+        if (msg.type === 'stop') { if (st.child && !st.child.killed) st.child.kill(); return; }
+        if (msg.type === 'update-request') {
+          const id = crypto.randomUUID(); pendingUpdateRequests.set(id, sock);
+          updateEvent('lan-update-request', { id, requester: 'A linked client', hasInstaller: !!hostInstaller }); return;
+        }
+        if (msg.type === 'update-accept') { sendInstaller(sock, msg.id); return; }
+        if (msg.type !== 'chat') return;
         const send = (ch, v) => {
           if (ch === 'chat-delta') lan.sendTo(sock, { type: 'delta', text: v });
           else if (ch === 'chat-step') lan.sendTo(sock, { type: 'step', step: v });
@@ -229,6 +305,11 @@ ipcMain.handle('lan-connect', (_e, host) => {
       else if (m.type === 'step') send('chat-step', m.step);
       else if (m.type === 'error') send('chat-error', m.msg);
       else if (m.type === 'done') send('chat-done', { sessionId: m.sessionId, ok: m.ok });
+      else if (m.type === 'update-offer') { pendingUpdateOffers.set(m.id, m); updateEvent('lan-update-offer', m); }
+      else if (m.type === 'update-begin') { try { beginInboundUpdate(m); } catch (e) { updateEvent('lan-update-error', { message: e.message }); } }
+      else if (m.type === 'update-chunk') { try { writeInboundChunk(m); } catch (e) { updateEvent('lan-update-error', { message: e.message }); } }
+      else if (m.type === 'update-end') finishInboundUpdate(m.id);
+      else if (m.type === 'update-error') updateEvent('lan-update-error', { message: m.message || 'Transfer failed.' });
     },
     onStatus: (state) => { lanClientConnected = (state === 'connected'); lanStatus({ client: state }); },
   });
@@ -237,6 +318,33 @@ ipcMain.handle('lan-connect', (_e, host) => {
 ipcMain.handle('lan-disconnect', () => {
   if (lanClient) { try { lanClient.end(); } catch {} lanClient = null; }
   lanClientConnected = false; lanStatus({ client: 'disconnected' }); return true;
+});
+ipcMain.handle('update-select-installer', async () => {
+  try { return await selectInstaller(); } catch (e) { return { error: e.message }; }
+});
+ipcMain.handle('update-offer', () => {
+  try { if (!lanServer) throw new Error('Turn on Host mode first.'); return offerInstaller(); } catch (e) { return { error: e.message }; }
+});
+ipcMain.handle('update-request', () => {
+  if (!lanClientConnected || !lanClient) return { error: 'Connect to a Host first.' };
+  lanClient.send({ type: 'update-request' }); return { ok: true };
+});
+ipcMain.handle('update-respond-request', (_e, id, approved) => {
+  const sock = pendingUpdateRequests.get(id); pendingUpdateRequests.delete(id);
+  if (!sock) return { error: 'That request expired.' };
+  if (!approved) { lan.sendTo(sock, { type: 'update-error', message: 'The Host declined the update request.' }); return { ok: true }; }
+  try { return offerInstaller(sock); } catch (e) { lan.sendTo(sock, { type: 'update-error', message: e.message }); return { error: e.message }; }
+});
+ipcMain.handle('update-accept-offer', (_e, id, approved) => {
+  if (!lanClientConnected || !lanClient) return { error: 'The Host is no longer connected.' };
+  if (!pendingUpdateOffers.has(id)) return { error: 'That update offer expired.' };
+  if (!approved) pendingUpdateOffers.delete(id);
+  lanClient.send(approved ? { type: 'update-accept', id } : { type: 'update-error', id, message: 'The client declined the update offer.' }); return { ok: true };
+});
+ipcMain.handle('update-open-installer', async (_e, file) => {
+  const dir = path.join(app.getPath('userData'), 'updates'); const resolved = path.resolve(String(file || ''));
+  if (!resolved.startsWith(path.resolve(dir) + path.sep) || path.extname(resolved).toLowerCase() !== '.exe' || !fs.existsSync(resolved)) return { error: 'Verified installer not found.' };
+  const result = await shell.openPath(resolved); return result ? { error: result } : { ok: true };
 });
 
 // Fetch the real Claude Code slash-command list (the same menu Claude shows on `/`).

@@ -57,6 +57,9 @@
     display:inline-block; margin-left:5px; }
   .sidefoot .dot.on { background:var(--color-accent); }
   .sidefoot .dot.bad { background:var(--color-bad); }
+  .mode-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 7px; border:1px solid var(--color-divider); border-radius:999px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+  .mode-badge.host { color:var(--color-accent); border-color:var(--color-accent); }
+  .mode-badge.client { color:#007d5a; border-color:#007d5a; }
 
   /* main column */
   #main { flex:1; display:flex; flex-direction:column; overflow:hidden; background:transparent; }
@@ -204,6 +207,13 @@
   .lan-check { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:400; opacity:1; cursor:pointer; }
   .lan-check input { accent-color: var(--color-accent); }
   .lan-info { font-size:11px; opacity:.6; min-height:1em; word-break:break-all; }
+  .update-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .update-actions button, .update-dialog button { padding:7px 10px; border:1px solid var(--color-divider); background:var(--color-surface); border-radius:8px; cursor:pointer; font:inherit; font-size:12px; }
+  .update-actions button:hover, .update-dialog button.primary { border-color:var(--color-accent); color:var(--color-accent); }
+  .update-dialog { width:min(410px,92vw); background:var(--color-bg); border:1px solid var(--color-divider); border-radius:14px; box-shadow:0 18px 50px rgba(0,0,0,.22); padding:18px; }
+  .update-dialog h3 { margin:0 0 7px; font-size:16px; }
+  .update-dialog p { margin:0 0 16px; color:var(--color-neutral); white-space:pre-wrap; }
+  .update-dialog .buttons { display:flex; justify-content:flex-end; gap:8px; }
 
   /* attachments (composer) */
   #attachRow { display:flex; gap:6px; flex-wrap:wrap; padding:8px 16px 0; }
@@ -276,7 +286,7 @@
     <div id="recents"></div>
     <div class="sidefoot">
       <span id="backend">Ollama 11434</span>
-      <span style="display:flex;align-items:center"><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
+      <span style="display:flex;align-items:center;gap:6px"><span id="modeBadge" class="mode-badge">Local</span><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
     </div>
   </div>
 
@@ -355,9 +365,16 @@
           <button id="lanConnBtn" data-mode="conn">Connect</button>
         </div>
         <div id="lanClientInfo" class="lan-info"></div>
+        <div class="update-actions" style="margin-top:8px">
+          <button id="updatePickBtn">Choose installer…</button><button id="updateOfferBtn">Offer update</button><button id="updateRequestBtn">Ask host for update</button>
+        </div>
+        <div id="updateInfo" class="lan-info">Updates require an explicit approval from both devices.</div>
       </div>
     </div>
   </div>
+</div>
+<div class="modal" id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
+  <div class="update-dialog"><h3 id="updateTitle">Axion update</h3><p id="updateBody"></p><div class="buttons" id="updateButtons"></div></div>
 </div>
 <script src="app.js"></script>
 </body>

@@ -13,5 +13,11 @@ contextBridge.exposeInMainWorld('ollama', {
   lanServer: (enabled) => ipcRenderer.invoke('lan-server-toggle', enabled),
   lanConnect: (host) => ipcRenderer.invoke('lan-connect', host),
   lanDisconnect: () => ipcRenderer.invoke('lan-disconnect'),
+  selectUpdateInstaller: () => ipcRenderer.invoke('update-select-installer'),
+  offerUpdate: () => ipcRenderer.invoke('update-offer'),
+  requestUpdate: () => ipcRenderer.invoke('update-request'),
+  respondUpdateRequest: (id, approved) => ipcRenderer.invoke('update-respond-request', id, approved),
+  acceptUpdateOffer: (id, approved) => ipcRenderer.invoke('update-accept-offer', id, approved),
+  openUpdateInstaller: (file) => ipcRenderer.invoke('update-open-installer', file),
   on: (ch, cb) => { ipcRenderer.on(ch, (_e, v) => cb(v)); },
 });

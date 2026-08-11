@@ -547,6 +547,20 @@ $('projInstr').addEventListener('input', () => { const p = activeProject(); if (
 // main does the TCP + NDJSON (src/lan.js). Client mode is reflected so the user
 // knows chats route through the server.
 let lanClientConnected = false;
+let lanServerOn = false;
+function setModeBadge() {
+  const badge = $('modeBadge');
+  badge.className = 'mode-badge' + (lanServerOn ? ' host' : (lanClientConnected ? ' client' : ''));
+  badge.textContent = lanServerOn ? 'Host' : (lanClientConnected ? 'Client' : 'Local');
+}
+function setUpdateInfo(text) { $('updateInfo').textContent = text; }
+function showUpdateDialog(title, body, actions) {
+  $('updateTitle').textContent = title; $('updateBody').textContent = body;
+  const buttons = $('updateButtons'); buttons.innerHTML = '';
+  for (const action of actions) { const button = document.createElement('button'); button.textContent = action.label; if (action.primary) button.className = 'primary'; button.onclick = () => { $('updateModal').classList.remove('show'); action.run(); }; buttons.appendChild(button); }
+  $('updateModal').classList.add('show');
+}
+function formatBytes(n) { return n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; }
 function updateLan(s) {
   if (s.server !== undefined) {
     const info = $('lanServerInfo'); const chk = $('lanServerChk');
@@ -554,6 +568,8 @@ function updateLan(s) {
     else if (s.server === 'closed' || s.server === 'off') { info.textContent = ''; chk.checked = false; }
     else if (s.server.startsWith('error')) { info.textContent = 'Server error: ' + s.server; chk.checked = false; }
     else info.textContent = s.server;
+    lanServerOn = s.server === 'listening';
+    setModeBadge();
   }
   if (s.client !== undefined) {
     const info = $('lanClientInfo'); const btn = $('lanConnBtn');
@@ -562,6 +578,7 @@ function updateLan(s) {
     else if (s.client === 'disconnected') { info.textContent = ''; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
     else if (s.client.startsWith('error')) { info.textContent = 'Connection failed: ' + s.client; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
     else { info.textContent = s.client; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
+    setModeBadge();
   }
 }
 window.ollama.on('lan-status', updateLan);
@@ -570,6 +587,38 @@ $('lanConnBtn').onclick = () => {
   if ($('lanConnBtn').dataset.mode === 'disc') window.ollama.lanDisconnect();
   else { const h = $('lanHost').value.trim(); if (h) { saveState('olanHost', h); window.ollama.lanConnect(h); } }
 };
+$('updatePickBtn').onclick = async () => {
+  const result = await window.ollama.selectUpdateInstaller();
+  setUpdateInfo(result?.error ? result.error : (result ? 'Ready to share ' + result.name + ' (' + formatBytes(result.bytes) + ').' : 'No installer selected.'));
+};
+$('updateOfferBtn').onclick = async () => {
+  const result = await window.ollama.offerUpdate();
+  setUpdateInfo(result?.error ? result.error : 'Offer sent to linked clients. They must accept before transfer starts.');
+};
+$('updateRequestBtn').onclick = async () => {
+  const result = await window.ollama.requestUpdate();
+  setUpdateInfo(result?.error ? result.error : 'Request sent. The Host must approve it first.');
+};
+window.ollama.on('lan-update-request', (request) => {
+  const actions = [{ label: 'Decline', run: () => window.ollama.respondUpdateRequest(request.id, false) }];
+  if (request.hasInstaller) actions.push({ label: 'Offer update', primary: true, run: () => window.ollama.respondUpdateRequest(request.id, true) });
+  showUpdateDialog('Client requested an update', request.hasInstaller ? 'A linked client is asking for the installer you selected. Share it?' : 'A linked client is asking for an update, but this Host has not selected an installer.', actions);
+});
+window.ollama.on('lan-update-offer', (offer) => {
+  showUpdateDialog('Update available', 'The Host offers ' + offer.name + ' (' + formatBytes(offer.bytes) + ').\n\nAxion verifies its SHA-256 before the installer can open.', [
+    { label: 'Decline', run: () => window.ollama.acceptUpdateOffer(offer.id, false) },
+    { label: 'Download update', primary: true, run: () => window.ollama.acceptUpdateOffer(offer.id, true) },
+  ]);
+});
+window.ollama.on('lan-update-progress', (p) => setUpdateInfo((p.role === 'host' ? 'Sending' : 'Receiving') + ' update: ' + Math.min(100, Math.round(p.received / p.total * 100)) + '%'));
+window.ollama.on('lan-update-error', (e) => setUpdateInfo('Update error: ' + (e.message || 'Transfer failed.')));
+window.ollama.on('lan-update-ready', (update) => {
+  setUpdateInfo('Verified update ready: ' + update.name);
+  showUpdateDialog('Verified update ready', update.name + ' passed its SHA-256 check. Open the installer now?', [
+    { label: 'Later', run: () => {} },
+    { label: 'Open installer', primary: true, run: () => window.ollama.openUpdateInstaller(update.path) },
+  ]);
+});
 
 // greeting by time of day
 (function () {

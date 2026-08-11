@@ -35,14 +35,15 @@ function parseMsg(line) { try { return JSON.parse(line); } catch { return null; 
 // onChat(msg, sock, st): st is {child} -- whoever runs claude sets st.child so a
 //   later {type:"stop"} from that socket kills the right child.
 // onStatus(state, info): 'listening' | 'error:<code>' | 'closed'
-function startServer({ onChat, onStatus, port }) {
+function startServer({ onChat, onMessage, onStatus, port }) {
   const sockets = new Map();
   const server = net.createServer((sock) => {
     const st = { child: null };
     sockets.set(sock, st);
     const ls = lineStream((line) => {
       const msg = parseMsg(line); if (!msg) return;
-      if (msg.type === 'chat') onChat(msg, sock, st);
+      if (onMessage) onMessage(msg, sock, st);
+      else if (msg.type === 'chat') onChat?.(msg, sock, st);
       else if (msg.type === 'stop') { if (st.child && !st.child.killed) st.child.kill(); }
     });
     sock.on('data', ls.feed);
@@ -55,6 +56,8 @@ function startServer({ onChat, onStatus, port }) {
   server.listen(port == null ? PORT : port);
   return {
     server,
+    sendTo(sock, obj) { sendTo(sock, obj); },
+    broadcast(obj) { for (const s of sockets.keys()) sendTo(s, obj); },
     stop() { for (const s of [...sockets.keys()]) s.end(); sockets.clear(); try { server.close(); } catch {} },
   };
 }
