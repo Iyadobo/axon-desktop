@@ -32,7 +32,9 @@ const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetc
 
 let tray = null, win = null, ollamaProc = null, browserPanel = null;
 let trayLabel = 'Axion: starting…';
-const localHolder = { child: null };  // current local claude subprocess (remote LAN sockets track their own)
+// Each conversation gets its own holder. A slow or unavailable model must never
+// own the whole window (or somebody else's Stop button).
+const localHolders = new Map();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -130,7 +132,7 @@ function setBrowserBounds(bounds) {
 // sessionId: null -> start a new Claude Code session; otherwise --resume <sessionId>.
 // systemPrompt -> `--append-system-prompt` (headless supports it); cwd -> spawn working dir.
 function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = []) {
-  holder = holder || localHolder;
+  holder = holder || {};
   return new Promise((resolve) => {
     const newSession = !sessionId;
     const sid = sessionId || crypto.randomUUID();
@@ -165,12 +167,12 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
     let stderrBuf = '';
     child.stderr.on('data', (c) => { stderrBuf += c; });
     child.on('exit', (code) => {
-      holder.child = null;
+      if (holder.child === child) holder.child = null;
       if (code && !stderrBuf.includes('connectors')) send('chat-error', `claude exited ${code}${stderrBuf ? ': ' + stderrBuf.trim().slice(0, 300) : ''}`);
       send('chat-done', { sessionId: resultSid, ok: !code });
       resolve();
     });
-    child.on('error', (e) => { holder.child = null; send('chat-error', `failed to launch claude: ${e.message}`); send('chat-done', { sessionId: resultSid, ok: false }); resolve(); });
+    child.on('error', (e) => { if (holder.child === child) holder.child = null; send('chat-error', `failed to launch claude: ${e.message}`); send('chat-done', { sessionId: resultSid, ok: false }); resolve(); });
   });
 }
 
@@ -187,19 +189,25 @@ function safeImages(value) {
   }
   return images;
 }
-ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images }) => {
+ipcMain.handle('chat', (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId }) => {
+  if (!requestId || typeof requestId !== 'string') return { ok: false, error: 'Missing chat request ID.' };
   const expanded = maybeExpandSlash(prompt);
   const safe = safeImages(images);
-  const send = win.webContents.send.bind(win.webContents);
+  const send = (channel, value) => win?.webContents.send(channel, { requestId, ...(channel === 'chat-delta' ? { text: value } : channel === 'chat-step' ? { step: value } : channel === 'chat-error' ? { message: value } : value) });
   // ponytail: client mode forwards to the LAN server (cwd dropped -- the client's
   // project path is on the client device and doesn't map to the server's filesystem).
-  if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null }); return { ok: true }; }
-  try { await runChat(model, expanded, sessionId, send, systemPrompt, cwd, null, safe); return { ok: true }; }
-  catch (e) { send('chat-error', e.message); return { ok: false, error: e.message }; }
+  if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null }); return { ok: true }; }
+  const holder = {}; localHolders.set(requestId, holder);
+  runChat(model, expanded, sessionId, send, systemPrompt, cwd, holder, safe)
+    .catch((e) => send('chat-error', e.message))
+    .finally(() => localHolders.delete(requestId));
+  return { ok: true };
 });
-ipcMain.handle('chat-stop', () => {
-  if (lanClientConnected && lanClient) { lanClient.send({ type: 'stop' }); return true; }
-  if (localHolder.child && !localHolder.child.killed) localHolder.child.kill();
+ipcMain.handle('chat-stop', (_e, requestId) => {
+  if (!requestId) return false;
+  if (lanClientConnected && lanClient) { lanClient.send({ type: 'stop', requestId }); return true; }
+  const holder = localHolders.get(requestId);
+  if (holder?.child && !holder.child.killed) holder.child.kill();
   return true;
 });
 ipcMain.handle('pick-folder', async () => {
@@ -305,7 +313,11 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
     if (lanServer) return { on: true, ips: lan.lanIPs(), port: lan.PORT };
     lanServer = lan.startServer({
       onMessage: (msg, sock, st) => {
-        if (msg.type === 'stop') { if (st.child && !st.child.killed) st.child.kill(); return; }
+        if (msg.type === 'stop') {
+          const holder = st.holders?.get(msg.requestId);
+          if (holder?.child && !holder.child.killed) holder.child.kill();
+          return;
+        }
         if (msg.type === 'update-request') {
           const id = crypto.randomUUID(); pendingUpdateRequests.set(id, sock);
           updateEvent('lan-update-request', { id, requester: 'A linked client', hasInstaller: !!hostInstaller }); return;
@@ -313,13 +325,16 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
         if (msg.type === 'update-accept') { sendInstaller(sock, msg.id); return; }
         if (msg.type !== 'chat') return;
         const send = (ch, v) => {
-          if (ch === 'chat-delta') lan.sendTo(sock, { type: 'delta', text: v });
-          else if (ch === 'chat-step') lan.sendTo(sock, { type: 'step', step: v });
-          else if (ch === 'chat-error') lan.sendTo(sock, { type: 'error', msg: v });
-          else if (ch === 'chat-done') lan.sendTo(sock, { type: 'done', sessionId: v.sessionId, ok: v.ok });
+          if (ch === 'chat-delta') lan.sendTo(sock, { type: 'delta', requestId: msg.requestId, text: v });
+          else if (ch === 'chat-step') lan.sendTo(sock, { type: 'step', requestId: msg.requestId, step: v });
+          else if (ch === 'chat-error') lan.sendTo(sock, { type: 'error', requestId: msg.requestId, msg: v });
+          else if (ch === 'chat-done') lan.sendTo(sock, { type: 'done', requestId: msg.requestId, sessionId: v.sessionId, ok: v.ok });
         };
+        st.holders ||= new Map();
+        const holder = {}; st.holders.set(msg.requestId, holder);
         // server uses its own cwd; the client's project path doesn't map across devices.
-        runChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, st, safeImages(msg.images)).catch(() => {});
+        runChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, holder, safeImages(msg.images))
+          .catch(() => {}).finally(() => st.holders.delete(msg.requestId));
       },
       onStatus: (state, info) => lanStatus({ server: state, ...info }),
     });
@@ -337,10 +352,10 @@ ipcMain.handle('lan-connect', (_e, host) => {
   lanClient = lan.connectClient(h.trim(), p ? parseInt(p, 10) || lan.PORT : lan.PORT, {
     onMsg: (m) => {
       const send = win.webContents.send.bind(win.webContents);
-      if (m.type === 'delta') send('chat-delta', m.text);
-      else if (m.type === 'step') send('chat-step', m.step);
-      else if (m.type === 'error') send('chat-error', m.msg);
-      else if (m.type === 'done') send('chat-done', { sessionId: m.sessionId, ok: m.ok });
+      if (m.type === 'delta') send('chat-delta', { requestId: m.requestId, text: m.text });
+      else if (m.type === 'step') send('chat-step', { requestId: m.requestId, step: m.step });
+      else if (m.type === 'error') send('chat-error', { requestId: m.requestId, message: m.msg });
+      else if (m.type === 'done') send('chat-done', { requestId: m.requestId, sessionId: m.sessionId, ok: m.ok });
       else if (m.type === 'update-offer') { pendingUpdateOffers.set(m.id, m); updateEvent('lan-update-offer', m); }
       else if (m.type === 'update-begin') { try { beginInboundUpdate(m); } catch (e) { updateEvent('lan-update-error', { message: e.message }); } }
       else if (m.type === 'update-chunk') { try { writeInboundChunk(m); } catch (e) { updateEvent('lan-update-error', { message: e.message }); } }

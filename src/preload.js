@@ -5,7 +5,7 @@ contextBridge.exposeInMainWorld('ollama', {
   fetchCommands: (model) => ipcRenderer.invoke('fetch-commands', model),
   refreshCommands: (model) => ipcRenderer.invoke('refresh-commands', model),
   chat: (model, prompt, sessionId, opts) => ipcRenderer.invoke('chat', { model, prompt, sessionId, ...opts }),
-  stop: () => ipcRenderer.invoke('chat-stop'),
+  stop: (requestId) => ipcRenderer.invoke('chat-stop', requestId),
   clear: () => ipcRenderer.invoke('clear'),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   loadState: () => ipcRenderer.invoke('load-state'),

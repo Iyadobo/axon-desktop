@@ -32,8 +32,8 @@ function lineStream(onLine) {
 function parseMsg(line) { try { return JSON.parse(line); } catch { return null; } }
 
 // ---- server ----------------------------------------------------------------
-// onChat(msg, sock, st): st is {child} -- whoever runs claude sets st.child so a
-//   later {type:"stop"} from that socket kills the right child.
+// onChat/onMessage receive a per-socket state. Hosts may attach `holders`, a
+// requestId -> child map, so one Stop never cancels unrelated chats.
 // onStatus(state, info): 'listening' | 'error:<code>' | 'closed'
 function startServer({ onChat, onMessage, onStatus, port }) {
   const sockets = new Map();
@@ -48,7 +48,11 @@ function startServer({ onChat, onMessage, onStatus, port }) {
     });
     sock.on('data', ls.feed);
     sock.on('error', () => {});
-    sock.on('close', () => { if (st.child && !st.child.killed) st.child.kill(); sockets.delete(sock); });
+    sock.on('close', () => {
+      if (st.holders) for (const holder of st.holders.values()) if (holder.child && !holder.child.killed) holder.child.kill();
+      if (st.child && !st.child.killed) st.child.kill();
+      sockets.delete(sock);
+    });
   });
   server.on('error', (e) => onStatus('error:' + (e.code || e.message)));
   server.on('listening', () => onStatus('listening', { port: server.address().port, ips: lanIPs() }));
@@ -98,18 +102,18 @@ function selfcheck() {
     const srv = startServer({
       port: 0,
       onChat: (msg, sock, st) => {
-        ok(msg.type === 'chat' && msg.prompt === 'hi', 'server got chat');
-        sendTo(sock, { type: 'delta', text: 'hello' });
-        sendTo(sock, { type: 'done', sessionId: msg.sessionId, ok: true });
+        ok(msg.type === 'chat' && msg.prompt === 'hi' && msg.requestId === 'r1', 'server got request-scoped chat');
+        sendTo(sock, { type: 'delta', requestId: msg.requestId, text: 'hello' });
+        sendTo(sock, { type: 'done', requestId: msg.requestId, sessionId: msg.sessionId, ok: true });
       },
       // ponytail: drive off onStatus (attached before listen) to avoid a listen/listening race.
       onStatus: (state, info) => {
         if (state !== 'listening') return;
         cli = connectClient('127.0.0.1', info.port, {
           onMsg: (m) => {
-            if (m.type === 'delta') ok(m.text === 'hello', 'client got delta');
+            if (m.type === 'delta') ok(m.text === 'hello' && m.requestId === 'r1', 'client got request-scoped delta');
             if (m.type === 'done') {
-              ok(m.ok === true, 'client got done');
+              ok(m.ok === true && m.requestId === 'r1', 'client got request-scoped done');
               cli.end(); srv.stop();
               console.log('lan selfcheck:', pass, 'passed,', fail, 'failed');
               resolve(!fail);
@@ -117,7 +121,7 @@ function selfcheck() {
           },
           onStatus: () => {},
         });
-        cli.send({ type: 'chat', model: 'x', prompt: 'hi', sessionId: 's1', systemPrompt: '' });
+        cli.send({ type: 'chat', requestId: 'r1', model: 'x', prompt: 'hi', sessionId: 's1', systemPrompt: '' });
       },
     });
   });

@@ -7,8 +7,11 @@ const rid = () => Math.random().toString(36).slice(2);
 
 let conversations = [];   // [{id, sessionId, title, model, ts, projectId}]
 let activeId = null;      // current conversation id (null = home/fresh)
-let active = null;        // streaming turn: { turnEl, stepsEl, bubbleEl, think, cursor, content, started, model }
-let busy = false, stopping = false;
+// Many chats may generate at once. Keep their DOM + persistence context by
+// request ID instead of one global "active" turn.
+const activeTurns = new Map(); // requestId -> { conversationId, turnEl, ... }
+let stopping = new Set();
+function currentTurn() { return activeId ? [...activeTurns.values()].find((turn) => turn.conversationId === activeId) : null; }
 
 // ---- settings / appearance --------------------------------------------------
 const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#2a4bd6', theme: 'light', density: 'normal' };
@@ -207,7 +210,7 @@ function renderRecents() {
   for (const c of visible) {
     const d = document.createElement('div');
     d.className = 'recent' + (c.id === activeId ? ' active' : '');
-    d.textContent = c.title || '(empty)';
+    d.textContent = (c.title || '(empty)') + ([...activeTurns.values()].some((turn) => turn.conversationId === c.id) ? ' · running' : '');
     d.title = c.title || '';
     d.onclick = () => openConv(c.id);
     const del = document.createElement('span'); del.className = 'rdel'; del.textContent = '✕'; del.title = 'Delete chat';
@@ -228,7 +231,10 @@ function openConv(id) {
       else addStoredAiTurn(turn.content, conv.model);
     }
   } else addSysNote('This older chat has no saved transcript. New turns are saved locally from now on.');
+  const running = currentTurn();
+  if (running) $('log').appendChild(running.turnEl);
   renderRecents();
+  syncComposerState();
   scrollBottom();
 }
 
@@ -244,7 +250,7 @@ function showChatView() {
   $('chat').classList.add('show');
   $('composerSlot').appendChild($('composerCard'));
 }
-function newChat() { activeId = null; $('log').innerHTML = ''; showHomeView(); renderRecents(); }
+function newChat() { activeId = null; $('log').innerHTML = ''; showHomeView(); renderRecents(); syncComposerState(); }
 
 // ---- log helpers -----------------------------------------------------------
 function addUserTurn(text, images = [], persist = true) {
@@ -283,19 +289,19 @@ function addSysNote(text) {
   const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
   t.appendChild(b); $('log').appendChild(t);
 }
-function addStep(s) {
-  if (!active) return;
-  active.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
+function addStep(s, turn = currentTurn()) {
+  if (!turn) return;
+  turn.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
   if (s.type === 'tool_call') {
     const d = document.createElement('div'); d.className = 'step tool active';
     d.innerHTML = '▸ <span class="fn">' + esc(s.fn) + '</span> ' + esc(typeof s.args === 'string' ? s.args : JSON.stringify(s.args));
-    active.stepsEl.appendChild(d);
+    turn.stepsEl.appendChild(d);
     if (s.fn === 'WebFetch' && typeof s.args?.url === 'string') openBrowserAt(s.args.url);
   } else if (s.type === 'tool_result') {
     const d = document.createElement('div'); d.className = 'step';
     const r = String(s.result).slice(0, 500);
     d.innerHTML = '<span class="res">↳ ' + esc(r) + (s.result.length > 500 ? ' …' : '') + '</span>';
-    active.stepsEl.appendChild(d);
+    turn.stepsEl.appendChild(d);
   }
   scrollBottom();
 }
@@ -342,37 +348,42 @@ function renderMarkdown(el, text) {
 }
 
 // ---- stream events ---------------------------------------------------------
-window.ollama.on('chat-delta', (d) => {
-  if (!active) return;
-  if (!active.started) {
-    active.started = true;
-    active.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
-    if (active.think) { active.think.remove(); active.think = null; }
+window.ollama.on('chat-delta', ({ requestId, text }) => {
+  const turn = activeTurns.get(requestId); if (!turn) return;
+  if (!turn.started) {
+    turn.started = true;
+    turn.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
+    if (turn.think) { turn.think.remove(); turn.think = null; }
   }
-  active.content += d;
-  renderMarkdown(active.bubbleEl, active.content);
-  scrollBottom();
+  turn.content += text;
+  renderMarkdown(turn.bubbleEl, turn.content);
+  if (turn.conversationId === activeId) scrollBottom();
 });
-window.ollama.on('chat-step', addStep);
-window.ollama.on('chat-error', (msg) => { if (stopping) return; if (!active) return;
-  if (active.think) { active.think.remove(); active.think = null; }
-  active.turnEl.classList.add('error'); active.bubbleEl.textContent = '[error] ' + msg; });
-window.ollama.on('chat-done', ({ sessionId } = {}) => {
-  if (active) {
-    if (active.think) { active.think.remove(); active.think = null; }
-    active.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
-    if (!active.started && !active.turnEl.classList.contains('error')) active.bubbleEl.textContent = '(no response)';
-    else if (active.started) { renderMarkdown(active.bubbleEl, active.content); addCopyBtn(active.turnEl, active.content); }
-    if (active.started && activeId) {
-      const conv = conversations.find((c) => c.id === activeId);
-      if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: active.content }); saveConvs(); }
-    }
+window.ollama.on('chat-step', ({ requestId, step }) => addStep(step, activeTurns.get(requestId)));
+window.ollama.on('chat-error', ({ requestId, message }) => {
+  const turn = activeTurns.get(requestId); if (!turn || stopping.has(requestId)) return;
+  if (turn.think) { turn.think.remove(); turn.think = null; }
+  turn.turnEl.classList.add('error'); turn.bubbleEl.textContent = '[error] ' + message;
+});
+window.ollama.on('chat-done', ({ requestId, sessionId } = {}) => {
+  const turn = activeTurns.get(requestId); if (!turn) return;
+  if (turn.think) { turn.think.remove(); turn.think = null; }
+  turn.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
+  if (stopping.has(requestId)) {
+    turn.turnEl.classList.add('error'); turn.bubbleEl.textContent = '(stopped)';
+  } else if (!turn.started && !turn.turnEl.classList.contains('error')) turn.bubbleEl.textContent = '(no response)';
+  else if (turn.started) { renderMarkdown(turn.bubbleEl, turn.content); addCopyBtn(turn.turnEl, turn.content); }
+  if (turn.started) {
+    const conv = conversations.find((c) => c.id === turn.conversationId);
+    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: turn.content }); saveConvs(); }
   }
-  active = null; setBusy(false); stopping = false;
-  if (sessionId && activeId) {
-    const conv = conversations.find((c) => c.id === activeId);
+  if (sessionId) {
+    const conv = conversations.find((c) => c.id === turn.conversationId);
     if (conv && !conv.sessionId) { conv.sessionId = sessionId; saveConvs(); }
   }
+  activeTurns.delete(requestId); stopping.delete(requestId);
+  renderRecents(); syncComposerState();
+  if (turn.conversationId === activeId) scrollBottom();
 });
 function addCopyBtn(turnEl, text) {
   const b = document.createElement('button'); b.className = 'copymsg'; b.textContent = 'copy'; b.title = 'Copy response';
@@ -404,15 +415,16 @@ async function showHelp() {
 // ---- send / commands -------------------------------------------------------
 function saveDraft() { saveState('odraft', $('prompt').value.slice(0, 20000)); }
 function clearInput() { $('prompt').value = ''; saveDraft(); autosize(); }
-function setBusy(b) {
-  busy = b;
+function syncComposerState() {
+  const running = currentTurn();
+  const b = !!running;
   $('send').textContent = b ? '■' : '→';
-  $('send').className = b ? 'stop' : '';
-  $('send').title = b ? 'Stop' : 'Send';
+  $('send').className = running ? 'stop' : '';
+  $('send').title = running ? 'Stop this chat' : 'Send';
 }
 
 async function send() {
-  if (busy) return;
+  if (currentTurn()) return;
   const text = $('prompt').value.trim();
   if (!text && !attachments.length) return;
 
@@ -435,9 +447,16 @@ async function send() {
   }
   showChatView();
   addUserTurn(text, images);
-  active = newAiTurn(model);
-  setBusy(true);
-  await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt: projectSystemPrompt(), cwd: projectCwd(), images });
+  const requestId = rid() + rid();
+  const turn = newAiTurn(model);
+  turn.conversationId = conv.id;
+  activeTurns.set(requestId, turn);
+  renderRecents(); syncComposerState();
+  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt: projectSystemPrompt(), cwd: projectCwd(), images, requestId });
+  if (!result?.ok) {
+    const failed = activeTurns.get(requestId);
+    if (failed) { failed.turnEl.classList.add('error'); failed.bubbleEl.textContent = '[error] ' + (result?.error || 'Could not start this chat.'); activeTurns.delete(requestId); renderRecents(); syncComposerState(); }
+  }
 }
 
 // ---- slash-command autocomplete -------------------------------------------
@@ -521,7 +540,12 @@ function chooseCmd(i) {
 }
 
 // ---- wiring ----------------------------------------------------------------
-$('send').onclick = () => (busy ? (stopping = true, window.ollama.stop()) : send());
+$('send').onclick = () => {
+  const turn = currentTurn();
+  if (!turn) return send();
+  const requestId = [...activeTurns.entries()].find(([, value]) => value === turn)?.[0];
+  if (requestId) { stopping.add(requestId); window.ollama.stop(requestId); }
+};
 $('newchat').onclick = () => newChat();
 $('model').onchange = () => saveState('omodel', $('model').value);
 $('prompt').addEventListener('keydown', (e) => {
