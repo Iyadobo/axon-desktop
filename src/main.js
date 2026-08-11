@@ -62,8 +62,15 @@ function npmShimLaunch(shim) {
   } catch { return null; }
 }
 function findClaude() {
-  const exe = whereFirst('claude.exe');
-  if (exe) return { command: exe, prefix: [] };
+  // Windows Start Menu launches can inherit an older PATH than an interactive
+  // terminal. Claude's native installer uses ~/.local/bin, so probe it directly
+  // instead of falling through to the non-existent bare `claude` command.
+  const direct = [
+    whereFirst('claude.exe'),
+    process.env.USERPROFILE && path.join(process.env.USERPROFILE, '.local', 'bin', 'claude.exe'),
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Claude', 'claude.exe'),
+  ].find((candidate) => candidate && fs.existsSync(candidate));
+  if (direct) return { command: direct, prefix: [] };
   const bare = whereFirst('claude');
   if (bare && /\.exe$/i.test(bare)) return { command: bare, prefix: [] };
   const shims = [whereFirst('claude.cmd'), process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'claude.cmd')].filter(Boolean);
