@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('ollama', {
   stop: (requestId) => ipcRenderer.invoke('chat-stop', requestId),
   clear: () => ipcRenderer.invoke('clear'),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
+  ensureWorkspace: () => ipcRenderer.invoke('ensure-workspace'),
   loadState: () => ipcRenderer.invoke('load-state'),
   saveState: (updates) => ipcRenderer.invoke('save-state', updates),
   lanServer: (enabled) => ipcRenderer.invoke('lan-server-toggle', enabled),

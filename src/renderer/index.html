@@ -368,6 +368,13 @@
           <select id="densitySel"><option value="compact">Compact</option><option value="normal">Normal</option><option value="comfortable">Comfortable</option></select>
         </label>
       </div>
+      <div class="fld"><span>Default workspace</span>
+        <div class="proj-row">
+          <input id="workspacePath" type="text" readonly aria-label="Default workspace path" />
+          <button id="workspacePick">Choose folderâ€¦</button>
+        </div>
+        <div class="lan-info">Axon creates <code>Documents\\Axon Workspace</code> automatically. New chats use it unless you select a project.</div>
+      </div>
       <div class="fld"><span>Projects</span>
         <div class="proj-list" id="projList"></div>
         <div class="proj-row" style="margin-top:8px">

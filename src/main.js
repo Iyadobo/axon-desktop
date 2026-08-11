@@ -256,6 +256,17 @@ ipcMain.handle('pick-folder', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return r.canceled ? null : r.filePaths[0];
 });
+// Each installation gets a predictable writable home for chats that are not
+// attached to a named Project. A user-selected workspace must already exist;
+// only Axon's own default is created automatically.
+function ensureDefaultWorkspace() {
+  const configured = config?.load()?.oworkspace;
+  if (typeof configured === 'string' && configured && fs.existsSync(configured)) return configured;
+  const workspace = path.join(app.getPath('documents'), 'Axon Workspace');
+  fs.mkdirSync(workspace, { recursive: true });
+  return workspace;
+}
+ipcMain.handle('ensure-workspace', () => ensureDefaultWorkspace());
 ipcMain.handle('load-state', () => config?.load() || {});
 ipcMain.handle('save-state', (_e, updates) => config?.save(updates) || {});
 // 'clear' is retained for compatibility; the renderer now owns conversation state.

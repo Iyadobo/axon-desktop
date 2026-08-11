@@ -64,10 +64,11 @@ function closeSettings() { $('settings').classList.remove('show'); }
 // ---- projects (folder workspaces) -----------------------------------------
 let projects = [];        // [{id, name, path, instructions}]
 let activeProjectId = null;
+let defaultWorkspace = null;
 function loadProjects() { try { projects = Array.isArray(persisted.oprojects) ? persisted.oprojects : []; } catch {} }
 function saveProjects() { saveState('oprojects', projects); }
 function activeProject() { return projects.find((p) => p.id === activeProjectId) || null; }
-function projectCwd() { return activeProject()?.path || null; }
+function projectCwd() { return activeProject()?.path || defaultWorkspace || null; }
 function projectSystemPrompt() {
   const p = activeProject();
   const base = settings.systemPrompt || '';
@@ -616,6 +617,13 @@ $('themeSel').onchange = () => { settings.theme = $('themeSel').value; saveSetti
 $('densitySel').onchange = () => { settings.density = $('densitySel').value; saveSettings(); applyAppearance(); };
 $('recents-label').onclick = openSettings;
 $('projPick').onclick = createProject;
+$('workspacePick').onclick = async () => {
+  const picked = await window.ollama.pickFolder();
+  if (!picked) return;
+  defaultWorkspace = picked;
+  $('workspacePath').value = picked;
+  saveState('oworkspace', picked);
+};
 $('projInstr').addEventListener('input', () => { const p = activeProject(); if (p) { p.instructions = $('projInstr').value; saveProjects(); } });
 function describeDependency(name, value) { return name + ': ' + (value ? value.replace(/\s+/g, ' ').slice(0, 48) : 'missing'); }
 async function refreshAppInfo() {
@@ -787,7 +795,7 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.ollama.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft', 'oworkspace']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;
@@ -799,6 +807,9 @@ function refreshGridColor() {
   } catch {}
   loadSettings();
   loadProjects();
+  defaultWorkspace = await window.ollama.ensureWorkspace();
+  if (persisted.oworkspace !== defaultWorkspace) saveState('oworkspace', defaultWorkspace);
+  $('workspacePath').value = defaultWorkspace;
   loadConvs();
   activeProjectId = projects.some((p) => p.id === persisted.oactiveProject) ? persisted.oactiveProject : null;
   $('lanHost').value = persisted.olanHost || '';

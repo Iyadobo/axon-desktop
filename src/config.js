@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const STATE_KEYS = new Set(['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft']);
+const STATE_KEYS = new Set(['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft', 'oworkspace']);
 
 function createConfigStore(userDataPath) {
   const file = path.join(userDataPath, 'settings.json');
