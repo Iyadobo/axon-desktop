@@ -4,6 +4,13 @@
 // folder-workspace projects, markdown rendering, copy, per-turn model labels.
 const $ = (id) => document.getElementById(id);
 const rid = () => Math.random().toString(36).slice(2);
+// Keep all model output as text before the small markdown formatter reintroduces
+// its intentionally limited markup. This used to be referenced but never
+// defined, so the first streamed reply threw a ReferenceError and appeared as
+// an empty assistant bubble.
+const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+})[char]);
 
 let conversations = [];   // [{id, sessionId, title, model, ts, projectId}]
 let activeId = null;      // current conversation id (null = home/fresh)
