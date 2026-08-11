@@ -157,9 +157,15 @@ function setStatus(ok, text) {
   $('dot').className = 'dot' + (ok ? ' on' : text ? ' bad' : '');
   $('statustext').textContent = text;
 }
+function setLoading(text, done = false) {
+  const splash = $('loading'); if (!splash) return;
+  $('loadingText').textContent = text;
+  if (done) { splash.classList.add('done'); setTimeout(() => splash.remove(), 220); }
+}
 
 // ---- models ----------------------------------------------------------------
 async function loadModels() {
+  setLoading('Checking local models…');
   try {
     const data = await window.ollama.listModels();
     const sel = $('model'); sel.innerHTML = '';
@@ -413,8 +419,17 @@ async function send() {
 }
 
 // ---- slash-command autocomplete -------------------------------------------
+// ponytail: known app-side commands appear instantly while the CLI discovery
+// fills the rest of the list in the background.
+const CORE_COMMANDS = [
+  { name: 'new', description: 'Start a fresh chat', tag: 'Axion' },
+  { name: 'clear', description: 'Start a fresh chat', tag: 'Axion' },
+  { name: 'model', description: 'Switch the active model', tag: 'Axion' },
+  { name: 'help', description: 'Show commands and shortcuts', tag: 'Axion' },
+  { name: 'compact', description: 'Start fresh (headless fallback)', tag: 'Axion' },
+];
 let allCommands = [];
-let cmdOpen = false, cmdItems = [], cmdSel = 0;
+let cmdOpen = false, cmdItems = [], cmdSel = 0, commandLoadStarted = false;
 
 async function ensureCommands() {
   if (allCommands.length) return;
@@ -434,17 +449,28 @@ async function ensureCommands() {
   }
   allCommands = merged;
 }
+function showCoreCommands(prefix) {
+  const matches = CORE_COMMANDS.filter((c) => c.name.startsWith(prefix));
+  if (!matches.length) return closeCmdList();
+  cmdItems = matches; cmdSel = 0;
+  const box = $('cmdlist');
+  box.innerHTML = '<div class="cmdhead">Commands · loading more</div>' + matches.map((c, i) =>
+    '<div class="cmditem' + (i === 0 ? ' sel' : '') + '" data-i="' + i + '"><span class="cmdname">/' + c.name + '</span><span class="cmddesc">' + c.description + '</span><span class="cmdtag">' + c.tag + '</span></div>'
+  ).join('');
+  box.classList.add('show'); cmdOpen = true;
+  box.querySelectorAll('.cmditem').forEach((el) => { el.onmousedown = (ev) => { ev.preventDefault(); chooseCmd(+el.dataset.i); }; });
+}
 
 async function openCmdList() {
   const m = $('prompt').value.match(/^\/([A-Za-z0-9_:.\-]*)$/);
   if (!m) { closeCmdList(); return; }
-  if (!allCommands.length) {
-    const box = $('cmdlist');
-    box.innerHTML = '<div class="cmdhead">Commands</div><div class="cmditem" style="opacity:.5;cursor:default"><span class="cmdname">Loading commands…</span></div>';
-    box.classList.add('show');
-    await ensureCommands();
-    if (!$('prompt').value.match(/^\/[A-Za-z0-9_:.\-]*$/)) { closeCmdList(); return; }
+  if (!allCommands.length && !commandLoadStarted) {
+    commandLoadStarted = true;
+    showCoreCommands(m[1]);
+    ensureCommands().then(() => { if ($('prompt').value.match(/^\/[A-Za-z0-9_:.\-]*$/)) openCmdList(); });
+    return;
   }
+  if (!allCommands.length) { showCoreCommands(m[1]); return; }
   const prefix = m[1];
   const matches = allCommands.filter((c) => c.name.startsWith(prefix)).slice(0, 50);
   if (!matches.length) { closeCmdList(); return; }
@@ -613,5 +639,6 @@ function refreshGridColor() {
   applyAppearance();
   renderRecents();
   updateProjectLabel();
-  loadModels();
+  await loadModels();
+  setLoading('Ready', true);
 })();

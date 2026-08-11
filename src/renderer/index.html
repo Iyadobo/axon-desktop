@@ -25,6 +25,13 @@
   html, body { margin:0; height:100%; background:var(--color-bg); color:var(--color-text);
     font-family:var(--font-body); font-size:var(--font-size); line-height:1.5; overflow:hidden; }
   #app { display:flex; height:100vh; position:relative; z-index:1; }
+  #loading { position:fixed; inset:0; z-index:100; display:grid; place-items:center; background:var(--color-bg); transition:opacity .2s ease, visibility .2s ease; }
+  #loading.done { opacity:0; visibility:hidden; }
+  .loading-mark { display:flex; flex-direction:column; align-items:center; gap:12px; color:var(--color-text); }
+  .loading-mark img { width:52px; height:52px; animation:bootpulse 1.2s ease-in-out infinite; }
+  .loading-mark strong { font-size:16px; letter-spacing:.02em; }
+  .loading-mark span { font-size:12px; color:var(--color-neutral); }
+  @keyframes bootpulse { 50% { transform:scale(.92); opacity:.68; } }
 
   /* cursor-proximity particle grid (subtle ambient; respects reduced-motion) */
   #grid { position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:0; }
@@ -100,7 +107,7 @@
     vertical-align:-2px; animation:blink 1.1s steps(2) infinite; }
   @keyframes blink { 50% { opacity:0; } }
   @media (prefers-reduced-motion: reduce) {
-    .think i, .step.active, .cursor { animation:none !important; }
+    .think i, .step.active, .cursor, .loading-mark img { animation:none !important; }
     .step.active { background:rgba(42,75,214,.07); }
     .think i { opacity:.7; }
   }
@@ -259,6 +266,7 @@
 </style>
 </head>
 <body>
+<div id="loading" role="status" aria-live="polite"><div class="loading-mark"><img src="../assets/icon.png" alt="" /><strong>Axion</strong><span id="loadingText">Starting local workspace…</span></div></div>
 <canvas id="grid"></canvas>
 <div id="app">
   <div id="side">
