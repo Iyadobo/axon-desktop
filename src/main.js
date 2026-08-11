@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
+const os = require('os');
 const { spawn, execSync } = require('child_process');
 const { parseEvent } = require('./cc');
 const { maybeExpandSlash, listCommands } = require('./commands');
@@ -236,13 +237,23 @@ ipcMain.handle('browser-action', (_e, action) => {
 // ponytail: raw TCP + NDJSON (src/lan.js). Server runs claude locally and streams
 // events back over the socket; client forwards chats and maps events to the renderer,
 // so the renderer UI is identical on either side. No HTTP, no web GUI.
-let lanServer = null, lanClient = null, lanClientConnected = false;
+let lanServer = null, lanClient = null, lanClientConnected = false, lanDiscovery = null;
+const lanInstanceId = crypto.randomUUID();
 let hostInstaller = null;
 const pendingUpdateRequests = new Map();
 const pendingUpdateOffers = new Map();
 let inboundUpdate = null;
 function lanStatus(obj) { win?.webContents.send('lan-status', obj); }
 function updateEvent(channel, value) { win?.webContents.send(channel, value); }
+function startLanDiscovery() {
+  if (lanDiscovery) return;
+  lanDiscovery = lan.createDiscovery({
+    id: lanInstanceId,
+    name: os.hostname(),
+    getAdvertisement: () => ({ port: lan.PORT, available: !!lanServer }),
+    onDevices: (devices) => win?.webContents.send('lan-devices', devices),
+  });
+}
 function safeInstallerName(name) { return path.basename(String(name || '')).replace(/[^a-zA-Z0-9._-]/g, '_'); }
 async function hashFile(file) {
   return new Promise((resolve, reject) => {
@@ -320,7 +331,7 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
         }
         if (msg.type === 'update-request') {
           const id = crypto.randomUUID(); pendingUpdateRequests.set(id, sock);
-          updateEvent('lan-update-request', { id, requester: 'A linked client', hasInstaller: !!hostInstaller }); return;
+          updateEvent('lan-update-request', { id, requester: typeof msg.requester === 'string' ? msg.requester.slice(0, 80) : 'A linked client', hasInstaller: !!hostInstaller }); return;
         }
         if (msg.type === 'update-accept') { sendInstaller(sock, msg.id); return; }
         if (msg.type !== 'chat') return;
@@ -338,14 +349,16 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
       },
       onStatus: (state, info) => lanStatus({ server: state, ...info }),
     });
+    lanDiscovery?.refresh();
     return { on: true, ips: lan.lanIPs(), port: lan.PORT };
   }
   if (lanServer) { lanServer.stop(); lanServer = null; }
+  lanDiscovery?.refresh();
   lanStatus({ server: 'off' });
   return { on: false };
 });
 
-ipcMain.handle('lan-connect', (_e, host) => {
+function connectLanClient(host) {
   if (lanClient) { try { lanClient.end(); } catch {} lanClient = null; lanClientConnected = false; }
   const [h, p] = String(host || '').split(':');
   if (!h || !h.trim()) return false;
@@ -365,10 +378,21 @@ ipcMain.handle('lan-connect', (_e, host) => {
     onStatus: (state) => { lanClientConnected = (state === 'connected'); lanStatus({ client: state }); },
   });
   return true;
+}
+ipcMain.handle('lan-connect', (_e, host) => {
+  return connectLanClient(host);
 });
 ipcMain.handle('lan-disconnect', () => {
   if (lanClient) { try { lanClient.end(); } catch {} lanClient = null; }
   lanClientConnected = false; lanStatus({ client: 'disconnected' }); return true;
+});
+ipcMain.handle('lan-discovery-refresh', () => { lanDiscovery?.refresh(); return lanDiscovery?.devices() || []; });
+ipcMain.handle('lan-request-device-update', (_e, device) => {
+  const host = String(device?.host || '').trim(); const port = Number(device?.port) || lan.PORT;
+  if (!host || !device?.available) return { error: 'That device is not accepting Axion links. Turn on Host mode there first.' };
+  if (!connectLanClient(host + ':' + port)) return { error: 'Could not start a link to that device.' };
+  lanClient.send({ type: 'update-request', requester: os.hostname() });
+  return { ok: true, target: host + ':' + port };
 });
 ipcMain.handle('update-select-installer', async () => {
   try { return await selectInstaller(); } catch (e) { return { error: e.message }; }
@@ -378,7 +402,7 @@ ipcMain.handle('update-offer', () => {
 });
 ipcMain.handle('update-request', () => {
   if (!lanClientConnected || !lanClient) return { error: 'Connect to a Host first.' };
-  lanClient.send({ type: 'update-request' }); return { ok: true };
+  lanClient.send({ type: 'update-request', requester: os.hostname() }); return { ok: true };
 });
 ipcMain.handle('update-respond-request', (_e, id, approved) => {
   const sock = pendingUpdateRequests.get(id); pendingUpdateRequests.delete(id);
@@ -450,6 +474,7 @@ app.whenReady().then(async () => {
   CLAUDE_PATH = findClaude();
   createTray();
   createWindow();
+  startLanDiscovery();
   await ensureOllama();
 });
-app.on('before-quit', () => { if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } });
+app.on('before-quit', () => { if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });

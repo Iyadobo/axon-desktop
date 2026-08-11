@@ -651,6 +651,25 @@ function updateLan(s) {
   }
 }
 window.ollama.on('lan-status', updateLan);
+function renderLanDevices(devices) {
+  const box = $('lanDevices'); box.innerHTML = '';
+  if (!devices?.length) { const empty = document.createElement('div'); empty.className = 'lan-info'; empty.textContent = 'No other Axion devices found yet. Open Axion on the other device and keep both on the same Wi-Fi.'; box.appendChild(empty); return; }
+  for (const device of devices) {
+    const row = document.createElement('div'); row.className = 'device-row';
+    const meta = document.createElement('div'); meta.className = 'device-meta';
+    const name = document.createElement('span'); name.className = 'device-name'; name.textContent = device.name + (device.available ? ' · ready' : ' · not hosting');
+    const address = document.createElement('span'); address.className = 'device-address'; address.textContent = device.host + ':' + device.port;
+    meta.append(name, address);
+    const request = document.createElement('button'); request.textContent = device.available ? 'Request update' : 'Needs Host'; request.disabled = !device.available;
+    request.title = device.available ? 'Connect and ask this device for an update' : 'Turn on Host mode on that device to accept an update request';
+    request.onclick = async () => {
+      const result = await window.ollama.lanRequestDeviceUpdate(device);
+      setUpdateInfo(result?.error ? result.error : 'Request sent to ' + device.name + '. It will appear in that device\'s Axion window.');
+    };
+    row.append(meta, request); box.appendChild(row);
+  }
+}
+window.ollama.on('lan-devices', renderLanDevices);
 $('lanServerChk').onchange = (e) => window.ollama.lanServer(e.target.checked);
 $('lanConnBtn').onclick = () => {
   if ($('lanConnBtn').dataset.mode === 'disc') window.ollama.lanDisconnect();
@@ -671,7 +690,8 @@ $('updateRequestBtn').onclick = async () => {
 window.ollama.on('lan-update-request', (request) => {
   const actions = [{ label: 'Decline', run: () => window.ollama.respondUpdateRequest(request.id, false) }];
   if (request.hasInstaller) actions.push({ label: 'Offer update', primary: true, run: () => window.ollama.respondUpdateRequest(request.id, true) });
-  showUpdateDialog('Client requested an update', request.hasInstaller ? 'A linked client is asking for the installer you selected. Share it?' : 'A linked client is asking for an update, but this Host has not selected an installer.', actions);
+  const requester = request.requester || 'A linked client';
+  showUpdateDialog(requester + ' requested an update', request.hasInstaller ? requester + ' is asking for the installer you selected. Share it?' : requester + ' is asking for an update, but this Host has not selected an installer.', actions);
 });
 window.ollama.on('lan-update-offer', (offer) => {
   showUpdateDialog('Update available', 'The Host offers ' + offer.name + ' (' + formatBytes(offer.bytes) + ').\n\nAxion verifies its SHA-256 before the installer can open.', [
@@ -757,6 +777,7 @@ function refreshGridColor() {
   applyAppearance();
   renderRecents();
   updateProjectLabel();
+  try { renderLanDevices(await window.ollama.lanRefresh()); } catch {}
   await loadModels();
   setLoading('Ready', true);
 })();

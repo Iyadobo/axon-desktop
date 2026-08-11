@@ -215,6 +215,14 @@
   .lan-check { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:400; opacity:1; cursor:pointer; }
   .lan-check input { accent-color: var(--color-accent); }
   .lan-info { font-size:11px; opacity:.6; min-height:1em; word-break:break-all; }
+  .device-list { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+  .device-row { display:flex; align-items:center; gap:8px; padding:8px 9px; border:1px solid var(--color-divider); border-radius:8px; background:var(--color-surface); }
+  .device-meta { min-width:0; flex:1; display:flex; flex-direction:column; gap:2px; }
+  .device-name { font-size:12px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .device-address { font-size:10.5px; opacity:.58; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  .device-row button { flex:none; padding:6px 8px; border:1px solid var(--color-divider); border-radius:7px; background:var(--color-bg); color:var(--color-text); cursor:pointer; font:inherit; font-size:11px; }
+  .device-row button:hover:not(:disabled) { border-color:var(--color-accent); color:var(--color-accent); }
+  .device-row button:disabled { opacity:.45; cursor:not-allowed; }
   .update-actions { display:flex; gap:8px; flex-wrap:wrap; }
   .update-actions button, .update-dialog button { padding:7px 10px; border:1px solid var(--color-divider); background:var(--color-surface); border-radius:8px; cursor:pointer; font:inherit; font-size:12px; }
   .update-actions button:hover, .update-dialog button.primary { border-color:var(--color-accent); color:var(--color-accent); }
@@ -377,6 +385,8 @@
           <button id="lanConnBtn" data-mode="conn">Connect</button>
         </div>
         <div id="lanClientInfo" class="lan-info"></div>
+        <div class="lan-info" style="margin-top:8px">Nearby Axion devices</div>
+        <div id="lanDevices" class="device-list" aria-live="polite"><div class="lan-info">Searching your Wi-Fi…</div></div>
         <div class="update-actions" style="margin-top:8px">
           <button id="updatePickBtn">Choose installer…</button><button id="updateOfferBtn">Offer update</button><button id="updateRequestBtn">Ask host for update</button>
         </div>

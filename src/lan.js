@@ -5,8 +5,10 @@
 // the renderer UI is unchanged on either side.
 const net = require('net');
 const os = require('os');
+const dgram = require('dgram');
 
 const PORT = 47301;
+const DISCOVERY_PORT = 47302;
 const NL = '\n';
 
 // IPv4 non-internal addresses -- what the server prints for the other device.
@@ -15,6 +17,49 @@ function lanIPs() {
   const ifs = os.networkInterfaces();
   for (const name of Object.keys(ifs)) for (const i of ifs[name] || []) if (i.family === 'IPv4' && !i.internal) out.push(i.address);
   return out;
+}
+
+function broadcastIPs() {
+  const out = new Set(['255.255.255.255']);
+  for (const entries of Object.values(os.networkInterfaces())) for (const i of entries || []) {
+    if (i.family !== 'IPv4' || i.internal || !i.address || !i.netmask) continue;
+    const ip = i.address.split('.').map(Number), mask = i.netmask.split('.').map(Number);
+    if (ip.length !== 4 || mask.length !== 4) continue;
+    out.add(ip.map((v, n) => (v | (255 ^ mask[n])) & 255).join('.'));
+  }
+  return [...out];
+}
+
+// UDP is discovery only: no installer bytes or chat contents travel here. The
+// existing TCP connection remains the explicit, user-approved control channel.
+function createDiscovery({ id, name, getAdvertisement, onDevices, port = DISCOVERY_PORT }) {
+  const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+  const seen = new Map();
+  let timer = null, stopped = false;
+  const emit = () => onDevices([...seen.values()].sort((a, b) => a.name.localeCompare(b.name)));
+  const prune = () => {
+    const now = Date.now(); let changed = false;
+    for (const [key, device] of seen) if (now - device.seenAt > 15000) { seen.delete(key); changed = true; }
+    if (changed) emit();
+  };
+  const announce = () => {
+    if (stopped) return;
+    prune();
+    const ad = getAdvertisement() || {};
+    const message = Buffer.from(JSON.stringify({ type: 'axion-discovery', id, name: String(name || 'Axion device').slice(0, 80), port: ad.port || PORT, available: !!ad.available }));
+    for (const address of broadcastIPs()) socket.send(message, port, address, () => {});
+  };
+  socket.on('message', (buffer, remote) => {
+    let msg; try { msg = JSON.parse(buffer.toString('utf8')); } catch { return; }
+    if (!msg || msg.type !== 'axion-discovery' || !msg.id || msg.id === id || typeof msg.name !== 'string' || !Number.isInteger(msg.port) || msg.port < 1 || msg.port > 65535) return;
+    const key = String(msg.id);
+    const next = { id: key, name: msg.name.slice(0, 80), host: remote.address, port: msg.port, available: !!msg.available, seenAt: Date.now() };
+    const previous = seen.get(key); seen.set(key, next);
+    if (!previous || previous.host !== next.host || previous.port !== next.port || previous.available !== next.available || previous.name !== next.name) emit();
+  });
+  socket.on('error', () => {});
+  socket.bind(port, () => { try { socket.setBroadcast(true); } catch {} announce(); timer = setInterval(announce, 4000); });
+  return { refresh: announce, stop() { stopped = true; if (timer) clearInterval(timer); try { socket.close(); } catch {} }, devices: () => [...seen.values()] };
 }
 
 // incremental NDJSON line splitter: feed chunks, calls onLine per complete line.
@@ -91,7 +136,7 @@ function connectClient(host, port, { onMsg, onStatus }) {
   };
 }
 
-module.exports = { PORT, lanIPs, lineStream, parseMsg, startServer, sendTo, connectClient };
+module.exports = { PORT, DISCOVERY_PORT, lanIPs, lineStream, parseMsg, startServer, sendTo, connectClient, createDiscovery };
 
 // ---- self-check: TCP loopback, client sends chat -> server replies delta+done
 function selfcheck() {
