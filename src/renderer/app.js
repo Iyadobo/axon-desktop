@@ -101,8 +101,22 @@ function updateProjectLabel() {
 }
 
 // ---- attachments ------------------------------------------------------------
-let attachments = [];     // [{name, content, binary, size, truncated}]
+let attachments = [];     // text files are inlined; supported images become vision blocks
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read ' + file.name));
+    reader.onload = () => resolve(String(reader.result).split(',', 2)[1]);
+    reader.readAsDataURL(file);
+  });
+}
 async function readFile(file) {
+  if (IMAGE_TYPES.has(file.type)) {
+    if (file.size > MAX_IMAGE_BYTES) return { name: file.name, binary: true, size: file.size, tooLarge: true };
+    return { name: file.name, image: true, type: file.type, data: await fileToBase64(file), size: file.size };
+  }
   const isText = !file.type || file.type.startsWith('text/') || /json|xml|javascript|csv|markdown/i.test(file.type)
     || /\.(md|txt|js|ts|jsx|tsx|py|rb|go|rs|java|c|cpp|h|css|html|json|yaml|yml|toml|ini|sh|ps1|sql|xml|csv)$/i.test(file.name);
   if (!isText || file.size > 1.5 * 1024 * 1024)
@@ -118,7 +132,10 @@ function renderAttach() {
   const row = $('attachRow'); row.innerHTML = '';
   for (const a of attachments) {
     const c = document.createElement('span'); c.className = 'atch';
-    c.innerHTML = '<span class="nm">' + esc(a.name) + '</span>' + (a.binary ? '<span class="bin">binary</span>' : '') + '<button class="x" title="Remove">×</button>';
+    if (a.image) { const preview = document.createElement('img'); preview.className = 'thumb'; preview.alt = ''; preview.src = 'data:' + a.type + ';base64,' + a.data; c.appendChild(preview); }
+    const name = document.createElement('span'); name.className = 'nm'; name.textContent = a.name; c.appendChild(name);
+    if (a.image || a.binary) { const kind = document.createElement('span'); kind.className = 'bin'; kind.textContent = a.image ? 'image' : (a.tooLarge ? 'too large' : 'binary'); c.appendChild(kind); }
+    const remove = document.createElement('button'); remove.className = 'x'; remove.title = 'Remove'; remove.textContent = '×'; c.appendChild(remove);
     c.querySelector('.x').onclick = () => { attachments = attachments.filter((x) => x !== a); renderAttach(); };
     row.appendChild(c);
   }
@@ -127,7 +144,8 @@ function inlineAttachments(text) {
   if (!attachments.length) return text;
   let out = text;
   for (const a of attachments) {
-    if (a.binary) out += '\n\n[Attached file: ' + a.name + ' — binary, not inlined]';
+    if (a.image) out += '\n\n[Attached image: ' + a.name + ' — inspect the image and answer the request.]';
+    else if (a.binary) out += '\n\n[Attached file: ' + a.name + (a.tooLarge ? ' — over the 6 MB image limit' : ' — binary, not inlined') + ']';
     else out += '\n\n--- file: ' + a.name + ' ---\n' + a.content + (a.truncated ? '\n…(truncated)' : '') + '\n--- end ' + a.name + ' ---';
   }
   return out;
@@ -214,10 +232,15 @@ function showChatView() {
 function newChat() { activeId = null; $('log').innerHTML = ''; showHomeView(); renderRecents(); }
 
 // ---- log helpers -----------------------------------------------------------
-function addUserTurn(text) {
+function addUserTurn(text, images = []) {
   const t = document.createElement('div'); t.className = 'turn user';
   const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
   t.appendChild(b); $('log').appendChild(t);
+  if (images.length) {
+    const gallery = document.createElement('div'); gallery.className = 'user-images';
+    for (const image of images) { const pic = document.createElement('img'); pic.src = 'data:' + image.type + ';base64,' + image.data; pic.alt = image.name || 'Attached image'; gallery.appendChild(pic); }
+    t.appendChild(gallery);
+  }
 }
 function newAiTurn(model) {
   const t = document.createElement('div'); t.className = 'turn ai';
@@ -351,7 +374,8 @@ async function showHelp() {
 }
 
 // ---- send / commands -------------------------------------------------------
-function clearInput() { $('prompt').value = ''; autosize(); }
+function saveDraft() { saveState('odraft', $('prompt').value.slice(0, 20000)); }
+function clearInput() { $('prompt').value = ''; saveDraft(); autosize(); }
 function setBusy(b) {
   busy = b;
   $('send').textContent = b ? '■' : '→';
@@ -371,6 +395,7 @@ async function send() {
   if (text.startsWith('/model ')) { clearInput(); setModelByName(text.slice(7).trim()); return; }
 
   const combined = inlineAttachments(text);
+  const images = attachments.filter((a) => a.image).map((a) => ({ name: a.name, type: a.type, data: a.data }));
   const model = $('model').value;
   const fileCount = attachments.length;
   clearInput(); clearAttachments();
@@ -381,10 +406,10 @@ async function send() {
     conversations.unshift(conv); activeId = conv.id; renderRecents();
   }
   showChatView();
-  addUserTurn(text + (fileCount ? '  +' + fileCount + ' file(s)' : ''));
+  addUserTurn(text + (fileCount ? '  +' + fileCount + ' attachment' + (fileCount === 1 ? '' : 's') : ''), images);
   active = newAiTurn(model);
   setBusy(true);
-  await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt: projectSystemPrompt(), cwd: projectCwd() });
+  await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt: projectSystemPrompt(), cwd: projectCwd(), images });
 }
 
 // ---- slash-command autocomplete -------------------------------------------
@@ -460,7 +485,7 @@ $('prompt').addEventListener('keydown', (e) => {
   } else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 function autosize() { const t = $('prompt'); t.style.height = '44px'; t.style.height = Math.min(160, t.scrollHeight) + 'px'; }
-$('prompt').addEventListener('input', () => { autosize(); openCmdList(); });
+$('prompt').addEventListener('input', () => { autosize(); saveDraft(); openCmdList(); });
 $('prompt').addEventListener('blur', () => setTimeout(closeCmdList, 150));
 $('chips').addEventListener('click', (e) => {
   if (e.target.classList.contains('chip')) { $('prompt').value = e.target.textContent + ': '; autosize(); closeCmdList(); $('prompt').focus(); }
@@ -470,9 +495,15 @@ $('chips').addEventListener('click', (e) => {
 $('attachBtn').onclick = () => $('fileInput').click();
 $('fileInput').onchange = () => { addFiles($('fileInput').files); $('fileInput').value = ''; };
 const card = $('composerCard');
-card.addEventListener('dragover', (e) => { e.preventDefault(); card.style.borderColor = 'var(--color-accent)'; });
-card.addEventListener('dragleave', () => { card.style.borderColor = ''; });
-card.addEventListener('drop', (e) => { e.preventDefault(); card.style.borderColor = ''; if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+card.addEventListener('dragover', (e) => { e.preventDefault(); card.classList.add('dragging'); });
+card.addEventListener('dragleave', (e) => { if (!card.contains(e.relatedTarget)) card.classList.remove('dragging'); });
+card.addEventListener('drop', (e) => { e.preventDefault(); card.classList.remove('dragging'); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+$('prompt').addEventListener('paste', (e) => { const files = e.clipboardData?.files; if (files?.length) { e.preventDefault(); addFiles(files); } });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { if (cmdOpen) closeCmdList(); else closeSettings(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); $('prompt').focus(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); }
+});
 
 // settings
 $('settingsBtn').onclick = openSettings;
@@ -562,7 +593,7 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.ollama.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;
@@ -577,6 +608,8 @@ function refreshGridColor() {
   loadConvs();
   activeProjectId = projects.some((p) => p.id === persisted.oactiveProject) ? persisted.oactiveProject : null;
   $('lanHost').value = persisted.olanHost || '';
+  $('prompt').value = typeof persisted.odraft === 'string' ? persisted.odraft : '';
+  autosize();
   applyAppearance();
   renderRecents();
   updateProjectLabel();

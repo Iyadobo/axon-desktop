@@ -108,6 +108,7 @@
   /* composer card (single node, moved between #home .wrap and #composerSlot) */
   .card { position:relative; background:var(--color-surface); border:1px solid var(--color-divider); border-radius:14px;
     max-width:760px; width:100%; margin:0 auto; }
+  .card.dragging { border-color:var(--color-accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent); }
   /* slash-command autocomplete (shown when the prompt starts with /) */
   #cmdlist { position:absolute; left:0; right:0; bottom:calc(100% + 6px); max-height:264px; overflow:auto;
     background:var(--color-bg); border:1px solid var(--color-divider); border-radius:10px;
@@ -203,9 +204,12 @@
   .atch { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:12px;
     background:var(--color-surface); border:1px solid var(--color-divider); border-radius:7px; max-width:200px; }
   .atch .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .atch .thumb { width:22px; height:22px; object-fit:cover; border-radius:4px; border:1px solid var(--color-divider); }
   .atch .bin { opacity:.5; font-size:10px; }
   .atch .x { cursor:pointer; opacity:.5; border:none; background:transparent; padding:0; font-size:13px; }
   .atch .x:hover { opacity:1; color:var(--color-bad); }
+  .user-images { display:flex; gap:7px; flex-wrap:wrap; justify-content:flex-end; max-width:78%; }
+  .user-images img { width:112px; height:84px; object-fit:cover; border-radius:10px; border:1px solid color-mix(in srgb, #fff 35%, transparent); cursor:zoom-in; }
 
   /* gear + small composer buttons */
   .iconbtn { border:none; background:transparent; color:var(--color-neutral); cursor:pointer;
@@ -283,7 +287,7 @@
           <div class="composer-foot">
             <span class="left">
               <button class="iconbtn" id="attachBtn" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10.5 19a2 2 0 0 1-3-3l8-8"/></svg></button>
-              <input type="file" id="fileInput" multiple style="display:none" />
+              <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.json,.csv,.yaml,.yml,.toml,.xml,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.css,.html,.ini,.sh,.ps1,.sql" multiple style="display:none" />
               <span class="select-tag"><select id="model"></select></span>
             </span>
             <button id="send" title="Send">→</button>

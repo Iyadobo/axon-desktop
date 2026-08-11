@@ -5,9 +5,29 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node src/selfcheck.js"
+    "check": "node src/selfcheck.js",
+    "dist:win": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "com.iyad.axion",
+    "productName": "Axion",
+    "asar": true,
+    "files": [
+      "src/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Axion-Setup-${version}.${ext}"
+    }
   },
   "devDependencies": {
-    "electron": "^36.0.0"
+    "electron": "^36.0.0",
+    "electron-builder": "^26.15.3"
   }
 }

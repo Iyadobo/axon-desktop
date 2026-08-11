@@ -12,6 +12,15 @@ const { createConfigStore } = require('./config');
 
 // ponytail: set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('com.iyad.axion'); } catch {}
+// Keep a launch click focused on the existing Axion window instead of opening
+// another Electron group (which also keeps the taskbar pleasantly tidy).
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+app.on('second-instance', () => {
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show(); win.focus();
+});
 
 const OLLAMA_URL = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
 const OLLAMA_BASE = OLLAMA_URL.replace(/\/$/, ''); // claude talks to Ollama's native /v1/messages here
@@ -97,19 +106,25 @@ function createWindow() {
 // ---- chat via the Claude Code harness -------------------------------------
 // sessionId: null -> start a new Claude Code session; otherwise --resume <sessionId>.
 // systemPrompt -> `--append-system-prompt` (headless supports it); cwd -> spawn working dir.
-function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder) {
+function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = []) {
   holder = holder || localHolder;
   return new Promise((resolve) => {
     const newSession = !sessionId;
     const sid = sessionId || crypto.randomUUID();
-    const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--model', model,
+    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--model', model,
       '--allowedTools', ...ALLOWED_TOOLS, newSession ? '--session-id' : '--resume', sid];
     if (systemPrompt && systemPrompt.trim()) args.push('--append-system-prompt', systemPrompt);
     const child = spawn(CLAUDE_PATH, args, {
       env: { ...process.env, ANTHROPIC_BASE_URL: OLLAMA_BASE, ANTHROPIC_AUTH_TOKEN: 'ollama' },
       cwd: cwd || undefined,
-      windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'],
     });
+    // Claude Code's stream-json input preserves Anthropic content blocks. Ollama
+    // vision models receive real base64 image blocks; text-only models can still
+    // explain that they cannot inspect an image.
+    const content = [{ type: 'text', text: prompt }];
+    for (const image of images) content.push({ type: 'image', source: { type: 'base64', media_type: image.type, data: image.data } });
+    child.stdin.end(JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n');
     holder.child = child;
     let buf = '';
     let resultSid = sid;
@@ -139,13 +154,24 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder) {
 // ---- IPC ------------------------------------------------------------------
 ipcMain.handle('list-models', async () => (await ollama('/api/tags')));
 ipcMain.handle('list-commands', () => listCommands());
-ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd }) => {
+function safeImages(value) {
+  if (!Array.isArray(value)) return [];
+  const types = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+  const images = [];
+  for (const image of value.slice(0, 4)) {
+    if (!image || !types.has(image.type) || typeof image.data !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data) || image.data.length > 8 * 1024 * 1024) continue;
+    images.push({ type: image.type, data: image.data });
+  }
+  return images;
+}
+ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images }) => {
   const expanded = maybeExpandSlash(prompt);
+  const safe = safeImages(images);
   const send = win.webContents.send.bind(win.webContents);
   // ponytail: client mode forwards to the LAN server (cwd dropped -- the client's
   // project path is on the client device and doesn't map to the server's filesystem).
-  if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', model, prompt: expanded, sessionId, systemPrompt, cwd: null }); return { ok: true }; }
-  try { await runChat(model, expanded, sessionId, send, systemPrompt, cwd); return { ok: true }; }
+  if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null }); return { ok: true }; }
+  try { await runChat(model, expanded, sessionId, send, systemPrompt, cwd, null, safe); return { ok: true }; }
   catch (e) { send('chat-error', e.message); return { ok: false, error: e.message }; }
 });
 ipcMain.handle('chat-stop', () => {
@@ -181,7 +207,7 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
           else if (ch === 'chat-done') lan.sendTo(sock, { type: 'done', sessionId: v.sessionId, ok: v.ok });
         };
         // server uses its own cwd; the client's project path doesn't map across devices.
-        runChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, st).catch(() => {});
+        runChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, st, safeImages(msg.images)).catch(() => {});
       },
       onStatus: (state, info) => lanStatus({ server: state, ...info }),
     });

@@ -70,9 +70,10 @@ ok('assistant with no content -> null', parseEvent(JSON.stringify({ type: 'assis
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oh-config-'));
   try {
     const store = createConfigStore(dir);
-    store.save({ osettings: { systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', blocked: 'nope' });
+    store.save({ osettings: { systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', odraft: 'unfinished note', blocked: 'nope' });
     const loaded = store.load();
     ok('config persists approved app state', loaded.osettings.systemPrompt === 'Be concise.' && loaded.omodel === 'qwen3:4b');
+    ok('config persists a bounded composer draft', loaded.odraft === 'unfinished note');
     ok('config rejects unapproved state keys', !Object.hasOwn(loaded, 'blocked'));
   } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
 })();

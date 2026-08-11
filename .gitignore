@@ -1,4 +1,5 @@
 node_modules/
 .electron-data/
+dist/
 src/assets/axion-logo-source.png
 npm-debug.log*
