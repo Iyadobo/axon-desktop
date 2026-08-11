@@ -41,16 +41,36 @@ const localHolders = new Map();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Resolve the real claude.exe path once (spawn with shell:false needs a full path on Windows).
-function findClaude() {
+// Resolve a directly executable Claude launch command. `where claude` can
+// return an extensionless npm shim on Windows, which spawn(..., shell:false)
+// cannot execute. Prefer an .exe; otherwise run the npm shim's JS entry via
+// node, preserving shell:false so prompts/settings never become shell input.
+function whereFirst(command) {
   try {
-    const out = execSync('where claude', { encoding: 'utf8' });
-    const p = out.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
-    if (p) return p;
-  } catch {}
-  return 'claude'; // fallback (may need shell:true on other setups)
+    return execSync(`where.exe ${command}`, { encoding: 'utf8', windowsHide: true })
+      .split(/\r?\n/).map((s) => s.trim()).find((p) => p && fs.existsSync(p)) || null;
+  } catch { return null; }
 }
-let CLAUDE_PATH = null;
+function npmShimLaunch(shim) {
+  try {
+    const body = fs.readFileSync(shim, 'utf8');
+    const match = body.match(/node_modules[\\/]([^"\r\n]+?\.js)/i);
+    if (!match) return null;
+    const entry = path.join(path.dirname(shim), 'node_modules', ...match[1].split(/[\\/]+/));
+    if (!fs.existsSync(entry)) return null;
+    return { command: whereFirst('node.exe') || 'node', prefix: [entry] };
+  } catch { return null; }
+}
+function findClaude() {
+  const exe = whereFirst('claude.exe');
+  if (exe) return { command: exe, prefix: [] };
+  const bare = whereFirst('claude');
+  if (bare && /\.exe$/i.test(bare)) return { command: bare, prefix: [] };
+  const shims = [whereFirst('claude.cmd'), process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'claude.cmd')].filter(Boolean);
+  for (const shim of shims) { const launch = npmShimLaunch(shim); if (launch) return launch; }
+  return { command: 'claude', prefix: [] };
+}
+let CLAUDE_LAUNCH = null;
 let config = null;
 
 // ---- ollama serve lifecycle ----------------------------------------------
@@ -142,7 +162,7 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
     const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--model', model,
       '--allowedTools', ...ALLOWED_TOOLS, newSession ? '--session-id' : '--resume', sid];
     if (systemPrompt && systemPrompt.trim()) args.push('--append-system-prompt', systemPrompt);
-    const child = spawn(CLAUDE_PATH, args, {
+    const child = spawn(CLAUDE_LAUNCH.command, [...CLAUDE_LAUNCH.prefix, ...args], {
       env: { ...process.env, ANTHROPIC_BASE_URL: OLLAMA_BASE, ANTHROPIC_AUTH_TOKEN: 'ollama' },
       cwd: cwd || undefined,
       windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'],
@@ -432,7 +452,7 @@ let cachedCommands = null;
 function fetchCommands(model) {
   return new Promise((resolve) => {
     if (cachedCommands) return resolve(cachedCommands);
-    const child = spawn(CLAUDE_PATH, ['-p', '.', '--output-format', 'stream-json', '--verbose', '--model', model || 'qwen2.5:1.5b', '--allowedTools', 'Read'], {
+    const child = spawn(CLAUDE_LAUNCH.command, [...CLAUDE_LAUNCH.prefix, '-p', '.', '--output-format', 'stream-json', '--verbose', '--model', model || 'qwen2.5:1.5b', '--allowedTools', 'Read'], {
       env: { ...process.env, ANTHROPIC_BASE_URL: OLLAMA_BASE, ANTHROPIC_AUTH_TOKEN: 'ollama' },
       windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -474,7 +494,7 @@ app.whenReady().then(async () => {
     try { Object.assign(merged, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch {}
   }
   config.save({ ...merged, ...state });
-  CLAUDE_PATH = findClaude();
+  CLAUDE_LAUNCH = findClaude();
   createTray();
   createWindow();
   startLanDiscovery();
