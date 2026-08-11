@@ -138,7 +138,9 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.show());
-  win.on('close', (e) => { e.preventDefault(); win.hide(); }); // ponytail: hide-to-tray
+  // Axon is a normal desktop app: the window close button means fully quit,
+  // not a surprise background tray process.
+  win.on('closed', () => { win = null; });
 }
 function validBrowserURL(value) {
   try { const url = new URL(String(value)); return ['http:', 'https:'].includes(url.protocol) ? url.href : null; } catch { return null; }
@@ -532,3 +534,4 @@ app.whenReady().then(async () => {
   await ensureOllama();
 });
 app.on('before-quit', () => { if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
+app.on('window-all-closed', () => app.quit());
