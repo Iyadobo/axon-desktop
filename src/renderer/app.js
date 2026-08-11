@@ -626,7 +626,18 @@ function setUpdateInfo(text) { $('updateInfo').textContent = text; }
 function showUpdateDialog(title, body, actions) {
   $('updateTitle').textContent = title; $('updateBody').textContent = body;
   const buttons = $('updateButtons'); buttons.innerHTML = '';
-  for (const action of actions) { const button = document.createElement('button'); button.textContent = action.label; if (action.primary) button.className = 'primary'; button.onclick = () => { $('updateModal').classList.remove('show'); action.run(); }; buttons.appendChild(button); }
+  for (const action of actions) {
+    const button = document.createElement('button'); button.textContent = action.label; if (action.primary) button.className = 'primary';
+    button.onclick = async () => {
+      button.disabled = true;
+      try {
+        const result = await action.run();
+        if (result?.error) { setUpdateInfo('Update error: ' + result.error); button.disabled = false; return; }
+        $('updateModal').classList.remove('show');
+      } catch (e) { setUpdateInfo('Update error: ' + (e?.message || 'Action failed.')); button.disabled = false; }
+    };
+    buttons.appendChild(button);
+  }
   $('updateModal').classList.add('show');
 }
 function formatBytes(n) { return n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; }

@@ -1,5 +1,5 @@
 // Electron main: tray + window + ollama serve lifecycle + chat via the Claude Code harness.
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, WebContentsView } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -438,10 +438,14 @@ ipcMain.handle('update-accept-offer', (_e, id, approved) => {
   if (!approved) pendingUpdateOffers.delete(id);
   lanClient.send(approved ? { type: 'update-accept', id } : { type: 'update-error', id, message: 'The client declined the update offer.' }); return { ok: true };
 });
-ipcMain.handle('update-open-installer', async (_e, file) => {
+ipcMain.handle('update-open-installer', (_e, file) => {
   const dir = path.join(app.getPath('userData'), 'updates'); const resolved = path.resolve(String(file || ''));
   if (!resolved.startsWith(path.resolve(dir) + path.sep) || path.extname(resolved).toLowerCase() !== '.exe' || !fs.existsSync(resolved)) return { error: 'Verified installer not found.' };
-  const result = await shell.openPath(resolved); return result ? { error: result } : { ok: true };
+  try {
+    const installer = spawn(resolved, [], { detached: true, stdio: 'ignore', windowsHide: false });
+    installer.unref();
+    return { ok: true };
+  } catch (e) { return { error: 'Could not open the verified installer: ' + e.message }; }
 });
 
 // Fetch the real Claude Code slash-command list (the same menu Claude shows on `/`).
