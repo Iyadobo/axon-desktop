@@ -1,5 +1,5 @@
 // Electron main: tray + window + ollama serve lifecycle + chat via the Claude Code harness.
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, WebContentsView } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -69,6 +69,23 @@ function findClaude() {
   const shims = [whereFirst('claude.cmd'), process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'claude.cmd')].filter(Boolean);
   for (const shim of shims) { const launch = npmShimLaunch(shim); if (launch) return launch; }
   return { command: 'claude', prefix: [] };
+}
+function runQuiet(command, args, timeout = 15000) {
+  return new Promise((resolve) => {
+    let out = ''; let child;
+    try { child = spawn(command, args, { windowsHide: true, shell: false }); } catch { return resolve(null); }
+    const done = () => resolve(out.trim() || null);
+    child.stdout?.on('data', (d) => { out += d; }); child.stderr?.on('data', (d) => { out += d; }); child.on('error', () => resolve(null)); child.on('exit', done);
+    setTimeout(() => { try { child.kill(); } catch {} resolve(null); }, timeout).unref();
+  });
+}
+async function dependencyStatus() {
+  const [ollama, node, claude] = await Promise.all([
+    runQuiet(whereFirst('ollama.exe') || 'ollama', ['--version']),
+    runQuiet(whereFirst('node.exe') || 'node', ['--version']),
+    runQuiet(findClaude().command, [...findClaude().prefix, '--version']),
+  ]);
+  return { ollama, node, claude };
 }
 let CLAUDE_LAUNCH = null;
 let config = null;
@@ -447,6 +464,16 @@ ipcMain.handle('update-open-installer', (_e, file) => {
     return { ok: true };
   } catch (e) { return { error: 'Could not open the verified installer: ' + e.message }; }
 });
+ipcMain.handle('app-info', async () => ({ version: app.getVersion(), dependencies: await dependencyStatus() }));
+ipcMain.handle('install-dependencies', async () => {
+  const before = await dependencyStatus(); const steps = [];
+  const run = async (command, args, label) => { const output = await runQuiet(command, args, 10 * 60 * 1000); steps.push(label + (output ? ': ' + output.split(/\r?\n/).pop() : ' started')); };
+  if (!before.ollama) await run('winget.exe', ['install', '--id', 'Ollama.Ollama', '--exact', '--accept-package-agreements', '--accept-source-agreements'], 'Ollama');
+  if (!before.node) { await run('winget.exe', ['install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--accept-package-agreements', '--accept-source-agreements'], 'Node.js'); steps.push('Restart Axon, then run this once more to install Claude Code.'); }
+  else if (!before.claude) await run('cmd.exe', ['/d', '/s', '/c', 'npm install -g @anthropic-ai/claude-code'], 'Claude Code');
+  return { ok: true, steps, status: await dependencyStatus() };
+});
+ipcMain.handle('cleanup-legacy-axion', async () => { await shell.openExternal('ms-settings:appsfeatures'); return { ok: true }; });
 
 // Fetch the real Claude Code slash-command list (the same menu Claude shows on `/`).
 // Source: the `system/init` stream-json event fires at session start with a

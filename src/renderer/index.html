@@ -230,6 +230,8 @@
   .update-dialog h3 { margin:0 0 7px; font-size:16px; }
   .update-dialog p { margin:0 0 16px; color:var(--color-neutral); white-space:pre-wrap; }
   .update-dialog .buttons { display:flex; justify-content:flex-end; gap:8px; }
+  .maintenance { border-top:1px solid var(--color-divider); padding-top:12px; }
+  .maintenance h4 { margin:0 0 5px; font-size:13px; }
 
   /* attachments (composer) */
   #attachRow { display:flex; gap:6px; flex-wrap:wrap; padding:8px 16px 0; }
@@ -391,6 +393,12 @@
           <button id="updatePickBtn">Choose installer…</button><button id="updateOfferBtn">Offer update</button><button id="updateRequestBtn">Ask host for update</button>
         </div>
         <div id="updateInfo" class="lan-info">Updates require an explicit approval from both devices.</div>
+      </div>
+      <div class="maintenance">
+        <h4>Axon maintenance</h4>
+        <div id="versionInfo" class="lan-info">Checking version and dependencies…</div>
+        <div class="update-actions" style="margin-top:8px"><button id="depsBtn">Download missing dependencies</button><button id="cleanupBtn">Uninstall legacy Axion versions…</button></div>
+        <div id="maintenanceInfo" class="lan-info">This preserves the Axon app currently running.</div>
       </div>
     </div>
   </div>

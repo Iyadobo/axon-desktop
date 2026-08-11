@@ -610,6 +610,18 @@ $('densitySel').onchange = () => { settings.density = $('densitySel').value; sav
 $('recents-label').onclick = openSettings;
 $('projPick').onclick = createProject;
 $('projInstr').addEventListener('input', () => { const p = activeProject(); if (p) { p.instructions = $('projInstr').value; saveProjects(); } });
+function describeDependency(name, value) { return name + ': ' + (value ? value.replace(/\s+/g, ' ').slice(0, 48) : 'missing'); }
+async function refreshAppInfo() {
+  const info = await window.ollama.appInfo();
+  $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Claude', info.dependencies.claude), describeDependency('Node', info.dependencies.node)].join(' · ');
+}
+$('depsBtn').onclick = async () => {
+  $('depsBtn').disabled = true; $('maintenanceInfo').textContent = 'Downloading missing dependencies…';
+  try { const result = await window.ollama.installDependencies(); $('maintenanceInfo').textContent = result.steps.join(' · ') || 'Everything required is already installed.'; await refreshAppInfo(); }
+  catch (e) { $('maintenanceInfo').textContent = 'Setup error: ' + e.message; }
+  $('depsBtn').disabled = false;
+};
+$('cleanupBtn').onclick = async () => { const result = await window.ollama.cleanupLegacyAxion(); $('maintenanceInfo').textContent = result?.error || 'Windows Installed Apps opened. Remove any old Axion entries; keep Axon.'; };
 
 // ---- LAN: same-WiFi link (server / client) ---------------------------------
 // ponytail: the renderer just toggles server / connects client and shows status;
@@ -788,6 +800,7 @@ function refreshGridColor() {
   applyAppearance();
   renderRecents();
   updateProjectLabel();
+  refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
   try { renderLanDevices(await window.ollama.lanRefresh()); } catch {}
   await loadModels();
   setLoading('Ready', true);
