@@ -1,6 +1,6 @@
-# Builds the Axion launch script + a taskbar-pinnable shortcut.
+# Builds the Axon launch script + a taskbar-pinnable shortcut.
 # The shortcut carries the same AppUserModelID the running Electron app sets
-# (com.iyad.axion) so the pinned slot and the live window merge
+# (com.iyad.axion, retained for in-place Axion -> Axon upgrades) so the pinned slot and the live window merge
 # into one taskbar button instead of two. Re-runnable. ASCII-only (PS 5.1 safe).
 param([switch]$Unpin)
 
@@ -9,7 +9,7 @@ $root        = 'C:\Users\Iyad\ollama-desktop-harness'
 $exe         = Join-Path $root 'node_modules\electron\dist\electron.exe'
 $ico         = Join-Path $root 'src\assets\icon.ico'
 $appId       = 'com.iyad.axion'
-$lnkName     = 'Axion.lnk'
+$lnkName     = 'Axon.lnk'
 $startMenu   = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
 $lnkPath     = Join-Path $startMenu $lnkName
 
@@ -28,7 +28,7 @@ $s.TargetPath       = $exe
 $s.Arguments        = '.'
 $s.WorkingDirectory = $root
 $s.IconLocation     = "$ico,0"
-$s.Description      = 'Axion local agent workspace'
+$s.Description      = 'Axon local agent workspace'
 $s.WindowStyle      = 1
 $s.Save()
 Write-Host "wrote $lnkPath"
@@ -106,7 +106,7 @@ if ($Unpin) {
   } else {
     Write-Host ""
     Write-Host "Auto-pin not available on this Windows build." -ForegroundColor Yellow
-    Write-Host "Open Start menu, right-click 'Axion', then 'Pin to taskbar'." -ForegroundColor Yellow
+    Write-Host "Open Start menu, right-click 'Axon', then 'Pin to taskbar'." -ForegroundColor Yellow
   }
 }
 Write-Host ""

@@ -1,4 +1,4 @@
-// Legacy fallback icon generator. The canonical Axion mark is src/assets/axion-logo.png.
+// Legacy fallback icon generator. The canonical Axon mark is src/assets/axion-logo.png.
 // ponytail: pure-Node rasterizer (no deps), 4x4 supersample AA, single IDAT PNG,
 // ICO wraps the PNG. Node 'zlib' for compression, hand-rolled CRC32.
 // Run: node gen-icons.js

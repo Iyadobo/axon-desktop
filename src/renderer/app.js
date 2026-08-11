@@ -463,11 +463,11 @@ async function send() {
 // ponytail: known app-side commands appear instantly while the CLI discovery
 // fills the rest of the list in the background.
 const CORE_COMMANDS = [
-  { name: 'new', description: 'Start a fresh chat', tag: 'Axion' },
-  { name: 'clear', description: 'Start a fresh chat', tag: 'Axion' },
-  { name: 'model', description: 'Switch the active model', tag: 'Axion' },
-  { name: 'help', description: 'Show commands and shortcuts', tag: 'Axion' },
-  { name: 'compact', description: 'Start fresh (headless fallback)', tag: 'Axion' },
+  { name: 'new', description: 'Start a fresh chat', tag: 'Axon' },
+  { name: 'clear', description: 'Start a fresh chat', tag: 'Axon' },
+  { name: 'model', description: 'Switch the active model', tag: 'Axon' },
+  { name: 'help', description: 'Show commands and shortcuts', tag: 'Axon' },
+  { name: 'compact', description: 'Start fresh (headless fallback)', tag: 'Axon' },
 ];
 let allCommands = [];
 let cmdOpen = false, cmdItems = [], cmdSel = 0, commandLoadStarted = false;
@@ -653,7 +653,7 @@ function updateLan(s) {
 window.ollama.on('lan-status', updateLan);
 function renderLanDevices(devices) {
   const box = $('lanDevices'); box.innerHTML = '';
-  if (!devices?.length) { const empty = document.createElement('div'); empty.className = 'lan-info'; empty.textContent = 'No other Axion devices found yet. Open Axion on the other device and keep both on the same Wi-Fi.'; box.appendChild(empty); return; }
+  if (!devices?.length) { const empty = document.createElement('div'); empty.className = 'lan-info'; empty.textContent = 'No other Axon devices found yet. Open Axon on the other device and keep both on the same Wi-Fi.'; box.appendChild(empty); return; }
   for (const device of devices) {
     const row = document.createElement('div'); row.className = 'device-row';
     const meta = document.createElement('div'); meta.className = 'device-meta';
@@ -664,7 +664,7 @@ function renderLanDevices(devices) {
     request.title = device.available ? 'Connect and ask this device for an update' : 'Turn on Host mode on that device to accept an update request';
     request.onclick = async () => {
       const result = await window.ollama.lanRequestDeviceUpdate(device);
-      setUpdateInfo(result?.error ? result.error : 'Request sent to ' + device.name + '. It will appear in that device\'s Axion window.');
+      setUpdateInfo(result?.error ? result.error : 'Request sent to ' + device.name + '. It will appear in that device\'s Axon window.');
     };
     row.append(meta, request); box.appendChild(row);
   }
@@ -694,7 +694,7 @@ window.ollama.on('lan-update-request', (request) => {
   showUpdateDialog(requester + ' requested an update', request.hasInstaller ? requester + ' is asking for the installer you selected. Share it?' : requester + ' is asking for an update, but this Host has not selected an installer.', actions);
 });
 window.ollama.on('lan-update-offer', (offer) => {
-  showUpdateDialog('Update available', 'The Host offers ' + offer.name + ' (' + formatBytes(offer.bytes) + ').\n\nAxion verifies its SHA-256 before the installer can open.', [
+  showUpdateDialog('Update available', 'The Host offers ' + offer.name + ' (' + formatBytes(offer.bytes) + ').\n\nAxon verifies its SHA-256 before the installer can open.', [
     { label: 'Decline', run: () => window.ollama.acceptUpdateOffer(offer.id, false) },
     { label: 'Download update', primary: true, run: () => window.ollama.acceptUpdateOffer(offer.id, true) },
   ]);

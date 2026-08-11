@@ -1,7 +1,7 @@
 {
-  "name": "axion",
+  "name": "axon",
   "version": "0.1.0",
-  "description": "Axion is a local agent workspace powered by Claude Code and a selected Ollama model",
+  "description": "Axon is a local agent workspace powered by Claude Code and a selected Ollama model",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -10,7 +10,7 @@
   },
   "build": {
     "appId": "com.iyad.axion",
-    "productName": "Axion",
+    "productName": "Axon",
     "asar": true,
     "files": [
       "src/**",
@@ -23,7 +23,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Axion-Setup-${version}.${ext}"
+      "artifactName": "Axon-Setup-${version}.${ext}"
     }
   },
   "devDependencies": {

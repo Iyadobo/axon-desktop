@@ -1,6 +1,6 @@
-# Axion
+# Axon
 
-Axion is a local agent workspace where **the chat is powered by the Claude Code
+Axon is a local agent workspace where **the chat is powered by the Claude Code
 agent harness**, routed to your selected Ollama model, with **Claude Code slash commands** usable
 from the chat input.
 

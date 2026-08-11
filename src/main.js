@@ -12,11 +12,13 @@ const lan = require('./lan');
 const { createConfigStore } = require('./config');
 
 // ponytail: set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
+// Keep the legacy ID so the renamed app upgrades in place and retains its
+// existing Windows taskbar identity instead of creating a second slot.
 try { app.setAppUserModelId('com.iyad.axion'); } catch {}
 // A stable display name also stabilizes Electron's userData folder across dev
-// and packaged launches (Windows otherwise kept both `axion` and `Axion`).
-try { app.setName('Axion'); } catch {}
-// Keep a launch click focused on the existing Axion window instead of opening
+// and packaged launches (Windows otherwise kept both `axon` and `Axon`).
+try { app.setName('Axon'); } catch {}
+// Keep a launch click focused on the existing Axon window instead of opening
 // another Electron group (which also keeps the taskbar pleasantly tidy).
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
@@ -32,7 +34,7 @@ const OLLAMA_BASE = OLLAMA_URL.replace(/\/$/, ''); // claude talks to Ollama's n
 const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 
 let tray = null, win = null, ollamaProc = null, browserPanel = null;
-let trayLabel = 'Axion: starting…';
+let trayLabel = 'Axon: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
 const localHolders = new Map();
@@ -60,12 +62,12 @@ async function isOllamaUp() {
   });
 }
 async function ensureOllama() {
-  if (await isOllamaUp()) return setTray('Axion: running');
+  if (await isOllamaUp()) return setTray('Axon: running');
   ollamaProc = spawn('ollama', ['serve'], { windowsHide: true, shell: false });
-  ollamaProc.on('exit', () => { ollamaProc = null; setTray('Axion: stopped'); });
+  ollamaProc.on('exit', () => { ollamaProc = null; setTray('Axon: stopped'); });
   ollamaProc.stderr?.on('data', () => {});
   for (let i = 0; i < 40; i++) { await sleep(500); if (await isOllamaUp()) return setTray('Ollama: running'); }
-  setTray('Axion: failed to start');
+  setTray('Axon: failed to start');
 }
 
 function ollama(pathname) {
@@ -263,7 +265,7 @@ async function hashFile(file) {
   });
 }
 async function selectInstaller() {
-  const picked = await dialog.showOpenDialog(win, { title: 'Choose the newer Axion installer', properties: ['openFile'], filters: [{ name: 'Axion installer', extensions: ['exe'] }] });
+  const picked = await dialog.showOpenDialog(win, { title: 'Choose the newer Axon installer', properties: ['openFile'], filters: [{ name: 'Axon installer', extensions: ['exe'] }] });
   if (picked.canceled || !picked.filePaths[0]) return null;
   const file = picked.filePaths[0]; const stat = await fs.promises.stat(file);
   if (stat.size < 1024 || stat.size > 750 * 1024 * 1024) throw new Error('Installer must be between 1 KB and 750 MB.');
@@ -271,7 +273,7 @@ async function selectInstaller() {
   return { name: hostInstaller.name, bytes: hostInstaller.bytes, sha256: hostInstaller.sha256 };
 }
 function offerInstaller(sock) {
-  if (!hostInstaller) throw new Error('Choose a newer Axion installer first.');
+  if (!hostInstaller) throw new Error('Choose a newer Axon installer first.');
   const id = crypto.randomUUID();
   const offer = { type: 'update-offer', id, name: hostInstaller.name, bytes: hostInstaller.bytes, sha256: hostInstaller.sha256 };
   if (sock) lan.sendTo(sock, offer); else lanServer?.broadcast(offer);
@@ -389,7 +391,7 @@ ipcMain.handle('lan-disconnect', () => {
 ipcMain.handle('lan-discovery-refresh', () => { lanDiscovery?.refresh(); return lanDiscovery?.devices() || []; });
 ipcMain.handle('lan-request-device-update', (_e, device) => {
   const host = String(device?.host || '').trim(); const port = Number(device?.port) || lan.PORT;
-  if (!host || !device?.available) return { error: 'That device is not accepting Axion links. Turn on Host mode there first.' };
+  if (!host || !device?.available) return { error: 'That device is not accepting Axon links. Turn on Host mode there first.' };
   if (!connectLanClient(host + ':' + port)) return { error: 'Could not start a link to that device.' };
   lanClient.send({ type: 'update-request', requester: os.hostname() });
   return { ok: true, target: host + ':' + port };
@@ -458,11 +460,12 @@ app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
   config = createConfigStore(userDataPath);
   // Preserve all known predecessors. Merge only missing keys so the canonical
-  // Axion folder wins while a dev/package casing change cannot lose history.
+  // Axon folder wins while a dev/package casing change cannot lose history.
   const state = config.load(); const parent = path.dirname(userDataPath);
   const candidates = [
     path.join(parent, 'axion', 'settings.json'),
     path.join(parent, 'Axion', 'settings.json'),
+    path.join(parent, 'axon', 'settings.json'),
     path.join(parent, 'ollama-desktop-harness', 'settings.json'),
   ];
   const merged = {};
