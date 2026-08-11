@@ -387,15 +387,16 @@
         </label>
       </div>
       <div class="fld"><span>Same-WiFi link</span>
-        <label class="lan-check"><input type="checkbox" id="lanServerChk" /> Act as server — let other devices route chats through this one</label>
+        <label class="lan-check"><input type="checkbox" id="lanServerChk" /> Accept clients on this device (Host)</label>
         <div id="lanServerInfo" class="lan-info"></div>
+        <button id="lanCopyHost" disabled>Copy Host address</button>
         <div class="proj-row" style="margin-top:8px">
           <input type="text" id="lanHost" placeholder="host:port  (e.g. 192.168.1.5:47301)" />
           <button id="lanConnBtn" data-mode="conn">Connect</button>
         </div>
         <div id="lanClientInfo" class="lan-info"></div>
         <div id="lanWorkspaceInfo" class="lan-info">Host mode shares its available models and approved chat history with connected clients.</div>
-        <div class="lan-info" style="margin-top:8px">Nearby Axon devices</div>
+        <div class="lan-info" style="margin-top:8px">Nearby Hosts — choose one to connect</div>
         <div id="lanDevices" class="device-list" aria-live="polite"><div class="lan-info">Searching your Wi-Fi…</div></div>
         <div class="update-actions" style="margin-top:8px">
           <button id="updatePickBtn">Choose installer…</button><button id="updateOfferBtn">Offer update</button><button id="updateRequestBtn">Ask host for update</button>

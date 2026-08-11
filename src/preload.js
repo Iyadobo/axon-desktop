@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('ollama', {
   saveState: (updates) => ipcRenderer.invoke('save-state', updates),
   lanServer: (enabled) => ipcRenderer.invoke('lan-server-toggle', enabled),
   lanConnect: (host) => ipcRenderer.invoke('lan-connect', host),
+  lanConnectDevice: (device) => ipcRenderer.invoke('lan-connect-device', device),
   lanDisconnect: () => ipcRenderer.invoke('lan-disconnect'),
   workspaceUpsert: (conversation) => ipcRenderer.invoke('workspace-upsert', conversation),
   workspaceSeed: (conversations) => ipcRenderer.invoke('workspace-seed', conversations),

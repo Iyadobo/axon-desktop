@@ -492,6 +492,12 @@ function connectLanClient(host) {
 ipcMain.handle('lan-connect', (_e, host) => {
   return connectLanClient(host);
 });
+ipcMain.handle('lan-connect-device', (_e, device) => {
+  const host = String(device?.host || '').trim(); const port = Number(device?.port) || lan.PORT;
+  if (!host || !device?.available) return { error: 'That device is not accepting clients yet. Turn on Host mode there first.' };
+  if (!connectLanClient(host + ':' + port)) return { error: 'Could not start the link.' };
+  return { ok: true, target: host + ':' + port };
+});
 ipcMain.handle('lan-disconnect', () => {
   if (lanClient) { try { lanClient.end(); } catch {} lanClient = null; }
   lanClientConnected = false; lanStatus({ client: 'disconnected' }); return true;

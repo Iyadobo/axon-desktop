@@ -686,10 +686,14 @@ function showUpdateDialog(title, body, actions) {
 function formatBytes(n) { return n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; }
 function updateLan(s) {
   if (s.server !== undefined) {
-    const info = $('lanServerInfo'); const chk = $('lanServerChk');
-    if (s.server === 'listening') info.textContent = 'Server running — from the other device connect to ' + (s.ips || []).map((ip) => ip + ':' + s.port).join('  or  ');
-    else if (s.server === 'closed' || s.server === 'off') { info.textContent = ''; chk.checked = false; }
-    else if (s.server.startsWith('error')) { info.textContent = 'Server error: ' + s.server; chk.checked = false; }
+    const info = $('lanServerInfo'); const chk = $('lanServerChk'); const copy = $('lanCopyHost');
+    if (s.server === 'listening') {
+      const address = (s.ips || [])[0] ? (s.ips[0] + ':' + s.port) : '';
+      info.textContent = address ? 'Host ready — clients can pick this device below or use ' + address + '.' : 'Host ready — waiting for clients.';
+      copy.disabled = !address; copy.dataset.address = address;
+    }
+    else if (s.server === 'closed' || s.server === 'off') { info.textContent = ''; chk.checked = false; copy.disabled = true; copy.dataset.address = ''; }
+    else if (s.server.startsWith('error')) { info.textContent = 'Host error: ' + s.server; chk.checked = false; copy.disabled = true; copy.dataset.address = ''; }
     else info.textContent = s.server;
     lanServerOn = s.server === 'listening';
     if (lanServerOn) window.ollama.workspaceSeed(conversations).catch(() => {});
@@ -727,17 +731,31 @@ function renderLanDevices(devices) {
     const name = document.createElement('span'); name.className = 'device-name'; name.textContent = device.name + (device.available ? ' · ready' : ' · not hosting');
     const address = document.createElement('span'); address.className = 'device-address'; address.textContent = device.host + ':' + device.port;
     meta.append(name, address);
-    const request = document.createElement('button'); request.textContent = device.available ? 'Request update' : 'Needs Host'; request.disabled = !device.available;
-    request.title = device.available ? 'Connect and ask this device for an update' : 'Turn on Host mode on that device to accept an update request';
+    const actions = document.createElement('div'); actions.className = 'update-actions';
+    const connect = document.createElement('button'); connect.textContent = device.available ? 'Connect' : 'Needs Host'; connect.disabled = !device.available;
+    connect.title = device.available ? 'Use this Host for models and shared chats' : 'Turn on Host mode on that device first';
+    connect.onclick = async () => {
+      const result = await window.ollama.lanConnectDevice(device);
+      if (result?.ok) { $('lanHost').value = device.host + ':' + device.port; saveState('olanHost', $('lanHost').value); }
+      setUpdateInfo(result?.error ? result.error : 'Connecting to ' + device.name + '…');
+    };
+    const request = document.createElement('button'); request.textContent = 'Request update'; request.disabled = !device.available;
+    request.title = 'Ask this Host to share an Axon installer';
     request.onclick = async () => {
       const result = await window.ollama.lanRequestDeviceUpdate(device);
       setUpdateInfo(result?.error ? result.error : 'Request sent to ' + device.name + '. It will appear in that device\'s Axon window.');
     };
-    row.append(meta, request); box.appendChild(row);
+    actions.append(connect, request); row.append(meta, actions); box.appendChild(row);
   }
 }
 window.ollama.on('lan-devices', renderLanDevices);
 $('lanServerChk').onchange = (e) => window.ollama.lanServer(e.target.checked);
+$('lanCopyHost').onclick = async () => {
+  const address = $('lanCopyHost').dataset.address;
+  if (!address) return;
+  try { await navigator.clipboard.writeText(address); $('lanCopyHost').textContent = 'Copied'; setTimeout(() => { $('lanCopyHost').textContent = 'Copy Host address'; }, 1200); }
+  catch { setUpdateInfo('Could not copy the Host address — use ' + address + '.'); }
+};
 $('lanConnBtn').onclick = () => {
   if ($('lanConnBtn').dataset.mode === 'disc') window.ollama.lanDisconnect();
   else { const h = $('lanHost').value.trim(); if (h) { saveState('olanHost', h); window.ollama.lanConnect(h); } }
