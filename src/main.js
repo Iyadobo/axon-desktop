@@ -219,7 +219,7 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
 }
 
 // ---- IPC ------------------------------------------------------------------
-ipcMain.handle('list-models', async () => (await ollama('/api/tags')));
+ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await ollama('/api/tags')));
 ipcMain.handle('list-commands', () => listCommands());
 function safeImages(value) {
   if (!Array.isArray(value)) return [];
@@ -290,6 +290,7 @@ ipcMain.handle('browser-action', (_e, action) => {
 // events back over the socket; client forwards chats and maps events to the renderer,
 // so the renderer UI is identical on either side. No HTTP, no web GUI.
 let lanServer = null, lanClient = null, lanClientConnected = false, lanDiscovery = null;
+let remoteModels = null;
 const lanInstanceId = crypto.randomUUID();
 let hostInstaller = null;
 const pendingUpdateRequests = new Map();
@@ -297,6 +298,31 @@ const pendingUpdateOffers = new Map();
 let inboundUpdate = null;
 function lanStatus(obj) { win?.webContents.send('lan-status', obj); }
 function updateEvent(channel, value) { win?.webContents.send(channel, value); }
+function sharedConversation(value) {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string') return null;
+  const turns = Array.isArray(value.turns) ? value.turns.slice(-80).flatMap((turn) => {
+    if (!turn || !['user', 'assistant'].includes(turn.role)) return [];
+    return [{ role: turn.role, content: String(turn.content || '').slice(0, 64000), attachmentCount: Number(turn.attachmentCount) || 0 }];
+  }) : [];
+  return {
+    id: value.id.slice(0, 120), sessionId: typeof value.sessionId === 'string' ? value.sessionId.slice(0, 120) : null,
+    title: String(value.title || '(empty)').slice(0, 120), model: String(value.model || '').slice(0, 160),
+    ts: Number.isSafeInteger(value.ts) ? value.ts : Date.now(), updatedAt: Number.isSafeInteger(value.updatedAt) ? value.updatedAt : Date.now(),
+    projectId: null, turns,
+  };
+}
+function sharedSnapshot() { return Array.isArray(config?.load()?.osharedConvs) ? config.load().osharedConvs : []; }
+function broadcastSharedConversations() {
+  const conversations = sharedSnapshot();
+  lanServer?.broadcast({ type: 'workspace-snapshot', conversations });
+  win?.webContents.send('workspace-snapshot', { conversations });
+}
+function storeSharedConversation(value) {
+  const next = sharedConversation(value); if (!next) return { error: 'Invalid shared conversation.' };
+  const conversations = sharedSnapshot().filter((item) => item?.id !== next.id);
+  conversations.unshift(next); conversations.sort((a, b) => (b.updatedAt || b.ts || 0) - (a.updatedAt || a.ts || 0));
+  config?.save({ osharedConvs: conversations.slice(0, 50) }); broadcastSharedConversations(); return { ok: true };
+}
 function startLanDiscovery() {
   if (lanDiscovery) return;
   lanDiscovery = lan.createDiscovery({
@@ -375,6 +401,11 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
   if (enabled) {
     if (lanServer) return { on: true, ips: lan.lanIPs(), port: lan.PORT };
     lanServer = lan.startServer({
+      onConnect: async (sock) => {
+        let models = [];
+        try { models = (await ollama('/api/tags')).models || []; } catch {}
+        lan.sendTo(sock, { type: 'workspace-init', host: os.hostname(), models, conversations: sharedSnapshot() });
+      },
       onMessage: (msg, sock, st) => {
         if (msg.type === 'stop') {
           const holder = st.holders?.get(msg.requestId);
@@ -386,6 +417,7 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
           updateEvent('lan-update-request', { id, requester: typeof msg.requester === 'string' ? msg.requester.slice(0, 80) : 'A linked client', hasInstaller: !!hostInstaller }); return;
         }
         if (msg.type === 'update-accept') { sendInstaller(sock, msg.id); return; }
+        if (msg.type === 'workspace-upsert') { storeSharedConversation(msg.conversation); return; }
         if (msg.type !== 'chat') return;
         const send = (ch, v) => {
           if (ch === 'chat-delta') lan.sendTo(sock, { type: 'delta', requestId: msg.requestId, text: v });
@@ -410,6 +442,19 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
   return { on: false };
 });
 
+// Host owns the shared transcript. Clients may submit only one bounded
+// conversation snapshot at a time; the Host persists and republishes it.
+ipcMain.handle('workspace-upsert', (_e, conversation) => {
+  if (lanServer) return storeSharedConversation(conversation);
+  if (lanClientConnected && lanClient) { lanClient.send({ type: 'workspace-upsert', conversation: sharedConversation(conversation) }); return { ok: true }; }
+  return { ok: false, error: 'Turn on Host mode or connect to a Host to share chats.' };
+});
+ipcMain.handle('workspace-seed', (_e, conversations) => {
+  if (!lanServer || !Array.isArray(conversations)) return { ok: false };
+  for (const conversation of conversations.slice(0, 50)) storeSharedConversation(conversation);
+  return { ok: true };
+});
+
 function connectLanClient(host) {
   if (lanClient) { try { lanClient.end(); } catch {} lanClient = null; lanClientConnected = false; }
   const [h, p] = String(host || '').split(':');
@@ -421,13 +466,19 @@ function connectLanClient(host) {
       else if (m.type === 'step') send('chat-step', { requestId: m.requestId, step: m.step });
       else if (m.type === 'error') send('chat-error', { requestId: m.requestId, message: m.msg });
       else if (m.type === 'done') send('chat-done', { requestId: m.requestId, sessionId: m.sessionId, ok: m.ok });
+      else if (m.type === 'workspace-init') {
+        remoteModels = Array.isArray(m.models) ? m.models : [];
+        send('workspace-init', { host: m.host || 'Host', conversations: Array.isArray(m.conversations) ? m.conversations : [] });
+        send('models-changed', { remote: true });
+      }
+      else if (m.type === 'workspace-snapshot') send('workspace-snapshot', { conversations: Array.isArray(m.conversations) ? m.conversations : [] });
       else if (m.type === 'update-offer') { pendingUpdateOffers.set(m.id, m); updateEvent('lan-update-offer', m); }
       else if (m.type === 'update-begin') { try { beginInboundUpdate(m); } catch (e) { updateEvent('lan-update-error', { message: e.message }); } }
       else if (m.type === 'update-chunk') { try { writeInboundChunk(m); } catch (e) { updateEvent('lan-update-error', { message: e.message }); } }
       else if (m.type === 'update-end') finishInboundUpdate(m.id);
       else if (m.type === 'update-error') updateEvent('lan-update-error', { message: m.message || 'Transfer failed.' });
     },
-    onStatus: (state) => { lanClientConnected = (state === 'connected'); lanStatus({ client: state }); },
+    onStatus: (state) => { lanClientConnected = (state === 'connected'); if (!lanClientConnected) remoteModels = null; lanStatus({ client: state }); },
   });
   return true;
 }

@@ -80,11 +80,12 @@ function parseMsg(line) { try { return JSON.parse(line); } catch { return null; 
 // onChat/onMessage receive a per-socket state. Hosts may attach `holders`, a
 // requestId -> child map, so one Stop never cancels unrelated chats.
 // onStatus(state, info): 'listening' | 'error:<code>' | 'closed'
-function startServer({ onChat, onMessage, onStatus, port }) {
+function startServer({ onChat, onMessage, onStatus, onConnect, port }) {
   const sockets = new Map();
   const server = net.createServer((sock) => {
     const st = { child: null };
     sockets.set(sock, st);
+    onConnect?.(sock, st);
     const ls = lineStream((line) => {
       const msg = parseMsg(line); if (!msg) return;
       if (onMessage) onMessage(msg, sock, st);

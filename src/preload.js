@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('ollama', {
   lanServer: (enabled) => ipcRenderer.invoke('lan-server-toggle', enabled),
   lanConnect: (host) => ipcRenderer.invoke('lan-connect', host),
   lanDisconnect: () => ipcRenderer.invoke('lan-disconnect'),
+  workspaceUpsert: (conversation) => ipcRenderer.invoke('workspace-upsert', conversation),
+  workspaceSeed: (conversations) => ipcRenderer.invoke('workspace-seed', conversations),
   lanRefresh: () => ipcRenderer.invoke('lan-discovery-refresh'),
   lanRequestDeviceUpdate: (device) => ipcRenderer.invoke('lan-request-device-update', device),
   selectUpdateInstaller: () => ipcRenderer.invoke('update-select-installer'),

@@ -14,6 +14,7 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
 
 let conversations = [];   // [{id, sessionId, title, model, ts, projectId}]
 let activeId = null;      // current conversation id (null = home/fresh)
+let localConversationBackup = null;
 // Many chats may generate at once. Keep their DOM + persistence context by
 // request ID instead of one global "active" turn.
 const activeTurns = new Map(); // requestId -> { conversationId, turnEl, ... }
@@ -208,9 +209,24 @@ function saveConvs() {
   const stored = conversations.slice(0, 50).map((c) => ({ ...c, turns: (c.turns || []).slice(-80).map((t) => ({ role: t.role, content: String(t.content || '').slice(0, 64000), attachmentCount: t.attachmentCount || 0 })) }));
   saveState('oconvs', stored);
 }
+function publishConversation(conv) {
+  if (!conv || (!lanServerOn && !lanClientConnected)) return;
+  conv.updatedAt = Date.now();
+  window.ollama.workspaceUpsert(conv).catch(() => {});
+}
+function applySharedConversations(items) {
+  if (!Array.isArray(items)) return;
+  const incoming = new Map(items.filter((item) => item?.id).map((item) => [item.id, item]));
+  const merged = conversations.filter((item) => !incoming.has(item.id));
+  for (const item of incoming.values()) merged.push(item);
+  conversations = merged.sort((a, b) => (b.updatedAt || b.ts || 0) - (a.updatedAt || a.ts || 0)).slice(0, 50);
+  if (activeId && !conversations.some((item) => item.id === activeId)) activeId = null;
+  renderRecents();
+  if (activeId) openConv(activeId);
+}
 function renderRecents() {
   const box = $('recents'); box.innerHTML = '';
-  const visible = conversations.filter((c) => (c.projectId || null) === activeProjectId);
+  const visible = (lanServerOn || lanClientConnected) ? conversations : conversations.filter((c) => (c.projectId || null) === activeProjectId);
   if (!visible.length) {
     const e = document.createElement('div'); e.style.cssText = 'font-size:12px;opacity:.4;padding:7px 8px';
     e.textContent = activeProjectId ? 'No chats in this project yet.' : 'No chats yet.'; box.appendChild(e);
@@ -272,7 +288,7 @@ function addUserTurn(text, images = [], persist = true) {
   }
   if (persist && activeId) {
     const conv = conversations.find((c) => c.id === activeId);
-    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'user', content: text, attachmentCount: images.length }); saveConvs(); }
+    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'user', content: text, attachmentCount: images.length }); saveConvs(); publishConversation(conv); }
   }
 }
 function addStoredAiTurn(text, model) {
@@ -383,7 +399,7 @@ window.ollama.on('chat-done', ({ requestId, sessionId } = {}) => {
   else if (turn.started) { renderMarkdown(turn.bubbleEl, turn.content); addCopyBtn(turn.turnEl, turn.content); }
   if (turn.started) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
-    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: turn.content }); saveConvs(); }
+    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: turn.content }); saveConvs(); publishConversation(conv); }
   }
   if (sessionId) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
@@ -676,19 +692,32 @@ function updateLan(s) {
     else if (s.server.startsWith('error')) { info.textContent = 'Server error: ' + s.server; chk.checked = false; }
     else info.textContent = s.server;
     lanServerOn = s.server === 'listening';
+    if (lanServerOn) window.ollama.workspaceSeed(conversations).catch(() => {});
     setModeBadge();
   }
   if (s.client !== undefined) {
     const info = $('lanClientInfo'); const btn = $('lanConnBtn');
     lanClientConnected = (s.client === 'connected');
-    if (s.client === 'connected') { info.textContent = 'Connected — your chats route through the server.'; btn.textContent = 'Disconnect'; btn.dataset.mode = 'disc'; }
-    else if (s.client === 'disconnected') { info.textContent = ''; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
+    if (s.client === 'connected') {
+      if (!localConversationBackup) localConversationBackup = conversations;
+      info.textContent = 'Connected — Host models and shared chats are now active.'; btn.textContent = 'Disconnect'; btn.dataset.mode = 'disc';
+      activeProjectId = null; updateProjectLabel();
+    } else if (s.client === 'disconnected') {
+      if (localConversationBackup) { conversations = localConversationBackup; localConversationBackup = null; renderRecents(); }
+      info.textContent = ''; btn.textContent = 'Connect'; btn.dataset.mode = 'conn';
+    }
     else if (s.client.startsWith('error')) { info.textContent = 'Connection failed: ' + s.client; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
     else { info.textContent = s.client; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
     setModeBadge();
   }
 }
 window.ollama.on('lan-status', updateLan);
+window.ollama.on('models-changed', () => loadModels());
+window.ollama.on('workspace-init', ({ host, conversations: shared }) => {
+  $('lanWorkspaceInfo').textContent = 'Shared with ' + host + ': host models, shared chat history, and remote runs.';
+  applySharedConversations(shared);
+});
+window.ollama.on('workspace-snapshot', ({ conversations: shared }) => applySharedConversations(shared));
 function renderLanDevices(devices) {
   const box = $('lanDevices'); box.innerHTML = '';
   if (!devices?.length) { const empty = document.createElement('div'); empty.className = 'lan-info'; empty.textContent = 'No other Axon devices found yet. Open Axon on the other device and keep both on the same Wi-Fi.'; box.appendChild(empty); return; }
