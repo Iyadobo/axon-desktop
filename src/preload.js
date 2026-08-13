@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('ollama', {
   refreshCommands: (model) => ipcRenderer.invoke('refresh-commands', model),
   chat: (model, prompt, sessionId, opts) => ipcRenderer.invoke('chat', { model, prompt, sessionId, ...opts }),
   stop: (requestId) => ipcRenderer.invoke('chat-stop', requestId),
+  steer: (requestId) => ipcRenderer.invoke('chat-steer', requestId),
   clear: () => ipcRenderer.invoke('clear'),
   pickFolder: () => ipcRenderer.invoke('pick-folder'),
   ensureWorkspace: () => ipcRenderer.invoke('ensure-workspace'),

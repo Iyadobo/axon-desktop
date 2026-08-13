@@ -19,6 +19,8 @@ let localConversationBackup = null;
 // request ID instead of one global "active" turn.
 const activeTurns = new Map(); // requestId -> { conversationId, turnEl, ... }
 let stopping = new Set();
+const queuedMessages = new Map(); // conversationId -> pending user messages
+const steering = new Set();
 function currentTurn() { return activeId ? [...activeTurns.values()].find((turn) => turn.conversationId === activeId) : null; }
 
 // ---- settings / appearance --------------------------------------------------
@@ -260,6 +262,7 @@ function openConv(id) {
   renderRecents();
   syncComposerState();
   scrollBottom();
+  runNextQueued(id);
 }
 
 // ---- view toggle -----------------------------------------------------------
@@ -389,11 +392,13 @@ window.ollama.on('chat-error', ({ requestId, message }) => {
   if (turn.think) { turn.think.remove(); turn.think = null; }
   turn.turnEl.classList.add('error'); turn.bubbleEl.textContent = '[error] ' + message;
 });
-window.ollama.on('chat-done', ({ requestId, sessionId } = {}) => {
+window.ollama.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   const turn = activeTurns.get(requestId); if (!turn) return;
   if (turn.think) { turn.think.remove(); turn.think = null; }
   turn.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
-  if (stopping.has(requestId)) {
+  if (steered || steering.has(requestId)) {
+    turn.turnEl.classList.add('error'); turn.bubbleEl.textContent = '(steered — continuing with your new instruction)';
+  } else if (stopping.has(requestId)) {
     turn.turnEl.classList.add('error'); turn.bubbleEl.textContent = '(stopped)';
   } else if (!turn.started && !turn.turnEl.classList.contains('error')) turn.bubbleEl.textContent = '(no response)';
   else if (turn.started) { renderMarkdown(turn.bubbleEl, turn.content); addCopyBtn(turn.turnEl, turn.content); }
@@ -405,9 +410,10 @@ window.ollama.on('chat-done', ({ requestId, sessionId } = {}) => {
     const conv = conversations.find((c) => c.id === turn.conversationId);
     if (conv && !conv.sessionId) { conv.sessionId = sessionId; saveConvs(); }
   }
-  activeTurns.delete(requestId); stopping.delete(requestId);
+  activeTurns.delete(requestId); stopping.delete(requestId); steering.delete(requestId);
   renderRecents(); syncComposerState();
   if (turn.conversationId === activeId) scrollBottom();
+  runNextQueued(turn.conversationId);
 });
 function addCopyBtn(turnEl, text) {
   const b = document.createElement('button'); b.className = 'copymsg'; b.textContent = 'copy'; b.title = 'Copy response';
@@ -445,11 +451,35 @@ function syncComposerState() {
   $('send').textContent = b ? '■' : '→';
   $('send').className = running ? 'stop' : '';
   $('send').title = running ? 'Stop this chat' : 'Send';
+  $('steer').hidden = !running;
+  $('steer').disabled = !running;
+}
+
+function queueMessage(conversationId, entry, steers = false) {
+  const queue = queuedMessages.get(conversationId) || [];
+  if (steers) queue.unshift(entry); else queue.push(entry);
+  queuedMessages.set(conversationId, queue);
+  addSysNote((steers ? 'Steering next: ' : 'Queued: ') + (entry.text || '(attachment)').slice(0, 180));
+  scrollBottom();
+}
+function runNextQueued(conversationId) {
+  const queue = queuedMessages.get(conversationId); if (!queue?.length || currentTurn()) return;
+  const entry = queue.shift(); if (!queue.length) queuedMessages.delete(conversationId);
+  if (conversationId !== activeId) return;
+  startMessage(entry);
+}
+function takeComposerEntry() {
+  const text = $('prompt').value.trim();
+  if (!text && !attachments.length) return null;
+  const images = attachments.filter((a) => a.image).map((a) => ({ name: a.name, type: a.type, data: a.data }));
+  const entry = { text, combined: inlineAttachments(text), images, model: $('model').value };
+  clearInput(); clearAttachments(); return entry;
 }
 
 async function send() {
-  if (currentTurn()) return;
+  const running = currentTurn();
   const text = $('prompt').value.trim();
+  if (running) { const entry = takeComposerEntry(); if (entry) queueMessage(activeId, entry); return; }
   if (!text && !attachments.length) return;
 
   // built-in REPL commands (handled app-side; they don't exist in headless -p)
@@ -458,11 +488,11 @@ async function send() {
   if (text === '/compact') { clearInput(); showChatView(); addSysNote('/compact isn’t available in headless mode — use /clear to start a fresh session.'); scrollBottom(); return; }
   if (text.startsWith('/model ')) { clearInput(); setModelByName(text.slice(7).trim()); return; }
 
-  const combined = inlineAttachments(text);
-  const images = attachments.filter((a) => a.image).map((a) => ({ name: a.name, type: a.type, data: a.data }));
-  const model = $('model').value;
-  const fileCount = attachments.length;
-  clearInput(); clearAttachments();
+  const entry = takeComposerEntry();
+  startMessage(entry);
+}
+async function startMessage(entry) {
+  const { text, combined, images, model } = entry;
   // create / reuse conversation
   let conv = activeId ? conversations.find((c) => c.id === activeId) : null;
   if (!conv) {
@@ -569,6 +599,13 @@ $('send').onclick = () => {
   if (!turn) return send();
   const requestId = [...activeTurns.entries()].find(([, value]) => value === turn)?.[0];
   if (requestId) { stopping.add(requestId); window.ollama.stop(requestId); }
+};
+$('steer').onclick = () => {
+  const turn = currentTurn(); const entry = takeComposerEntry();
+  if (!turn || !entry) return;
+  const requestId = [...activeTurns.entries()].find(([, value]) => value === turn)?.[0];
+  if (!requestId) return;
+  queueMessage(activeId, entry, true); steering.add(requestId); window.ollama.steer(requestId);
 };
 $('newchat').onclick = () => newChat();
 $('model').onchange = () => saveState('omodel', $('model').value);

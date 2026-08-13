@@ -96,6 +96,7 @@ async function dependencyStatus() {
 }
 let CLAUDE_LAUNCH = null;
 let config = null;
+const visionCapability = new Map();
 
 // ---- ollama serve lifecycle ----------------------------------------------
 async function isOllamaUp() {
@@ -120,6 +121,25 @@ function ollama(pathname) {
     http.get(u, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve(d); } }); })
       .on('error', reject);
   });
+}
+async function modelSupportsVision(model) {
+  if (visionCapability.has(model)) return visionCapability.get(model);
+  try {
+    const tag = (await ollama('/api/tags')).models?.find((item) => item.name === model);
+    if (Array.isArray(tag?.capabilities)) {
+      const supported = tag.capabilities.includes('vision'); visionCapability.set(model, supported); return supported;
+    }
+    const u = new URL(OLLAMA_URL); u.pathname = '/api/show';
+    const body = JSON.stringify({ model });
+    const result = await new Promise((resolve, reject) => {
+      const req = http.request(u, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } }, (res) => {
+        let text = ''; res.on('data', (chunk) => (text += chunk)); res.on('end', () => { try { resolve(JSON.parse(text)); } catch { reject(new Error('Invalid model metadata')); } });
+      });
+      req.on('error', reject); req.setTimeout(5000, () => { req.destroy(); reject(new Error('Model metadata timeout')); }); req.end(body);
+    });
+    const supported = Array.isArray(result.capabilities) ? result.capabilities.includes('vision') : null;
+    visionCapability.set(model, supported); return supported;
+  } catch { return null; } // unknown: let the one-shot recovery handle nonstandard servers
 }
 
 // ---- Tray + window --------------------------------------------------------
@@ -180,7 +200,11 @@ function setBrowserBounds(bounds) {
 // ---- chat via the Claude Code harness -------------------------------------
 // sessionId: null -> start a new Claude Code session; otherwise --resume <sessionId>.
 // systemPrompt -> `--append-system-prompt` (headless supports it); cwd -> spawn working dir.
-function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = []) {
+function isVisionRejection(value) {
+  const text = String(value || '');
+  return /(?:image|vision|screenshot).{0,100}(?:not supported|unsupported|cannot|can't|does not support|not capable)|(?:400).{0,100}(?:image|vision|screenshot)/i.test(text);
+}
+function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], recovered = false) {
   holder = holder || {};
   return new Promise((resolve) => {
     const newSession = !sessionId;
@@ -202,6 +226,7 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
     holder.child = child;
     let buf = '';
     let resultSid = sid;
+    let visionRejected = false;
     child.stdout.on('data', (chunk) => {
       buf += chunk;
       let nl; while ((nl = buf.indexOf('\n')) >= 0) {
@@ -210,13 +235,24 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
         if (!ev) continue;
         if (ev.deltas) for (const d of ev.deltas) send('chat-delta', d);
         if (ev.steps) for (const s of ev.steps) send('chat-step', s);
-        if (ev.done) { if (ev.is_error) send('chat-error', ev.result); if (ev.session_id) resultSid = ev.session_id; }
+        if (ev.done) {
+          if (ev.is_error) { visionRejected ||= isVisionRejection(ev.result); if (!visionRejected) send('chat-error', ev.result); }
+          if (ev.session_id) resultSid = ev.session_id;
+        }
       }
     });
     let stderrBuf = '';
     child.stderr.on('data', (c) => { stderrBuf += c; });
     child.on('exit', (code) => {
       if (holder.child === child) holder.child = null;
+      if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
+      // A rejected image can become part of Claude's resumed session. Restart
+      // once with a clean session and no image blocks so later text messages do
+      // not keep receiving the same 400 from a non-vision model.
+      if (visionRejected && !recovered) {
+        send('chat-step', { type: 'tool_result', result: 'This model rejected an image/screenshot. Retrying this request in a clean text-only session.' });
+        return runChat(model, prompt, null, send, systemPrompt, cwd, holder, [], true).then(resolve);
+      }
       if (code && !stderrBuf.includes('connectors')) send('chat-error', `claude exited ${code}${stderrBuf ? ': ' + stderrBuf.trim().slice(0, 300) : ''}`);
       send('chat-done', { sessionId: resultSid, ok: !code });
       resolve();
@@ -238,7 +274,7 @@ function safeImages(value) {
   }
   return images;
 }
-ipcMain.handle('chat', (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId }) => {
+ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId }) => {
   if (!requestId || typeof requestId !== 'string') return { ok: false, error: 'Missing chat request ID.' };
   const expanded = maybeExpandSlash(prompt);
   const safe = safeImages(images);
@@ -246,8 +282,13 @@ ipcMain.handle('chat', (_e, { model, prompt, sessionId, systemPrompt, cwd, image
   // ponytail: client mode forwards to the LAN server (cwd dropped -- the client's
   // project path is on the client device and doesn't map to the server's filesystem).
   if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null }); return { ok: true }; }
+  let usableImages = safe;
+  if (safe.length && await modelSupportsVision(model) === false) {
+    usableImages = [];
+    send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not advertise vision support.` });
+  }
   const holder = {}; localHolders.set(requestId, holder);
-  runChat(model, expanded, sessionId, send, systemPrompt, cwd, holder, safe)
+  runChat(model, expanded, sessionId, send, systemPrompt, cwd, holder, usableImages)
     .catch((e) => send('chat-error', e.message))
     .finally(() => localHolders.delete(requestId));
   return { ok: true };
@@ -258,6 +299,13 @@ ipcMain.handle('chat-stop', (_e, requestId) => {
   const holder = localHolders.get(requestId);
   if (holder?.child && !holder.child.killed) holder.child.kill();
   return true;
+});
+ipcMain.handle('chat-steer', (_e, requestId) => {
+  if (!requestId) return false;
+  if (lanClientConnected && lanClient) { lanClient.send({ type: 'steer', requestId }); return true; }
+  const holder = localHolders.get(requestId);
+  if (holder?.child && !holder.child.killed) { holder.steer = true; holder.child.kill(); return true; }
+  return false;
 });
 ipcMain.handle('pick-folder', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
@@ -419,6 +467,11 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
           if (holder?.child && !holder.child.killed) holder.child.kill();
           return;
         }
+        if (msg.type === 'steer') {
+          const holder = st.holders?.get(msg.requestId);
+          if (holder?.child && !holder.child.killed) { holder.steer = true; holder.child.kill(); }
+          return;
+        }
         if (msg.type === 'update-request') {
           const id = crypto.randomUUID(); pendingUpdateRequests.set(id, sock);
           updateEvent('lan-update-request', { id, requester: typeof msg.requester === 'string' ? msg.requester.slice(0, 80) : 'A linked client', hasInstaller: !!hostInstaller }); return;
@@ -430,13 +483,17 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
           if (ch === 'chat-delta') lan.sendTo(sock, { type: 'delta', requestId: msg.requestId, text: v });
           else if (ch === 'chat-step') lan.sendTo(sock, { type: 'step', requestId: msg.requestId, step: v });
           else if (ch === 'chat-error') lan.sendTo(sock, { type: 'error', requestId: msg.requestId, msg: v });
-          else if (ch === 'chat-done') lan.sendTo(sock, { type: 'done', requestId: msg.requestId, sessionId: v.sessionId, ok: v.ok });
+          else if (ch === 'chat-done') lan.sendTo(sock, { type: 'done', requestId: msg.requestId, sessionId: v.sessionId, ok: v.ok, steered: !!v.steered });
         };
         st.holders ||= new Map();
         const holder = {}; st.holders.set(msg.requestId, holder);
         // server uses its own cwd; the client's project path doesn't map across devices.
-        runChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, holder, safeImages(msg.images))
-          .catch(() => {}).finally(() => st.holders.delete(msg.requestId));
+        (async () => {
+          const images = safeImages(msg.images);
+          const usableImages = images.length && await modelSupportsVision(msg.model) === false ? [] : images;
+          if (images.length && !usableImages.length) send('chat-step', { type: 'tool_result', result: `Images were not sent: ${msg.model} does not advertise vision support.` });
+          return runChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, holder, usableImages);
+        })().catch(() => {}).finally(() => st.holders.delete(msg.requestId));
       },
       onStatus: (state, info) => lanStatus({ server: state, ...info }),
     });
@@ -472,7 +529,7 @@ function connectLanClient(host) {
       if (m.type === 'delta') send('chat-delta', { requestId: m.requestId, text: m.text });
       else if (m.type === 'step') send('chat-step', { requestId: m.requestId, step: m.step });
       else if (m.type === 'error') send('chat-error', { requestId: m.requestId, message: m.msg });
-      else if (m.type === 'done') send('chat-done', { requestId: m.requestId, sessionId: m.sessionId, ok: m.ok });
+      else if (m.type === 'done') send('chat-done', { requestId: m.requestId, sessionId: m.sessionId, ok: m.ok, steered: !!m.steered });
       else if (m.type === 'workspace-init') {
         remoteModels = Array.isArray(m.models) ? m.models : [];
         send('workspace-init', { host: m.host || 'Host', conversations: Array.isArray(m.conversations) ? m.conversations : [] });

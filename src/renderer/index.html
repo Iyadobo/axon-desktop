@@ -155,6 +155,9 @@
     color:#fff; font-size:15px; cursor:pointer; display:grid; place-items:center; }
   #send:hover { background:var(--color-accent-600); }
   #send.stop { background:var(--color-surface-2); color:var(--color-text); }
+  #steer { margin-left:auto; margin-right:8px; height:30px; padding:0 10px; border:1px solid var(--color-divider); border-radius:7px;
+    background:var(--color-bg); color:var(--color-text); font:inherit; font-size:12px; cursor:pointer; }
+  #steer:hover { border-color:var(--color-accent); color:var(--color-accent); }
   #composerSlot { padding:14px 18px 18px; border-top:1px solid var(--color-divider); background:transparent; }
   .hint { max-width:760px; margin:6px auto 0; font-size:11px; opacity:.4; text-align:center; }
 
@@ -326,6 +329,7 @@
               <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.json,.csv,.yaml,.yml,.toml,.xml,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.css,.html,.ini,.sh,.ps1,.sql" multiple style="display:none" />
               <span class="select-tag"><select id="model"></select></span>
             </span>
+            <button id="steer" title="Stop the current run and continue with this message" hidden>Steer</button>
             <button id="send" title="Send">→</button>
           </div>
         </div>
