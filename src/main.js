@@ -178,10 +178,7 @@ function ensureCliCommand() {
   // Packaged Axon launches directly; the dev fallback remains useful to us while testing.
   const launch = app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`;
   const terminal = [
-    '@echo off', 'title Axon Terminal', 'color 0F',
-    'echo.', 'echo  ###   #   #   ###   #   #', 'echo #   #   # #   #   #  ##  #', 'echo #####    #    #   #  # # #', 'echo #   #   # #   #   #  #  ##', 'echo #   #  #   #   ###   #   #',
-    'echo.', 'echo #####  #####  ####   #   #  #####  #   #   ###   #', 'echo   #    #      #   #  ## ##    #    ##  #  #   #  #', 'echo   #    ####   ####   # # #    #    # # #  #####  #', 'echo   #    #      # #    #   #    #    #  ##  #   #  #', 'echo   #    #####  #  ##  #   #  #####  #   #  #   #  #####',
-    'echo.', `cd /d "${workspace}"`, 'prompt AXON $P$G', 'echo Genuine Windows shell ^| workspace ready.', 'echo.',
+    '@echo off', 'title Axon Terminal', 'color 0F', `cd /d "${workspace}"`, 'prompt AXON $P$G',
   ].join('\r\n');
   const command = ['@echo off', 'if /I "%~1"=="terminal" (', '  start "Axon Terminal" "%ComSpec%" /k "%~dp0axon-terminal.cmd"', '  exit /b 0', ')', `start "Axon" ${launch}`, 'exit /b 0', ''].join('\r\n');
   fs.writeFileSync(path.join(dir, 'axon-terminal.cmd'), terminal, 'utf8');
