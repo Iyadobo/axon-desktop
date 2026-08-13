@@ -33,7 +33,7 @@ const OLLAMA_BASE = OLLAMA_URL.replace(/\/$/, ''); // claude talks to Ollama's n
 // ponytail: scoped auto-approve instead of blanket --dangerously-skip-permissions; user wanted auto-run.
 const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 
-let tray = null, win = null, ollamaProc = null, browserPanel = null;
+let tray = null, win = null, ollamaProc = null, browserPanel = null, isQuitting = false;
 let trayLabel = 'Axon: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
@@ -165,8 +165,12 @@ function createWindow() {
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.once('ready-to-show', () => win.show());
-  // Axon is a normal desktop app: the window close button means fully quit,
-  // not a surprise background tray process.
+  // Axon is an agent host: closing the window keeps active work alive in the
+  // background. The tray's explicit Quit item remains the kill switch.
+  win.on('close', (event) => {
+    if (isQuitting) return;
+    event.preventDefault(); win.hide();
+  });
   win.on('closed', () => { win = null; });
 }
 // Electron has no `localAppData` getPath key; use the Windows environment
@@ -695,5 +699,5 @@ app.whenReady().then(async () => {
   startLanDiscovery();
   await ensureOllama();
 });
-app.on('before-quit', () => { if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
+app.on('before-quit', () => { isQuitting = true; if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
 app.on('window-all-closed', () => app.quit());

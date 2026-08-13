@@ -72,8 +72,8 @@
   .browserbar button { width:27px; height:27px; border:1px solid var(--color-divider); border-radius:6px; background:var(--color-surface); cursor:pointer; color:var(--color-text); }
   .browserbar input { min-width:0; flex:1; height:27px; padding:0 8px; border:1px solid var(--color-divider); border-radius:6px; background:var(--color-bg); color:var(--color-text); font:inherit; font-size:12px; }
   #browserSlot { flex:1; min-height:1px; }
-  #browserToggle, #terminalToggle { border:1px solid var(--color-divider); background:var(--color-bg); color:var(--color-neutral); border-radius:6px; padding:3px 7px; font:inherit; font-size:11px; cursor:pointer; }
-  #browserToggle.active, #terminalToggle:hover { color:var(--color-accent); border-color:var(--color-accent); }
+  #browserToggle { border:1px solid var(--color-divider); background:var(--color-bg); color:var(--color-neutral); border-radius:6px; padding:3px 7px; font:inherit; font-size:11px; cursor:pointer; }
+  #browserToggle.active { color:var(--color-accent); border-color:var(--color-accent); }
 
   /* home (empty state) */
   #home { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:40px; }
@@ -312,7 +312,7 @@
   </div>
 
   <div id="main">
-    <div class="titlebar"><div class="tl"><span></span><span></span><span></span></div><div style="display:flex;gap:6px"><button id="terminalToggle" title="Open Axon Terminal">Terminal</button><button id="browserToggle" title="Toggle agent browser">Browser</button></div></div>
+    <div class="titlebar"><div class="tl"><span></span><span></span><span></span></div><button id="browserToggle" title="Toggle agent browser">Browser</button></div>
 
     <!-- home (empty) -->
     <div id="home">
