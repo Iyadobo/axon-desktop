@@ -670,6 +670,7 @@ $('browserReload').onclick = () => window.ollama.browserAction('reload');
 $('browserUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') openBrowserAt($('browserUrl').value.trim()); });
 window.addEventListener('resize', () => requestAnimationFrame(syncBrowserBounds));
 window.ollama.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; });
+$('terminalToggle').onclick = () => window.ollama.terminalOpen();
 
 // attachments
 $('attachBtn').onclick = () => $('fileInput').click();

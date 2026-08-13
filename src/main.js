@@ -33,7 +33,7 @@ const OLLAMA_BASE = OLLAMA_URL.replace(/\/$/, ''); // claude talks to Ollama's n
 // ponytail: scoped auto-approve instead of blanket --dangerously-skip-permissions; user wanted auto-run.
 const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 
-let tray = null, win = null, ollamaProc = null, browserPanel = null;
+let tray = null, win = null, ollamaProc = null, browserPanel = null, terminalWin = null, terminalProc = null;
 let trayLabel = 'Axon: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
@@ -168,6 +168,34 @@ function createWindow() {
   // Axon is a normal desktop app: the window close button means fully quit,
   // not a surprise background tray process.
   win.on('closed', () => { win = null; });
+}
+function stopTerminal() {
+  if (terminalProc && !terminalProc.killed) { try { terminalProc.kill(); } catch {} }
+  terminalProc = null;
+}
+function createTerminalWindow() {
+  if (terminalWin && !terminalWin.isDestroyed()) { terminalWin.show(); terminalWin.focus(); return; }
+  terminalWin = new BrowserWindow({
+    width: 900, height: 620, minWidth: 620, minHeight: 420, show: false,
+    title: 'Axon Terminal', autoHideMenuBar: true, backgroundColor: '#050505',
+    icon: path.join(__dirname, 'assets', 'icon.png'),
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
+  });
+  terminalWin.loadFile(path.join(__dirname, 'renderer', 'terminal.html'));
+  terminalWin.once('ready-to-show', () => terminalWin.show());
+  terminalWin.on('closed', () => { terminalWin = null; stopTerminal(); });
+}
+function startTerminal() {
+  if (terminalProc && !terminalProc.killed) return { ok: true };
+  const cwd = ensureDefaultWorkspace();
+  try {
+    terminalProc = spawn(process.env.ComSpec || 'cmd.exe', ['/Q', '/K'], { cwd, windowsHide: true, shell: false });
+    const emit = (data) => terminalWin?.webContents.send('terminal-output', String(data));
+    terminalProc.stdout?.on('data', emit); terminalProc.stderr?.on('data', emit);
+    terminalProc.on('error', (error) => emit('\r\n[terminal error] ' + error.message + '\r\n'));
+    terminalProc.on('exit', () => { terminalProc = null; terminalWin?.webContents.send('terminal-exit'); });
+    return { ok: true, cwd };
+  } catch (error) { return { ok: false, error: error.message }; }
 }
 function validBrowserURL(value) {
   try { const url = new URL(String(value)); return ['http:', 'https:'].includes(url.protocol) ? url.href : null; } catch { return null; }
@@ -326,6 +354,15 @@ ipcMain.handle('load-state', () => config?.load() || {});
 ipcMain.handle('save-state', (_e, updates) => config?.save(updates) || {});
 // 'clear' is retained for compatibility; the renderer now owns conversation state.
 ipcMain.handle('clear', () => true);
+ipcMain.handle('terminal-open', () => { createTerminalWindow(); return { ok: true }; });
+ipcMain.handle('terminal-start', () => startTerminal());
+ipcMain.handle('terminal-write', (_e, input) => {
+  if (!terminalProc || terminalProc.killed) return { ok: false, error: 'Terminal is not running.' };
+  const command = String(input || '').replace(/[\0\r\n]/g, '').slice(0, 16000);
+  if (!command) return { ok: true };
+  terminalProc.stdin.write(command + '\r\n'); return { ok: true };
+});
+ipcMain.handle('terminal-restart', () => { stopTerminal(); return startTerminal(); });
 ipcMain.handle('browser-show', (_e, bounds) => { setBrowserBounds(bounds); return true; });
 ipcMain.handle('browser-hide', () => { if (browserPanel) browserPanel.setBounds({ x: 0, y: 0, width: 1, height: 1 }); return true; });
 ipcMain.handle('browser-navigate', (_e, value) => {
@@ -665,5 +702,5 @@ app.whenReady().then(async () => {
   startLanDiscovery();
   await ensureOllama();
 });
-app.on('before-quit', () => { if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
+app.on('before-quit', () => { stopTerminal(); if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
 app.on('window-all-closed', () => app.quit());

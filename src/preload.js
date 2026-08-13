@@ -29,9 +29,16 @@ contextBridge.exposeInMainWorld('ollama', {
   appInfo: () => ipcRenderer.invoke('app-info'),
   installDependencies: () => ipcRenderer.invoke('install-dependencies'),
   cleanupLegacyAxion: () => ipcRenderer.invoke('cleanup-legacy-axion'),
+  terminalOpen: () => ipcRenderer.invoke('terminal-open'),
   browserShow: (bounds) => ipcRenderer.invoke('browser-show', bounds),
   browserHide: () => ipcRenderer.invoke('browser-hide'),
   browserNavigate: (url) => ipcRenderer.invoke('browser-navigate', url),
   browserAction: (action) => ipcRenderer.invoke('browser-action', action),
   on: (ch, cb) => { ipcRenderer.on(ch, (_e, v) => cb(v)); },
+});
+contextBridge.exposeInMainWorld('axonTerminal', {
+  start: () => ipcRenderer.invoke('terminal-start'),
+  write: (input) => ipcRenderer.invoke('terminal-write', input),
+  restart: () => ipcRenderer.invoke('terminal-restart'),
+  on: (ch, cb) => ipcRenderer.on(ch, (_e, value) => cb(value)),
 });
