@@ -5,7 +5,7 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const os = require('os');
-const { spawn, execSync } = require('child_process');
+const { spawn, spawnSync, execSync } = require('child_process');
 const { parseEvent } = require('./cc');
 const { maybeExpandSlash, listCommands } = require('./commands');
 const lan = require('./lan');
@@ -33,7 +33,7 @@ const OLLAMA_BASE = OLLAMA_URL.replace(/\/$/, ''); // claude talks to Ollama's n
 // ponytail: scoped auto-approve instead of blanket --dangerously-skip-permissions; user wanted auto-run.
 const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 
-let tray = null, win = null, ollamaProc = null, browserPanel = null, terminalWin = null, terminalProc = null;
+let tray = null, win = null, ollamaProc = null, browserPanel = null;
 let trayLabel = 'Axon: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
@@ -169,32 +169,35 @@ function createWindow() {
   // not a surprise background tray process.
   win.on('closed', () => { win = null; });
 }
-function stopTerminal() {
-  if (terminalProc && !terminalProc.killed) { try { terminalProc.kill(); } catch {} }
-  terminalProc = null;
+// Electron has no `localAppData` getPath key; use the Windows environment
+// location directly so the CLI remains user-local and works in packaged builds.
+function cliDirectory() { return path.join(process.env.LOCALAPPDATA || path.dirname(app.getPath('appData')), 'Axon', 'bin'); }
+function ensureCliCommand() {
+  const dir = cliDirectory(); fs.mkdirSync(dir, { recursive: true });
+  const workspace = ensureDefaultWorkspace();
+  // Packaged Axon launches directly; the dev fallback remains useful to us while testing.
+  const launch = app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`;
+  const terminal = [
+    '@echo off', 'title Axon Terminal', 'color 0F',
+    'echo.', 'echo  ###   #   #   ###   #   #', 'echo #   #   # #   #   #  ##  #', 'echo #####    #    #   #  # # #', 'echo #   #   # #   #   #  #  ##', 'echo #   #  #   #   ###   #   #',
+    'echo.', 'echo #####  #####  ####   #   #  #####  #   #   ###   #', 'echo   #    #      #   #  ## ##    #    ##  #  #   #  #', 'echo   #    ####   ####   # # #    #    # # #  #####  #', 'echo   #    #      # #    #   #    #    #  ##  #   #  #', 'echo   #    #####  #  ##  #   #  #####  #   #  #   #  #####',
+    'echo.', `cd /d "${workspace}"`, 'prompt AXON $P$G', 'echo Genuine Windows shell ^| workspace ready.', 'echo.',
+  ].join('\r\n');
+  const command = ['@echo off', 'if /I "%~1"=="terminal" (', '  start "Axon Terminal" "%ComSpec%" /k "%~dp0axon-terminal.cmd"', '  exit /b 0', ')', `start "Axon" ${launch}`, 'exit /b 0', ''].join('\r\n');
+  fs.writeFileSync(path.join(dir, 'axon-terminal.cmd'), terminal, 'utf8');
+  fs.writeFileSync(path.join(dir, 'axon.cmd'), command, 'utf8');
+  process.env.PATH = dir + ';' + (process.env.PATH || '');
+  // Persist it for future Command Prompt / Windows Terminal sessions, without touching system PATH.
+  const escapedDir = dir.replace(/'/g, "''");
+  const ps = `$d='${escapedDir}';$p=[Environment]::GetEnvironmentVariable('Path','User');if(-not (($p -split ';') | Where-Object { $_ -eq $d })){[Environment]::SetEnvironmentVariable('Path',(($p.TrimEnd(';')+';'+$d).TrimStart(';')),'User')};Add-Type -Name AxonEnv -Namespace Native -MemberDefinition '[DllImport("user32.dll",SetLastError=true,CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd,uint Msg,IntPtr wParam,string lParam,uint flags,uint timeout,out IntPtr result);' -ErrorAction SilentlyContinue;$r=[IntPtr]::Zero;[Native.AxonEnv]::SendMessageTimeout([IntPtr]0xffff,0x1a,[IntPtr]::Zero,'Environment',2,1000,[ref]$r)|Out-Null`;
+  try { spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, stdio: 'ignore' }); } catch {}
+  return dir;
 }
-function createTerminalWindow() {
-  if (terminalWin && !terminalWin.isDestroyed()) { terminalWin.show(); terminalWin.focus(); return; }
-  terminalWin = new BrowserWindow({
-    width: 900, height: 620, minWidth: 620, minHeight: 420, show: false,
-    title: 'Axon Terminal', autoHideMenuBar: true, backgroundColor: '#050505',
-    icon: path.join(__dirname, 'assets', 'icon.png'),
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
-  });
-  terminalWin.loadFile(path.join(__dirname, 'renderer', 'terminal.html'));
-  terminalWin.once('ready-to-show', () => terminalWin.show());
-  terminalWin.on('closed', () => { terminalWin = null; stopTerminal(); });
-}
-function startTerminal() {
-  if (terminalProc && !terminalProc.killed) return { ok: true };
-  const cwd = ensureDefaultWorkspace();
+function openGenuineTerminal() {
+  ensureCliCommand();
   try {
-    terminalProc = spawn(process.env.ComSpec || 'cmd.exe', ['/Q', '/K'], { cwd, windowsHide: true, shell: false });
-    const emit = (data) => terminalWin?.webContents.send('terminal-output', String(data));
-    terminalProc.stdout?.on('data', emit); terminalProc.stderr?.on('data', emit);
-    terminalProc.on('error', (error) => emit('\r\n[terminal error] ' + error.message + '\r\n'));
-    terminalProc.on('exit', () => { terminalProc = null; terminalWin?.webContents.send('terminal-exit'); });
-    return { ok: true, cwd };
+    const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'start "Axon Terminal" "%ComSpec%" /k "' + path.join(cliDirectory(), 'axon-terminal.cmd') + '"'], { windowsHide: false, detached: true, stdio: 'ignore' });
+    child.unref(); return { ok: true };
   } catch (error) { return { ok: false, error: error.message }; }
 }
 function validBrowserURL(value) {
@@ -354,15 +357,7 @@ ipcMain.handle('load-state', () => config?.load() || {});
 ipcMain.handle('save-state', (_e, updates) => config?.save(updates) || {});
 // 'clear' is retained for compatibility; the renderer now owns conversation state.
 ipcMain.handle('clear', () => true);
-ipcMain.handle('terminal-open', () => { createTerminalWindow(); return { ok: true }; });
-ipcMain.handle('terminal-start', () => startTerminal());
-ipcMain.handle('terminal-write', (_e, input) => {
-  if (!terminalProc || terminalProc.killed) return { ok: false, error: 'Terminal is not running.' };
-  const command = String(input || '').replace(/[\0\r\n]/g, '').slice(0, 16000);
-  if (!command) return { ok: true };
-  terminalProc.stdin.write(command + '\r\n'); return { ok: true };
-});
-ipcMain.handle('terminal-restart', () => { stopTerminal(); return startTerminal(); });
+ipcMain.handle('terminal-open', () => openGenuineTerminal());
 ipcMain.handle('browser-show', (_e, bounds) => { setBrowserBounds(bounds); return true; });
 ipcMain.handle('browser-hide', () => { if (browserPanel) browserPanel.setBounds({ x: 0, y: 0, width: 1, height: 1 }); return true; });
 ipcMain.handle('browser-navigate', (_e, value) => {
@@ -697,10 +692,11 @@ app.whenReady().then(async () => {
   }
   config.save({ ...merged, ...state });
   CLAUDE_LAUNCH = findClaude();
+  ensureCliCommand();
   createTray();
   createWindow();
   startLanDiscovery();
   await ensureOllama();
 });
-app.on('before-quit', () => { stopTerminal(); if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
+app.on('before-quit', () => { if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
 app.on('window-all-closed', () => app.quit());
