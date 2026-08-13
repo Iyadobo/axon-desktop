@@ -205,7 +205,26 @@ function setModelByName(name) {
 }
 
 // ---- conversations / recents ----------------------------------------------
-function loadConvs() { try { conversations = Array.isArray(persisted.oconvs) ? persisted.oconvs : []; } catch { conversations = []; } }
+function normalizeConversation(value) {
+  if (!value || typeof value !== 'object' || !value.id) return null;
+  return {
+    ...value,
+    id: String(value.id),
+    title: typeof value.title === 'string' ? value.title : '(untitled chat)',
+    model: typeof value.model === 'string' ? value.model : '',
+    turns: Array.isArray(value.turns) ? value.turns
+      .filter((turn) => turn && (turn.role === 'user' || turn.role === 'assistant'))
+      .map((turn) => ({
+        role: turn.role,
+        content: typeof turn.content === 'string' ? turn.content : String(turn.content ?? ''),
+        attachmentCount: Number.isSafeInteger(turn.attachmentCount) ? Math.max(0, turn.attachmentCount) : 0,
+      })) : [],
+  };
+}
+function loadConvs() {
+  try { conversations = (Array.isArray(persisted.oconvs) ? persisted.oconvs : []).map(normalizeConversation).filter(Boolean); }
+  catch { conversations = []; }
+}
 function saveConvs() {
   // ponytail: keep readable history, never bulky base64 attachments or unlimited logs.
   const stored = conversations.slice(0, 50).map((c) => ({ ...c, turns: (c.turns || []).slice(-80).map((t) => ({ role: t.role, content: String(t.content || '').slice(0, 64000), attachmentCount: t.attachmentCount || 0 })) }));
@@ -218,7 +237,7 @@ function publishConversation(conv) {
 }
 function applySharedConversations(items) {
   if (!Array.isArray(items)) return;
-  const incoming = new Map(items.filter((item) => item?.id).map((item) => [item.id, item]));
+  const incoming = new Map(items.map(normalizeConversation).filter(Boolean).map((item) => [item.id, item]));
   const merged = conversations.filter((item) => !incoming.has(item.id));
   for (const item of incoming.values()) merged.push(item);
   conversations = merged.sort((a, b) => (b.updatedAt || b.ts || 0) - (a.updatedAt || a.ts || 0)).slice(0, 50);
@@ -252,10 +271,15 @@ function openConv(id) {
   showChatView();
   $('log').innerHTML = '';
   if (Array.isArray(conv.turns) && conv.turns.length) {
+    let skipped = 0;
     for (const turn of conv.turns) {
-      if (turn.role === 'user') addUserTurn(turn.content + (turn.attachmentCount ? '  +' + turn.attachmentCount + ' attachment' + (turn.attachmentCount === 1 ? '' : 's') : ''), [], false);
-      else addStoredAiTurn(turn.content, conv.model);
+      try {
+        const content = typeof turn.content === 'string' ? turn.content : String(turn.content ?? '');
+        if (turn.role === 'user') addUserTurn(content + (turn.attachmentCount ? '  +' + turn.attachmentCount + ' attachment' + (turn.attachmentCount === 1 ? '' : 's') : ''), [], false);
+        else if (turn.role === 'assistant') addStoredAiTurn(content, conv.model);
+      } catch { skipped++; }
     }
+    if (skipped) addSysNote('Some damaged saved turns were skipped. You can keep chatting normally.');
   } else addSysNote('This older chat has no saved transcript. New turns are saved locally from now on.');
   const running = currentTurn();
   if (running) $('log').appendChild(running.turnEl);
