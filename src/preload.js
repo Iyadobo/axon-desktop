@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ollama', {
   listModels: () => ipcRenderer.invoke('list-models'),
+  refreshCloudModels: () => ipcRenderer.invoke('refresh-cloud-models'),
   listCommands: () => ipcRenderer.invoke('list-commands'),
   fetchCommands: (model) => ipcRenderer.invoke('fetch-commands', model),
   refreshCommands: (model) => ipcRenderer.invoke('refresh-commands', model),

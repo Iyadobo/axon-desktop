@@ -98,7 +98,7 @@ function openSettings() {
   $('fontSel').value = settings.font;
   $('harnessSel').value = settings.harness;
   $('codexModel').value = settings.codexModel;
-  syncPaletteInputs(); renderSwatches(); renderProjects();
+  syncPaletteInputs(); renderSwatches(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
 }
 function closeSettings() { $('settings').classList.remove('show'); }
@@ -110,6 +110,11 @@ let defaultWorkspace = null;
 function loadProjects() { try { projects = Array.isArray(persisted.oprojects) ? persisted.oprojects : []; } catch {} }
 function saveProjects() { saveState('oprojects', projects); }
 function activeProject() { return projects.find((p) => p.id === activeProjectId) || null; }
+function selectProject(id) {
+  activeProjectId = id;
+  saveState('oactiveProject', activeProjectId);
+  renderProjects(); renderRecents(); updateProjectLabel();
+}
 function projectCwd() { return activeProject()?.path || defaultWorkspace || null; }
 function projectSystemPrompt() {
   const p = activeProject();
@@ -136,17 +141,40 @@ function renderProjects() {
   for (const p of projects) {
     const d = document.createElement('div'); d.className = 'proj-item' + (p.id === activeProjectId ? ' active' : '');
     d.innerHTML = '<span class="pname">' + esc(p.name) + '</span><span class="ppath" title="' + esc(p.path) + '">' + esc(p.path) + '</span>';
-    d.onclick = () => { activeProjectId = p.id; saveState('oactiveProject', activeProjectId); renderProjects(); renderRecents(); updateProjectLabel(); };
+    d.onclick = () => selectProject(p.id);
     const del = document.createElement('button'); del.className = 'pdel'; del.textContent = '✕'; del.title = 'Delete project (keeps chats)';
     del.onclick = (e) => { e.stopPropagation(); projects = projects.filter((x) => x.id !== p.id); if (activeProjectId === p.id) { activeProjectId = null; saveState('oactiveProject', null); } saveProjects(); renderProjects(); renderRecents(); updateProjectLabel(); };
     d.appendChild(del); box.appendChild(d);
   }
+  renderSidebarProjects();
   const p = activeProject();
   const wrap = $('projInstrWrap');
   if (p) { wrap.style.display = ''; $('projInstrLabel').textContent = 'Instructions — ' + p.name; $('projInstr').value = p.instructions || ''; }
   else wrap.style.display = 'none';
 }
+function renderSidebarProjects() {
+  const box = $('sidebarProjects'); if (!box) return;
+  box.innerHTML = '';
+  const all = document.createElement('button');
+  all.className = 'sidebar-project' + (!activeProjectId ? ' active' : '');
+  all.type = 'button'; all.textContent = 'All chats';
+  all.onclick = () => selectProject(null);
+  box.appendChild(all);
+  for (const project of projects) {
+    const item = document.createElement('button');
+    item.className = 'sidebar-project' + (project.id === activeProjectId ? ' active' : '');
+    item.type = 'button'; item.title = project.path;
+    const name = document.createElement('span'); name.textContent = project.name;
+    const count = document.createElement('span'); count.className = 'project-count';
+    count.textContent = String(conversations.filter((chat) => chat.projectId === project.id).length);
+    item.append(name, count); item.onclick = () => selectProject(project.id); box.appendChild(item);
+  }
+}
 function updateProjectLabel() {
+  const label = $('recents-label'); const selected = activeProject();
+  label.textContent = selected ? ('Recents · ' + selected.name) : 'All chats';
+  label.title = selected ? (selected.name + ' — ' + selected.path) : 'All project and unassigned chats';
+  return;
   const p = activeProject();
   const el = $('recents-label');
   el.textContent = p ? ('▾ ' + p.name) : 'Recents';
@@ -222,22 +250,58 @@ function setLoading(text, done = false) {
 }
 
 // ---- models ----------------------------------------------------------------
+function cachedCloudCatalogue() {
+  const cache = persisted.ocloudModels;
+  return cache && Array.isArray(cache.models) ? cache : { models: [], fetchedAt: null };
+}
+function renderCloudCatalogueInfo() {
+  const cache = cachedCloudCatalogue(); const info = $('cloudModelsInfo');
+  if (!info) return;
+  info.textContent = cache.models.length
+    ? `${cache.models.length} cloud models cached${cache.fetchedAt ? ' · refreshed ' + new Date(cache.fetchedAt).toLocaleString() : ''}`
+    : 'No cloud catalogue cached yet.';
+}
+async function refreshCloudCatalogue() {
+  const button = $('cloudModelsRefresh'); button.disabled = true;
+  $('cloudModelsInfo').textContent = 'Refreshing official Ollama Cloud catalogue…';
+  try {
+    const cache = await window.ollama.refreshCloudModels();
+    if (!Array.isArray(cache?.models) || !cache.models.length) throw new Error('No cloud models were returned.');
+    saveState('ocloudModels', { models: cache.models, fetchedAt: cache.fetchedAt || new Date().toISOString() });
+    await loadModels(); renderCloudCatalogueInfo();
+  } catch (error) {
+    $('cloudModelsInfo').textContent = 'Could not refresh: ' + (error?.message || 'network error') + '. Existing cache was kept.';
+  } finally { button.disabled = false; }
+}
+function mergeModels(local, cloud) {
+  const seen = new Set(); const merged = [];
+  for (const model of local) {
+    if (!model?.name || seen.has(model.name)) continue;
+    seen.add(model.name); merged.push({ ...model, source: 'local' });
+  }
+  for (const model of cloud) {
+    if (!model?.name || seen.has(model.name)) continue;
+    seen.add(model.name); merged.push({ ...model, source: 'cloud' });
+  }
+  return merged;
+}
 async function loadModels() {
   setLoading('Checking local models…');
   try {
     const data = await window.ollama.listModels();
     const sel = $('model'); sel.innerHTML = '';
-    const models = data.models || [];
+    const localModels = data.models || [];
+    const models = mergeModels(localModels, data.remote ? [] : cachedCloudCatalogue().models);
     if (!models.length) return setStatus(false, 'no models');
     for (const m of models) {
       const o = document.createElement('option');
       o.value = m.name;
-      o.textContent = m.name + (m.details?.parameter_size ? ' · ' + m.details.parameter_size : '');
+      o.textContent = m.name + (m.source === 'cloud' ? ' · Cloud' : (m.details?.parameter_size ? ' · ' + m.details.parameter_size : ''));
       sel.appendChild(o);
     }
     const pref = persisted.omodel;
     if (pref && models.some((m) => m.name === pref)) sel.value = pref;
-    setStatus(true, 'ready');
+    setStatus(true, localModels.length ? (cachedCloudCatalogue().models.length ? 'ready · cloud' : 'ready') : 'cloud cache');
   } catch { setStatus(false, 'offline'); }
 }
 function setModelByName(name) {
@@ -290,8 +354,9 @@ function applySharedConversations(items) {
   if (activeId) openConv(activeId);
 }
 function renderRecents() {
+  renderSidebarProjects();
   const box = $('recents'); box.innerHTML = '';
-  const visible = (lanServerOn || lanClientConnected) ? conversations : conversations.filter((c) => (c.projectId || null) === activeProjectId);
+  const visible = (lanServerOn || lanClientConnected || !activeProjectId) ? conversations : conversations.filter((c) => c.projectId === activeProjectId);
   if (!visible.length) {
     const e = document.createElement('div'); e.style.cssText = 'font-size:12px;opacity:.4;padding:7px 8px';
     e.textContent = activeProjectId ? 'No chats in this project yet.' : 'No chats yet.'; box.appendChild(e);
@@ -754,7 +819,9 @@ for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor'
 }
 $('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settings.theme] || THEME_PALETTES.midnight }; settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); renderSwatches(); syncPaletteInputs(); };
 $('recents-label').onclick = openSettings;
+$('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
+$('cloudModelsRefresh').onclick = refreshCloudCatalogue;
 $('workspacePick').onclick = async () => {
   const picked = await window.ollama.pickFolder();
   if (!picked) return;
@@ -985,11 +1052,11 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.ollama.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft', 'oworkspace']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;
-        try { persisted[key] = ['osettings', 'oprojects', 'oconvs'].includes(key) ? JSON.parse(oldValue) : oldValue; }
+        try { persisted[key] = ['osettings', 'oprojects', 'oconvs', 'ocloudModels'].includes(key) ? JSON.parse(oldValue) : oldValue; }
         catch { continue; }
       }
     }

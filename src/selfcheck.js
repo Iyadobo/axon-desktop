@@ -71,12 +71,13 @@ ok('assistant with no content -> null', parseEvent(JSON.stringify({ type: 'assis
   try {
     const store = createConfigStore(dir);
     const workspace = path.join(dir, 'workspace');
-    store.save({ osettings: { systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', odraft: 'unfinished note', oworkspace: workspace, osharedConvs: [{ id: 'shared-1', turns: [] }], blocked: 'nope' });
+    store.save({ osettings: { systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', odraft: 'unfinished note', oworkspace: workspace, osharedConvs: [{ id: 'shared-1', turns: [] }], ocloudModels: { models: [{ name: 'example-cloud' }], fetchedAt: '2026-08-15T00:00:00.000Z' }, blocked: 'nope' });
     const loaded = store.load();
     ok('config persists approved app state', loaded.osettings.systemPrompt === 'Be concise.' && loaded.omodel === 'qwen3:4b');
     ok('config persists a bounded composer draft', loaded.odraft === 'unfinished note');
     ok('config persists the default workspace', loaded.oworkspace === workspace);
     ok('config persists shared chat snapshots', loaded.osharedConvs?.[0]?.id === 'shared-1');
+    ok('config persists the cloud model catalogue cache', loaded.ocloudModels?.models?.[0]?.name === 'example-cloud');
     ok('config rejects unapproved state keys', !Object.hasOwn(loaded, 'blocked'));
     fs.unlinkSync(path.join(dir, 'settings.json'));
     ok('config restores from its backup', store.load().odraft === 'unfinished note');

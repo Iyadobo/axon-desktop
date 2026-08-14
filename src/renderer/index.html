@@ -46,7 +46,16 @@
   .brand .logo { width:23px; height:31px; object-fit:contain; flex-shrink:0; }
   .newchat { display:flex; align-items:center; gap:8px; padding:7px 8px; font-size:13px; border-radius:8px; cursor:pointer; }
   .newchat:hover { background:var(--color-surface); }
-  .recents-label { margin-top:20px; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
+  .side-section-head { display:flex; align-items:center; justify-content:space-between; margin-top:18px; padding:0 8px 5px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; opacity:.55; }
+  .side-section-head button { border:0; background:transparent; color:var(--color-neutral); font:inherit; font-size:16px; line-height:16px; cursor:pointer; padding:0 2px; }
+  .side-section-head button:hover { color:var(--color-accent); }
+  #sidebarProjects { display:flex; flex-direction:column; gap:2px; max-height:142px; overflow:auto; padding:0 2px; }
+  .sidebar-project { min-width:0; display:flex; align-items:center; gap:7px; width:100%; border:0; border-radius:7px; padding:6px 7px; background:transparent; color:var(--color-neutral); font:inherit; font-size:12px; text-align:left; cursor:pointer; }
+  .sidebar-project > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sidebar-project:hover { background:var(--color-surface); color:var(--color-text); }
+  .sidebar-project.active { background:color-mix(in srgb, var(--color-accent) 10%, var(--color-bg)); color:var(--color-text); font-weight:700; }
+  .project-count { margin-left:auto; color:var(--color-neutral); font-size:10px; font-variant-numeric:tabular-nums; }
+  .recents-label { margin-top:17px; font-size:11px; text-transform:uppercase; letter-spacing:.06em;
     opacity:.45; padding:0 8px; margin-bottom:4px; cursor:pointer; }
   .recents-label:hover { opacity:.8; color:var(--color-accent); }
   #recents { display:flex; flex-direction:column; overflow:auto; flex:1; }
@@ -361,6 +370,8 @@
   <div id="side">
     <div class="brand"><img class="logo" src="../assets/icon.png" alt="Axon" /><span style="flex:1">Axon</span><button class="iconbtn" id="settingsBtn" title="Settings" aria-label="Settings" style="width:26px;height:26px"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1 1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button></div>
     <div class="newchat" id="newchat"><span style="opacity:.6">+</span><span>New chat</span></div>
+    <div class="side-section-head"><span>Projects</span><button id="sidebarProjectsAdd" type="button" title="Add project" aria-label="Add project">+</button></div>
+    <div id="sidebarProjects" aria-label="Projects"></div>
     <div class="recents-label" id="recents-label">Recents</div>
     <div id="recents"></div>
     <div class="sidefoot">
@@ -422,6 +433,7 @@
         <div class="lan-info">Applied to every new Axon session. Claude Code remains the tool harness, not the assistant's identity.</div>
       </label>
       <div class="fld"><span>Agent harness</span><div class="row"><label class="fld"><select id="harnessSel"><option value="claude">Claude Code + local Ollama</option><option value="codex">Codex CLI</option></select></label><label class="fld"><input id="codexModel" type="text" placeholder="Codex model (account default if blank)" /></label></div><div class="lan-info">Codex CLI uses its signed-in account and your selected workspace. Claude Code requires its own CLI installation.</div></div>
+      <div class="fld"><span>Ollama Cloud catalogue</span><div class="proj-row"><button id="cloudModelsRefresh" type="button">Refresh &amp; cache cloud models</button><span id="cloudModelsInfo" class="lan-info"></span></div><div class="lan-info">Adds Ollama's official cloud catalogue to the model picker without downloading weights. Sign in once with <code>ollama signin</code> before running a cloud model.</div></div>
       <div class="fld"><span>Appearance</span><div class="swatches" id="swatches"></div></div>
       <div class="row">
         <label class="fld"><span>Theme</span>

@@ -142,6 +142,30 @@ function ollama(pathname) {
       .on('error', reject);
   });
 }
+function fetchCloudCatalogue() {
+  return new Promise((resolve, reject) => {
+    const req = https.get('https://ollama.com/api/tags', {
+      headers: { 'User-Agent': `Axon/${app.getVersion()}`, Accept: 'application/json' },
+    }, (res) => {
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Ollama Cloud returned ${res.statusCode}`)); }
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 2 * 1024 * 1024) req.destroy(new Error('Ollama Cloud catalogue was unexpectedly large.'));
+      });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(body);
+          const models = Array.isArray(parsed.models) ? parsed.models.filter((model) => model && typeof model.name === 'string').slice(0, 200) : [];
+          resolve({ models, fetchedAt: new Date().toISOString() });
+        } catch { reject(new Error('Ollama Cloud returned an invalid catalogue.')); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => req.destroy(new Error('Ollama Cloud catalogue timed out.')));
+  });
+}
 async function modelSupportsVision(model) {
   if (visionCapability.has(model)) return visionCapability.get(model);
   try {
@@ -415,6 +439,7 @@ function runCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, ima
 
 // ---- IPC ------------------------------------------------------------------
 ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await ollama('/api/tags')));
+ipcMain.handle('refresh-cloud-models', async () => fetchCloudCatalogue());
 ipcMain.handle('list-commands', () => listCommands());
 function safeImages(value) {
   if (!Array.isArray(value)) return [];
@@ -823,7 +848,7 @@ ipcMain.handle('update-accept-offer', (_e, id, approved) => {
   if (!approved) pendingUpdateOffers.delete(id);
   lanClient.send(approved ? { type: 'update-accept', id } : { type: 'update-error', id, message: 'The client declined the update offer.' }); return { ok: true };
 });
-ipcMain.handle('update-open-installer', (_e, file) => {
+ipcMain.handle('update-open-installer', async (_e, file) => {
   const dir = path.join(app.getPath('userData'), 'updates'); const resolved = path.resolve(String(file || ''));
   const extension = path.extname(resolved).replace(/^\./, '');
   if (!resolved.startsWith(path.resolve(dir) + path.sep) || !installerExtensions().some((item) => item.toLowerCase() === extension.toLowerCase()) || !fs.existsSync(resolved)) return { error: 'Verified installer not found.' };
