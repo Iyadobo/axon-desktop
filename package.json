@@ -1,0 +1,45 @@
+{
+  "name": "axon",
+  "version": "0.6.0",
+  "description": "Axon is a local agent workspace powered by Claude Code and a selected Ollama model",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node src/selfcheck.js",
+    "dist:win": "electron-builder --win nsis",
+    "dist:linux": "electron-builder --linux AppImage deb",
+    "publish:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1"
+  },
+  "build": {
+    "appId": "io.axon.workspace",
+    "productName": "Axon",
+    "asar": true,
+    "files": [
+      "src/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/icon.ico"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Development"
+    },
+    "appImage": {
+      "artifactName": "Axon-${version}.${ext}"
+    },
+    "deb": {
+      "artifactName": "Axon_${version}_amd64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Axon-Setup-${version}.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^26.15.3"
+  }
+}
