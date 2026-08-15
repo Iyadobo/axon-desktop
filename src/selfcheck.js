@@ -7,39 +7,51 @@ const { parseEvent } = require('./cc');
 let passed = 0, failed = 0;
 const ok = (n, c) => { if (c) { passed++; console.log('  ✓', n); } else { failed++; console.error('  ✗ FAIL:', n); } };
 
-// 1. assistant text block -> delta
+// 1. assistant text blocks -> ordered delta actions
 (function () {
   const ev = parseEvent(JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Hello ' }, { type: 'text', text: 'world' }] } }));
-  ok('assistant text -> deltas', ev && ev.deltas.length === 2 && ev.deltas[0] === 'Hello ' && ev.deltas[1] === 'world');
+  ok('assistant text -> deltas', ev && ev.flow.length === 2 && ev.flow[0].act === 'delta' && ev.flow[0].text === 'Hello ' && ev.flow[1].text === 'world');
 })();
 
 // 2. assistant tool_use -> step tool_call
 (function () {
   const ev = parseEvent(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'a.txt' } }] } }));
-  ok('tool_use -> tool_call step', ev && ev.steps[0]?.type === 'tool_call' && ev.steps[0].fn === 'Read' && ev.steps[0].args.file_path === 'a.txt');
+  ok('tool_use -> tool_call step', ev && ev.flow[0]?.act === 'step' && ev.flow[0].step.type === 'tool_call' && ev.flow[0].step.fn === 'Read' && ev.flow[0].step.args.file_path === 'a.txt');
 })();
 
 // 3. user tool_result -> step
 (function () {
   const ev = parseEvent(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'file body' }] } }));
-  ok('tool_result -> step', ev && ev.steps[0]?.type === 'tool_result' && ev.steps[0].result === 'file body');
+  ok('tool_result -> step', ev && ev.flow[0]?.act === 'step' && ev.flow[0].step.type === 'tool_result' && ev.flow[0].step.result === 'file body');
   // tool_result content as array -> stringified
   const ev2 = parseEvent(JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: [{ type: 'text', text: 'x' }] }] } }));
-  ok('tool_result array -> stringified', ev2 && typeof ev2.steps[0].result === 'string');
+  ok('tool_result array -> stringified', ev2 && typeof ev2.flow[0].step.result === 'string');
 })();
 
-// 4. result event -> done
+// 4. result event -> done action
 (function () {
   const ev = parseEvent(JSON.stringify({ type: 'result', is_error: false, result: 'final answer', session_id: 'abc' }));
-  ok('result -> done', ev && ev.done === true && ev.is_error === false && ev.result === 'final answer' && ev.session_id === 'abc');
+  ok('result -> done', ev && ev.flow[0]?.act === 'done' && ev.flow[0].is_error === false && ev.flow[0].result === 'final answer' && ev.flow[0].session_id === 'abc');
   const err = parseEvent(JSON.stringify({ type: 'result', is_error: true, result: 'boom' }));
-  ok('result error flagged', err && err.is_error === true);
+  ok('result error flagged', err && err.flow[0].is_error === true);
 })();
 
-// 5. unknown / system / garbage -> null
+// 5. thinking block -> thinking step (no longer dropped)
+(function () {
+  const ev = parseEvent(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'let me reason' }] } }));
+  ok('assistant thinking -> thinking step', ev && ev.flow[0]?.act === 'step' && ev.flow[0].step.type === 'thinking' && ev.flow[0].step.text === 'let me reason');
+})();
+
+// 6. ordering preserved: thinking -> text -> tool_use in one assistant message
+(function () {
+  const ev = parseEvent(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'plan' }, { type: 'text', text: 'doing it' }, { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls' } }] } }));
+  ok('flow preserves block order', ev && ev.flow.length === 3 && ev.flow[0].step.type === 'thinking' && ev.flow[1].act === 'delta' && ev.flow[1].text === 'doing it' && ev.flow[2].step.fn === 'Bash');
+})();
+
+// 7. unknown / system / garbage -> null
 ok('system event -> null', parseEvent(JSON.stringify({ type: 'system', subtype: 'init' })) === null);
 ok('non-JSON -> null', parseEvent('not json at all') === null);
-ok('assistant with no content -> null', parseEvent(JSON.stringify({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'hmm' }] } })) === null);
+ok('assistant truly empty -> null', parseEvent(JSON.stringify({ type: 'assistant', message: { content: [] } })) === null);
 
 // 6. custom slash-command expansion (pure, src/commands.js)
 (function () {

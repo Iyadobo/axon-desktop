@@ -6,7 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($Repository)) {
-  throw 'Set AXON_RELEASE_REPOSITORY (for example, owner/Axon-Releases) or pass -Repository before publishing.'
+  throw 'Set AXON_RELEASE_REPOSITORY (for example, owner/Axon) or pass -Repository before publishing.'
 }
 $repo = $Repository
 $root = Split-Path -Parent $PSScriptRoot

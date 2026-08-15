@@ -428,21 +428,91 @@ function addUserTurn(text, images = [], persist = true) {
   }
 }
 function addStoredAiTurn(text, model) {
-  const turn = newAiTurn(model); turn.think?.remove(); turn.think = null; turn.started = true;
-  renderMarkdown(turn.bubbleEl, text); addCopyBtn(turn.turnEl, text);
+  const turn = newAiTurn(model);
+  if (turn.think) { turn.think.remove(); turn.think = null; }
+  turn.started = true;
+  const block = addBlock(turn, 'text'); block.raw = String(text || '');
+  renderMarkdown(block.el, block.raw); addCopyBtn(turn.turnEl, block.raw);
 }
 function newAiTurn(model) {
   const t = document.createElement('div'); t.className = 'turn ai';
   const head = document.createElement('div'); head.className = 'turnhead';
   head.textContent = model || '';
-  const steps = document.createElement('div'); steps.className = 'steps';
-  const bubble = document.createElement('div'); bubble.className = 'bubble';
+  const stream = document.createElement('div'); stream.className = 'stream';
   const think = document.createElement('span'); think.className = 'think'; think.innerHTML = '<i></i><i></i><i></i>';
-  bubble.appendChild(think);
+  stream.appendChild(think);
   if (head.textContent) t.appendChild(head);
-  t.appendChild(steps); t.appendChild(bubble); $('log').appendChild(t);
+  t.appendChild(stream); $('log').appendChild(t);
   scrollBottom();
-  return { turnEl: t, stepsEl: steps, bubbleEl: bubble, think, cursor: null, content: '', started: false, model };
+  return { turnEl: t, streamEl: stream, think, blocks: [], mode: null, tail: '', started: false, model };
+}
+// One ordered block in the transcript stream: text | think | tool | result.
+function addBlock(turn, kind) {
+  const el = document.createElement('div'); el.className = 'block ' + kind;
+  turn.streamEl.appendChild(el);
+  const block = { kind, el, raw: '' };
+  turn.blocks.push(block);
+  return block;
+}
+// Concatenated assistant prose (text blocks only) — used for copy + saved transcript.
+function turnText(turn) { return turn.blocks.filter((b) => b.kind === 'text').map((b) => b.raw).join('\n\n').trim(); }
+// First real content clears the "Thinking…" dots placeholder.
+function startContent(turn) {
+  if (turn.started) return;
+  turn.started = true;
+  if (turn.think) { turn.think.remove(); turn.think = null; }
+}
+// Append assistant prose to the current text block, opening a new one after any
+// tool/think block so prose that follows a tool call lands below it, not above.
+function appendText(turn, text) {
+  let block = turn.blocks[turn.blocks.length - 1];
+  if (!block || block.kind !== 'text') block = addBlock(turn, 'text');
+  block.raw += text;
+  renderMarkdown(block.el, block.raw);
+}
+// Collapsible reasoning block. Body is plain text (escaped via textContent).
+function appendThink(turn, text) {
+  let block = turn.blocks[turn.blocks.length - 1];
+  if (!block || block.kind !== 'think') {
+    block = addBlock(turn, 'think');
+    const head = document.createElement('button'); head.className = 'think-toggle'; head.type = 'button';
+    head.innerHTML = '<span class="caret">▾</span> <span class="think-label">Thinking</span>';
+    const body = document.createElement('div'); body.className = 'think-body';
+    block.el.appendChild(head); block.el.appendChild(body);
+    head.onclick = () => { block.el.classList.toggle('closed'); head.querySelector('.caret').textContent = block.el.classList.contains('closed') ? '▸' : '▾'; };
+    block.body = body;
+  }
+  block.raw += text;
+  block.body.textContent = block.raw;
+}
+// Streaming-aware splitter for models that inline reasoning as <think>…</think>
+// inside the text stream (instead of emitting proper thinking content blocks).
+// Emits completed text/think fragments to the transcript and buffers a partial
+// tag at the boundary so a split `</th` + `ink>` doesn't leak raw markup.
+function splitPartial(buf, tag) {
+  for (let n = Math.min(buf.length, tag.length - 1); n > 0; n--) {
+    if (tag.startsWith(buf.slice(buf.length - n))) return buf.slice(0, buf.length - n);
+  }
+  return buf;
+}
+function feedText(turn, chunk) {
+  let buf = turn.tail + chunk;
+  turn.tail = '';
+  while (buf) {
+    if (turn.mode === 'think') {
+      const close = buf.indexOf('</think>');
+      if (close === -1) { const safe = splitPartial(buf, '</think>'); if (safe.length) appendThink(turn, safe); turn.tail = buf.slice(safe.length); return; }
+      appendThink(turn, buf.slice(0, close));
+      buf = buf.slice(close + 8);
+      turn.mode = 'text';
+    } else {
+      const open = buf.indexOf('<think>');
+      if (open === -1) { const safe = splitPartial(buf, '<think>'); if (safe.length) appendText(turn, safe); turn.tail = buf.slice(safe.length); return; }
+      if (open > 0) appendText(turn, buf.slice(0, open));
+      buf = buf.slice(open + 7);
+      turn.mode = 'think';
+    }
+  }
 }
 function addSysNote(text) {
   const t = document.createElement('div'); t.className = 'turn sys';
@@ -451,19 +521,29 @@ function addSysNote(text) {
 }
 function addStep(s, turn = currentTurn()) {
   if (!turn) return;
-  turn.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
+  startContent(turn);
+  turn.blocks.forEach((b) => b.el.classList.remove('active'));
+  if (s.type === 'thinking') { appendThink(turn, String(s.text || '')); scrollBottom(); return; }
   if (s.type === 'tool_call') {
-    const d = document.createElement('div'); d.className = 'step tool active';
-    d.innerHTML = '▸ <span class="fn">' + esc(s.fn) + '</span> ' + esc(typeof s.args === 'string' ? s.args : JSON.stringify(s.args));
-    turn.stepsEl.appendChild(d);
+    const block = addBlock(turn, 'tool'); block.el.classList.add('active');
+    const fn = document.createElement('span'); fn.className = 'fn'; fn.textContent = '▸ ' + s.fn;
+    const args = document.createElement('span'); args.className = 'args'; args.textContent = ' ' + (typeof s.args === 'string' ? s.args : JSON.stringify(s.args));
+    block.el.appendChild(fn); block.el.appendChild(args);
     if (s.fn === 'WebFetch' && typeof s.args?.url === 'string') openBrowserAt(s.args.url);
-  } else if (s.type === 'tool_result') {
-    const d = document.createElement('div'); d.className = 'step';
-    const r = String(s.result).slice(0, 500);
-    d.innerHTML = '<span class="res">↳ ' + esc(r) + (s.result.length > 500 ? ' …' : '') + '</span>';
-    turn.stepsEl.appendChild(d);
+    scrollBottom(); return;
   }
-  scrollBottom();
+  if (s.type === 'tool_result') {
+    const full = String(s.result);
+    const block = addBlock(turn, 'result');
+    const head = document.createElement('span'); head.className = 'res'; head.textContent = '↳ ' + full.slice(0, 500) + (full.length > 500 ? ' …' : '');
+    block.el.appendChild(head);
+    if (full.length > 500) {
+      block.el.classList.add('collapsible', 'closed');
+      head.style.cursor = 'pointer';
+      head.onclick = () => { const open = block.el.classList.toggle('closed'); head.textContent = '↳ ' + (open ? full.slice(0, 500) + ' …' : full); };
+    }
+    scrollBottom(); return;
+  }
 }
 function scrollBottom() { const s = $('scroller'); s.scrollTop = s.scrollHeight; }
 
@@ -510,34 +590,32 @@ function renderMarkdown(el, text) {
 // ---- stream events ---------------------------------------------------------
 window.ollama.on('chat-delta', ({ requestId, text }) => {
   const turn = activeTurns.get(requestId); if (!turn) return;
-  if (!turn.started) {
-    turn.started = true;
-    turn.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
-    if (turn.think) { turn.think.remove(); turn.think = null; }
-  }
-  turn.content += text;
-  renderMarkdown(turn.bubbleEl, turn.content);
+  startContent(turn);
+  feedText(turn, text);
   if (turn.conversationId === activeId) scrollBottom();
 });
 window.ollama.on('chat-step', ({ requestId, step }) => addStep(step, activeTurns.get(requestId)));
 window.ollama.on('chat-error', ({ requestId, message }) => {
   const turn = activeTurns.get(requestId); if (!turn || stopping.has(requestId)) return;
   if (turn.think) { turn.think.remove(); turn.think = null; }
-  turn.turnEl.classList.add('error'); turn.bubbleEl.textContent = '[error] ' + message;
+  turn.turnEl.classList.add('error');
+  turn.streamEl.innerHTML = '<div class="block text">[error] ' + esc(message) + '</div>';
 });
 window.ollama.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   const turn = activeTurns.get(requestId); if (!turn) return;
   if (turn.think) { turn.think.remove(); turn.think = null; }
-  turn.stepsEl.querySelectorAll('.step.active').forEach((el) => el.classList.remove('active'));
+  turn.blocks.forEach((b) => b.el.classList.remove('active'));
+  const text = turnText(turn);
   if (steered || steering.has(requestId)) {
-    turn.turnEl.classList.add('error'); turn.bubbleEl.textContent = '(steered — continuing with your new instruction)';
+    turn.turnEl.classList.add('error'); turn.streamEl.innerHTML = '<div class="block text">(steered — continuing with your new instruction)</div>';
   } else if (stopping.has(requestId)) {
-    turn.turnEl.classList.add('error'); turn.bubbleEl.textContent = '(stopped)';
-  } else if (!turn.started && !turn.turnEl.classList.contains('error')) turn.bubbleEl.textContent = '(no response)';
-  else if (turn.started) { renderMarkdown(turn.bubbleEl, turn.content); addCopyBtn(turn.turnEl, turn.content); }
-  if (turn.started) {
+    turn.turnEl.classList.add('error'); turn.streamEl.innerHTML = '<div class="block text">(stopped)</div>';
+  } else if (!turn.started && !turn.turnEl.classList.contains('error')) {
+    turn.streamEl.innerHTML = '<div class="block text">(no response)</div>';
+  } else if (turn.started && !turn.turnEl.classList.contains('error')) { addCopyBtn(turn.turnEl, text); }
+  if (turn.started && text) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
-    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: turn.content }); saveConvs(); publishConversation(conv); }
+    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: text }); saveConvs(); publishConversation(conv); }
   }
   if (sessionId) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
@@ -648,7 +726,7 @@ async function startMessage(entry) {
   const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, harness: conv.harness || entry.harness });
   if (!result?.ok) {
     const failed = activeTurns.get(requestId);
-    if (failed) { failed.turnEl.classList.add('error'); failed.bubbleEl.textContent = '[error] ' + (result?.error || 'Could not start this chat.'); activeTurns.delete(requestId); renderRecents(); syncComposerState(); }
+    if (failed) { failed.turnEl.classList.add('error'); failed.streamEl.innerHTML = '<div class="block text">[error] ' + esc(result?.error || 'Could not start this chat.') + '</div>'; activeTurns.delete(requestId); renderRecents(); syncComposerState(); }
   }
 }
 
@@ -860,7 +938,6 @@ $('depsBtn').onclick = async () => {
   catch (e) { $('maintenanceInfo').textContent = 'Setup error: ' + e.message; }
   $('depsBtn').disabled = false;
 };
-$('cleanupBtn').onclick = async () => { const result = await window.ollama.cleanupLegacyAxion(); $('maintenanceInfo').textContent = result?.error || 'Windows Installed Apps opened. Remove any old Axion entries; keep Axon.'; };
 
 // ---- LAN: same-WiFi link (server / client) ---------------------------------
 // ponytail: the renderer just toggles server / connects client and shows status;

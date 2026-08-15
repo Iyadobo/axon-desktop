@@ -32,7 +32,7 @@ const OLLAMA_BASE = OLLAMA_URL.replace(/\/$/, ''); // claude talks to Ollama's n
 // ponytail: scoped auto-approve instead of blanket --dangerously-skip-permissions; user wanted auto-run.
 const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 // The official release feed. Maintainers can point a fork at its own feed.
-const UPDATE_REPOSITORY = process.env.AXON_UPDATE_REPOSITORY || 'Iyadobo/Axon-Releases';
+const UPDATE_REPOSITORY = process.env.AXON_UPDATE_REPOSITORY || 'Iyadobo/Axon';
 
 let tray = null, win = null, ollamaProc = null, browserPanel = null, isQuitting = false;
 let trayLabel = 'Axon: starting…';
@@ -365,12 +365,14 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
       let nl; while ((nl = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
         const ev = parseEvent(line);
-        if (!ev) continue;
-        if (ev.deltas) for (const d of ev.deltas) send('chat-delta', d);
-        if (ev.steps) for (const s of ev.steps) send('chat-step', s);
-        if (ev.done) {
-          if (ev.is_error) { visionRejected ||= isVisionRejection(ev.result); if (!visionRejected) send('chat-error', ev.result); }
-          if (ev.session_id) resultSid = ev.session_id;
+        if (!ev || !ev.flow) continue;
+        for (const f of ev.flow) {
+          if (f.act === 'delta') send('chat-delta', f.text);
+          else if (f.act === 'step') send('chat-step', f.step);
+          else if (f.act === 'done') {
+            if (f.is_error) { visionRejected ||= isVisionRejection(f.result); if (!visionRejected) send('chat-error', f.result); }
+            if (f.session_id) resultSid = f.session_id;
+          }
         }
       }
     });
@@ -878,10 +880,6 @@ ipcMain.handle('install-dependencies', async () => {
   else if (!before.claude) await run('cmd.exe', ['/d', '/s', '/c', 'npm install -g @anthropic-ai/claude-code'], 'Claude Code');
   return { ok: true, steps, status: await dependencyStatus() };
 });
-ipcMain.handle('cleanup-legacy-axion', async () => {
-  if (process.platform !== 'win32') return { error: 'Linux packages are managed by your distribution; remove an old Axon package with your package manager if needed.' };
-  await shell.openExternal('ms-settings:appsfeatures'); return { ok: true };
-});
 
 // Fetch the real Claude Code slash-command list (the same menu Claude shows on `/`).
 // Source: the `system/init` stream-json event fires at session start with a
@@ -924,8 +922,6 @@ app.whenReady().then(async () => {
   // Axon folder wins while a dev/package casing change cannot lose history.
   const state = config.load(); const parent = path.dirname(userDataPath);
   const candidates = [
-    path.join(parent, 'axion', 'settings.json'),
-    path.join(parent, 'Axion', 'settings.json'),
     path.join(parent, 'axon', 'settings.json'),
     path.join(parent, 'ollama-desktop-harness', 'settings.json'),
   ];
