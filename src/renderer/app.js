@@ -326,8 +326,22 @@ function normalizeConversation(value) {
         role: turn.role,
         content: typeof turn.content === 'string' ? turn.content : String(turn.content ?? ''),
         attachmentCount: Number.isSafeInteger(turn.attachmentCount) ? Math.max(0, turn.attachmentCount) : 0,
+        ...(normalizeSteps(turn.steps).length ? { steps: normalizeSteps(turn.steps) } : {}),
       })) : [],
   };
+}
+// Saved transcripts are also received over LAN sharing, so treat every step as
+// untrusted: keep the four known shapes, drop anything else.
+function normalizeSteps(value) {
+  if (!Array.isArray(value)) return [];
+  const out = [];
+  for (const s of value) {
+    if (!s || typeof s !== 'object') continue;
+    if (s.k === 'text' || s.k === 'think') { const text = String(s.text ?? ''); if (text) out.push({ k: s.k, text }); }
+    else if (s.k === 'tool') out.push({ k: 'tool', id: s.id ? String(s.id) : undefined, fn: String(s.fn ?? 'tool'), args: s.args ?? {} });
+    else if (s.k === 'result') out.push({ k: 'result', id: s.id ? String(s.id) : undefined, is_error: !!s.is_error, result: String(s.result ?? '') });
+  }
+  return out;
 }
 function loadConvs() {
   try { conversations = (Array.isArray(persisted.oconvs) ? persisted.oconvs : []).map(normalizeConversation).filter(Boolean); }
@@ -335,8 +349,28 @@ function loadConvs() {
 }
 function saveConvs() {
   // ponytail: keep readable history, never bulky base64 attachments or unlimited logs.
-  const stored = conversations.slice(0, 50).map((c) => ({ ...c, turns: (c.turns || []).slice(-80).map((t) => ({ role: t.role, content: String(t.content || '').slice(0, 64000), attachmentCount: t.attachmentCount || 0 })) }));
+  const stored = conversations.slice(0, 50).map((c) => ({
+    ...c,
+    turns: (c.turns || []).slice(-80).map((t) => ({
+      role: t.role,
+      content: String(t.content || '').slice(0, 64000),
+      attachmentCount: t.attachmentCount || 0,
+      ...(t.steps?.length ? { steps: trimSteps(t.steps) } : {}),
+    })),
+  }));
   saveState('oconvs', stored);
+}
+// Tool output is unbounded (a Read of a large file, a long grep), and the whole
+// conversation list lives in one settings blob — so clamp per field and per turn.
+const STEP_CAP = 120, RESULT_CAP = 8000, ARGS_CAP = 4000, TEXT_CAP = 16000;
+function trimSteps(steps) {
+  return steps.slice(-STEP_CAP).map((s) => {
+    if (s.k === 'text' || s.k === 'think') return { k: s.k, text: String(s.text || '').slice(0, TEXT_CAP) };
+    if (s.k === 'result') return { k: 'result', id: s.id, is_error: !!s.is_error, result: String(s.result || '').slice(0, RESULT_CAP) };
+    let args = s.args;
+    try { if (JSON.stringify(args ?? {}).length > ARGS_CAP) args = { summary: toolSummary(s.fn, args).slice(0, ARGS_CAP) }; } catch { args = {}; }
+    return { k: 'tool', id: s.id, fn: s.fn, args };
+  });
 }
 function publishConversation(conv) {
   if (!conv || (!lanServerOn && !lanClientConnected)) return;
@@ -385,7 +419,7 @@ function openConv(id) {
       try {
         const content = typeof turn.content === 'string' ? turn.content : String(turn.content ?? '');
         if (turn.role === 'user') addUserTurn(content + (turn.attachmentCount ? '  +' + turn.attachmentCount + ' attachment' + (turn.attachmentCount === 1 ? '' : 's') : ''), [], false);
-        else if (turn.role === 'assistant') addStoredAiTurn(content, conv.model);
+        else if (turn.role === 'assistant') addStoredAiTurn(content, conv.model, turn.steps);
       } catch { skipped++; }
     }
     if (skipped) addSysNote('Some damaged saved turns were skipped. You can keep chatting normally.');
@@ -427,19 +461,39 @@ function addUserTurn(text, images = [], persist = true) {
     if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'user', content: text, attachmentCount: images.length }); saveConvs(); publishConversation(conv); }
   }
 }
-function addStoredAiTurn(text, model) {
+// Replays a saved assistant turn. Chats saved before step recording (or trimmed
+// down to fit the storage budget) have no steps, so fall back to prose only.
+function addStoredAiTurn(text, model, steps) {
   const turn = newAiTurn(model);
   if (turn.think) { turn.think.remove(); turn.think = null; }
   turn.started = true;
-  const block = addBlock(turn, 'text'); block.raw = String(text || '');
-  renderMarkdown(block.el, block.raw); addCopyBtn(turn.turnEl, block.raw);
+  const prose = String(text || '');
+  if (Array.isArray(steps) && steps.length) {
+    turn.replaying = true; // suppress re-recording and side effects (browser pane, etc.)
+    for (const s of steps) {
+      if (s.k === 'text') appendText(turn, String(s.text || ''));
+      else if (s.k === 'think') appendThink(turn, String(s.text || ''));
+      else if (s.k === 'tool') addToolCall(turn, { id: s.id, fn: s.fn, args: s.args });
+      else if (s.k === 'result') addToolResult(turn, { id: s.id, is_error: s.is_error, result: s.result });
+    }
+    turn.replaying = false;
+    // Nothing is in flight on a replayed turn, and reasoning starts folded away.
+    turn.blocks.forEach((b) => {
+      b.el.classList.remove('active');
+      if (b.kind === 'think') { b.el.classList.add('closed'); const c = b.el.querySelector('.caret'); if (c) c.textContent = '▸'; }
+    });
+  } else {
+    const block = addBlock(turn, 'text'); block.raw = prose;
+    renderMarkdown(block.el, block.raw);
+  }
+  addCopyBtn(turn.turnEl, prose);
 }
 function newAiTurn(model) {
   const t = document.createElement('div'); t.className = 'turn ai';
   const head = document.createElement('div'); head.className = 'turnhead';
   head.textContent = model || '';
   const stream = document.createElement('div'); stream.className = 'stream';
-  const think = document.createElement('span'); think.className = 'think'; think.innerHTML = '<i></i><i></i><i></i>';
+  const think = document.createElement('span'); think.className = 'dots'; think.innerHTML = '<i></i><i></i><i></i>';
   stream.appendChild(think);
   if (head.textContent) t.appendChild(head);
   t.appendChild(stream); $('log').appendChild(t);
@@ -447,6 +501,16 @@ function newAiTurn(model) {
   return { turnEl: t, streamEl: stream, think, blocks: [], mode: null, tail: '', started: false, model };
 }
 // One ordered block in the transcript stream: text | think | tool | result.
+// Ordered log of everything the turn produced, kept alongside the DOM so the
+// transcript can be rebuilt when the chat is reopened. Consecutive prose and
+// reasoning fragments merge so streaming deltas don't become thousands of entries.
+function record(turn, entry) {
+  if (turn.replaying) return;
+  turn.record = turn.record || [];
+  const last = turn.record[turn.record.length - 1];
+  if ((entry.k === 'text' || entry.k === 'think') && last && last.k === entry.k) { last.text += entry.text; return; }
+  turn.record.push(entry);
+}
 function addBlock(turn, kind) {
   const el = document.createElement('div'); el.className = 'block ' + kind;
   turn.streamEl.appendChild(el);
@@ -469,6 +533,7 @@ function appendText(turn, text) {
   if (!block || block.kind !== 'text') block = addBlock(turn, 'text');
   block.raw += text;
   renderMarkdown(block.el, block.raw);
+  record(turn, { k: 'text', text });
 }
 // Collapsible reasoning block. Body is plain text (escaped via textContent).
 function appendThink(turn, text) {
@@ -484,6 +549,7 @@ function appendThink(turn, text) {
   }
   block.raw += text;
   block.body.textContent = block.raw;
+  record(turn, { k: 'think', text });
 }
 // Streaming-aware splitter for models that inline reasoning as <think>…</think>
 // inside the text stream (instead of emitting proper thinking content blocks).
@@ -519,31 +585,95 @@ function addSysNote(text) {
   const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
   t.appendChild(b); $('log').appendChild(t);
 }
+// ---- tool calls -------------------------------------------------------------
+// A raw JSON dump of the arguments is unreadable at a glance, so each tool gets a
+// one-line human summary in the header and keeps the full arguments behind the
+// expander. Unknown tools fall back to their first short string argument.
+const baseName = (p) => String(p || '').split(/[\\/]/).filter(Boolean).pop() || String(p || '');
+const hostOf = (u) => { try { return new URL(String(u)).host; } catch { return String(u || ''); } };
+const TOOL_SUMMARY = {
+  Read: (a) => baseName(a.file_path) + (a.offset ? ' · from line ' + a.offset : ''),
+  Write: (a) => baseName(a.file_path),
+  Edit: (a) => baseName(a.file_path),
+  NotebookEdit: (a) => baseName(a.notebook_path),
+  Bash: (a) => a.description || a.command,
+  Grep: (a) => JSON.stringify(String(a.pattern ?? '')) + (a.glob ? ' in ' + a.glob : a.path ? ' in ' + baseName(a.path) : ''),
+  Glob: (a) => a.pattern + (a.path ? ' in ' + baseName(a.path) : ''),
+  WebFetch: (a) => hostOf(a.url),
+  WebSearch: (a) => a.query,
+  Task: (a) => a.description || a.subagent_type,
+  TodoWrite: (a) => (Array.isArray(a.todos) ? a.todos.length + ' items' : 'task list'),
+};
+function toolSummary(fn, args) {
+  if (typeof args === 'string') return args;
+  const a = args && typeof args === 'object' ? args : {};
+  try { const made = TOOL_SUMMARY[fn]?.(a); if (made) return String(made).replace(/\s+/g, ' ').trim(); } catch { /* fall through */ }
+  const first = Object.values(a).find((v) => typeof v === 'string' && v.trim());
+  return first ? String(first).replace(/\s+/g, ' ').trim() : '';
+}
+function formatArgs(args) {
+  if (typeof args === 'string') return args;
+  try { return JSON.stringify(args ?? {}, null, 2); } catch { return String(args); }
+}
+// Header + collapsed argument detail + an empty slot the matching result fills.
+function addToolCall(turn, s) {
+  const block = addBlock(turn, 'tool');
+  block.el.classList.add('active', 'closed');
+  const head = document.createElement('button'); head.className = 'tool-head'; head.type = 'button';
+  const caret = document.createElement('span'); caret.className = 'caret'; caret.textContent = '▸';
+  const fn = document.createElement('span'); fn.className = 'fn'; fn.textContent = s.fn || 'tool';
+  const summary = document.createElement('span'); summary.className = 'summary'; summary.textContent = toolSummary(s.fn, s.args);
+  head.append(caret, fn, summary);
+  const detail = document.createElement('pre'); detail.className = 'tool-args'; detail.textContent = formatArgs(s.args);
+  head.onclick = () => { const closed = block.el.classList.toggle('closed'); caret.textContent = closed ? '▸' : '▾'; };
+  block.el.append(head, detail);
+  // Several tools can run in one assistant message, so pair results by tool_use id
+  // where the harness supplies one and fall back to "most recent call" where it does not.
+  turn.tools = turn.tools || new Map();
+  if (s.id) turn.tools.set(s.id, block);
+  turn.pendingTool = block;
+  record(turn, { k: 'tool', id: s.id, fn: s.fn, args: s.args });
+  if (!turn.replaying && s.fn === 'WebFetch' && typeof s.args?.url === 'string') openBrowserAt(s.args.url);
+}
+// Results attach under the call that produced them so the pair reads as one unit.
+// Long output is clipped to the first few lines behind an explicit expander.
+const RESULT_LINES = 6;
+function addToolResult(turn, s) {
+  const full = String(s.result ?? '');
+  let host = (s.id && turn.tools?.get(s.id)) || turn.pendingTool;
+  if (s.id) turn.tools?.delete(s.id);
+  if (host === turn.pendingTool) turn.pendingTool = null;
+  if (!host || !host.el.isConnected) { host = addBlock(turn, 'tool'); host.el.classList.add('closed'); }
+  const out = document.createElement('div'); out.className = 'tool-out';
+  if (s.is_error) out.classList.add('err');
+  const body = document.createElement('pre');
+  const lines = full.split('\n');
+  const clipped = lines.length > RESULT_LINES;
+  body.textContent = clipped ? lines.slice(0, RESULT_LINES).join('\n') : full;
+  out.appendChild(body);
+  if (clipped) {
+    const more = document.createElement('button'); more.className = 'tool-more'; more.type = 'button';
+    const hidden = lines.length - RESULT_LINES;
+    more.textContent = 'Show ' + hidden + ' more line' + (hidden === 1 ? '' : 's');
+    let open = false;
+    more.onclick = () => {
+      open = !open;
+      body.textContent = open ? full : lines.slice(0, RESULT_LINES).join('\n');
+      more.textContent = open ? 'Show less' : 'Show ' + hidden + ' more line' + (hidden === 1 ? '' : 's');
+    };
+    out.appendChild(more);
+  }
+  host.el.appendChild(out);
+  host.el.classList.remove('active');
+  record(turn, { k: 'result', id: s.id, is_error: !!s.is_error, result: full });
+}
 function addStep(s, turn = currentTurn()) {
   if (!turn) return;
   startContent(turn);
   turn.blocks.forEach((b) => b.el.classList.remove('active'));
   if (s.type === 'thinking') { appendThink(turn, String(s.text || '')); scrollBottom(); return; }
-  if (s.type === 'tool_call') {
-    const block = addBlock(turn, 'tool'); block.el.classList.add('active');
-    const fn = document.createElement('span'); fn.className = 'fn'; fn.textContent = '▸ ' + s.fn;
-    const args = document.createElement('span'); args.className = 'args'; args.textContent = ' ' + (typeof s.args === 'string' ? s.args : JSON.stringify(s.args));
-    block.el.appendChild(fn); block.el.appendChild(args);
-    if (s.fn === 'WebFetch' && typeof s.args?.url === 'string') openBrowserAt(s.args.url);
-    scrollBottom(); return;
-  }
-  if (s.type === 'tool_result') {
-    const full = String(s.result);
-    const block = addBlock(turn, 'result');
-    const head = document.createElement('span'); head.className = 'res'; head.textContent = '↳ ' + full.slice(0, 500) + (full.length > 500 ? ' …' : '');
-    block.el.appendChild(head);
-    if (full.length > 500) {
-      block.el.classList.add('collapsible', 'closed');
-      head.style.cursor = 'pointer';
-      head.onclick = () => { const open = block.el.classList.toggle('closed'); head.textContent = '↳ ' + (open ? full.slice(0, 500) + ' …' : full); };
-    }
-    scrollBottom(); return;
-  }
+  if (s.type === 'tool_call') { addToolCall(turn, s); scrollBottom(); return; }
+  if (s.type === 'tool_result') { addToolResult(turn, s); scrollBottom(); return; }
 }
 function scrollBottom() { const s = $('scroller'); s.scrollTop = s.scrollHeight; }
 
@@ -563,20 +693,29 @@ function mdToHtml(src) {
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
     .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   const lines = esc(src).split('\n');
-  let out = '', inUl = false, inOl = false;
+  let out = '', inUl = false, inOl = false, para = [];
+  // Wrapped prose arrives as several source lines. Buffer them and emit ONE
+  // paragraph per blank-line-separated run, instead of a <p> per line.
+  const flushPara = () => { if (para.length) { out += '<p>' + inline(para.join(' ')) + '</p>'; para = []; } };
   const closeLists = () => { if (inUl) { out += '</ul>'; inUl = false; } if (inOl) { out += '</ol>'; inOl = false; } };
   for (const ln of lines) {
     const cm = ln.match(/^~~C(\d+)~~$/);
-    if (cm) { closeLists(); out += codes[+cm[1]] + '\n'; continue; }
-    if (/^\s*[-*]\s+/.test(ln)) { if (!inUl) { closeLists(); out += '<ul>'; inUl = true; } out += '<li>' + inline(ln.replace(/^\s*[-*]\s+/, '')) + '</li>'; continue; }
-    if (/^\s*\d+\.\s+/.test(ln)) { if (!inOl) { closeLists(); out += '<ol>'; inOl = true; } out += '<li>' + inline(ln.replace(/^\s*\d+\.\s+/, '')) + '</li>'; continue; }
-    closeLists();
-    if (/^###\s+/.test(ln)) out += '<h4>' + inline(ln.slice(4)) + '</h4>';
-    else if (/^##\s+/.test(ln)) out += '<h3>' + inline(ln.slice(3)) + '</h3>';
-    else if (/^#\s+/.test(ln)) out += '<h2>' + inline(ln.slice(2)) + '</h2>';
-    else if (ln.trim() === '') out += '\n';
-    else out += '<p>' + inline(ln) + '</p>';
+    if (cm) { flushPara(); closeLists(); out += codes[+cm[1]] + '\n'; continue; }
+    if (/^\s*[-*]\s+/.test(ln)) { flushPara(); if (!inUl) { closeLists(); out += '<ul>'; inUl = true; } out += '<li>' + inline(ln.replace(/^\s*[-*]\s+/, '')) + '</li>'; continue; }
+    if (/^\s*\d+\.\s+/.test(ln)) { flushPara(); if (!inOl) { closeLists(); out += '<ol>'; inOl = true; } out += '<li>' + inline(ln.replace(/^\s*\d+\.\s+/, '')) + '</li>'; continue; }
+    if (/^\s*>\s?/.test(ln)) { flushPara(); closeLists(); out += '<blockquote>' + inline(ln.replace(/^\s*>\s?/, '')) + '</blockquote>'; continue; }
+    if (/^\s*(?:---+|\*\*\*+)\s*$/.test(ln)) { flushPara(); closeLists(); out += '<hr />'; continue; }
+    if (/^#{1,4}\s+/.test(ln)) {
+      flushPara(); closeLists();
+      const level = ln.match(/^#+/)[0].length;
+      const tag = level === 1 ? 'h2' : level === 2 ? 'h3' : 'h4';
+      out += '<' + tag + '>' + inline(ln.replace(/^#{1,4}\s+/, '')) + '</' + tag + '>';
+      continue;
+    }
+    if (ln.trim() === '') { flushPara(); closeLists(); continue; }
+    para.push(ln.trim());
   }
+  flushPara();
   closeLists();
   return out;
 }
@@ -615,7 +754,7 @@ window.ollama.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   } else if (turn.started && !turn.turnEl.classList.contains('error')) { addCopyBtn(turn.turnEl, text); }
   if (turn.started && text) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
-    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: text }); saveConvs(); publishConversation(conv); }
+    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: text, steps: turn.record || [] }); saveConvs(); publishConversation(conv); }
   }
   if (sessionId) {
     const conv = conversations.find((c) => c.id === turn.conversationId);

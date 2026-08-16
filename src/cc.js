@@ -20,14 +20,14 @@ function parseEvent(line) {
       for (const b of o.message?.content || []) {
         if (b.type === 'text' && b.text) flow.push({ act: 'delta', text: b.text });
         else if (b.type === 'thinking') { const t = String(b.thinking || b.text || ''); if (t) flow.push({ act: 'step', step: { type: 'thinking', text: t } }); }
-        else if (b.type === 'tool_use') flow.push({ act: 'step', step: { type: 'tool_call', fn: b.name, args: b.input ?? {} } });
+        else if (b.type === 'tool_use') flow.push({ act: 'step', step: { type: 'tool_call', id: b.id, fn: b.name, args: b.input ?? {} } });
       }
       return flow.length ? { flow } : null;
     }
     case 'user': {
       const flow = [];
       for (const b of o.message?.content || []) {
-        if (b.type === 'tool_result') flow.push({ act: 'step', step: { type: 'tool_result', result: typeof b.content === 'string' ? b.content : JSON.stringify(b.content ?? '') } });
+        if (b.type === 'tool_result') flow.push({ act: 'step', step: { type: 'tool_result', id: b.tool_use_id, is_error: !!b.is_error, result: typeof b.content === 'string' ? b.content : JSON.stringify(b.content ?? '') } });
       }
       return flow.length ? { flow } : null;
     }
