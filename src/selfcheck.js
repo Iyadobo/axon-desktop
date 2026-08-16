@@ -53,6 +53,59 @@ ok('system event -> null', parseEvent(JSON.stringify({ type: 'system', subtype: 
 ok('non-JSON -> null', parseEvent('not json at all') === null);
 ok('assistant truly empty -> null', parseEvent(JSON.stringify({ type: 'assistant', message: { content: [] } })) === null);
 
+// 8. opencode `run --format json` mapping (pure, src/oc.js).
+// The fixtures below are verbatim lines captured from opencode 1.18.15.
+(function () {
+  const { parseOpencodeEvent, newOpencodeState } = require('./oc');
+  const state = newOpencodeState();
+
+  ok('opencode step_start -> no flow', (() => {
+    const ev = parseOpencodeEvent('{"type":"step_start","sessionID":"ses_1","part":{"type":"step-start"}}', state);
+    return ev && ev.flow.length === 0 && ev.sessionId === 'ses_1';
+  })());
+
+  // One settled tool event becomes a call AND its result, sharing a callID.
+  const toolLine = '{"type":"tool_use","sessionID":"ses_1","part":{"type":"tool","tool":"read","callID":"call_9","state":{"status":"completed","input":{"filePath":"sample.js"},"output":"export const answer = 42;"}}}';
+  const toolEv = parseOpencodeEvent(toolLine, state);
+  ok('opencode tool_use -> call + result pair', toolEv && toolEv.flow.length === 2
+    && toolEv.flow[0].step.type === 'tool_call' && toolEv.flow[0].step.fn === 'read'
+    && toolEv.flow[0].step.args.filePath === 'sample.js'
+    && toolEv.flow[1].step.type === 'tool_result' && toolEv.flow[1].step.result === 'export const answer = 42;'
+    && toolEv.flow[0].step.id === toolEv.flow[1].step.id);
+  ok('opencode repeated tool_use is deduped', (() => {
+    const again = parseOpencodeEvent(toolLine, state);
+    return again && again.flow.length === 0;
+  })());
+
+  ok('opencode text -> delta', (() => {
+    const ev = parseOpencodeEvent('{"type":"text","sessionID":"ses_1","part":{"id":"prt_1","type":"text","text":"42"}}', state);
+    return ev && ev.flow[0].act === 'delta' && ev.flow[0].text === '42';
+  })());
+  // A re-emitted part must yield only the new tail, never the whole text again.
+  ok('opencode cumulative text -> only the tail', (() => {
+    const ev = parseOpencodeEvent('{"type":"text","sessionID":"ses_1","part":{"id":"prt_1","type":"text","text":"42 is the answer"}}', state);
+    return ev && ev.flow[0].text === ' is the answer';
+  })());
+  ok('opencode identical text repeat -> nothing', (() => {
+    const ev = parseOpencodeEvent('{"type":"text","sessionID":"ses_1","part":{"id":"prt_1","type":"text","text":"42 is the answer"}}', state);
+    return ev && ev.flow.length === 0;
+  })());
+
+  ok('opencode failed tool -> is_error result', (() => {
+    const ev = parseOpencodeEvent('{"type":"tool_use","sessionID":"ses_1","part":{"tool":"bash","callID":"call_e","state":{"status":"error","input":{},"error":"exit 1"}}}', newOpencodeState());
+    return ev && ev.flow[1].step.is_error === true && ev.flow[1].step.result === 'exit 1';
+  })());
+  ok('opencode reasoning -> thinking step', (() => {
+    const ev = parseOpencodeEvent('{"type":"reasoning","sessionID":"ses_1","part":{"text":"weighing options"}}', newOpencodeState());
+    return ev && ev.flow[0].step.type === 'thinking' && ev.flow[0].step.text === 'weighing options';
+  })());
+  ok('opencode error event -> error action', (() => {
+    const ev = parseOpencodeEvent('{"type":"error","error":{"message":"model unavailable"}}', newOpencodeState());
+    return ev && ev.flow[0].act === 'error' && ev.flow[0].message === 'model unavailable';
+  })());
+  ok('opencode non-JSON -> null', parseOpencodeEvent('opencode banner text', newOpencodeState()) === null);
+})();
+
 // 6. custom slash-command expansion (pure, src/commands.js)
 (function () {
   const { expandCommand, stripFrontmatter, frontmatterDescription, maybeExpandSlash, listCommands } = require('./commands');

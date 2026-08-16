@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const os = require('os');
 const { spawn, spawnSync, execSync } = require('child_process');
 const { parseEvent } = require('./cc');
+const { parseOpencodeEvent, newOpencodeState } = require('./oc');
 const { maybeExpandSlash, listCommands } = require('./commands');
 const lan = require('./lan');
 const { createConfigStore } = require('./config');
@@ -94,6 +95,24 @@ function findCodex() {
   ].find((candidate) => candidate && fs.existsSync(candidate));
   return direct ? { command: direct, prefix: [] } : null;
 }
+function findOpencode() {
+  const home = os.homedir();
+  if (process.platform !== 'win32') {
+    const direct = [whereFirst('opencode'), path.join(home, '.opencode', 'bin', 'opencode'), path.join(home, '.local', 'bin', 'opencode')]
+      .find((candidate) => candidate && fs.existsSync(candidate));
+    return direct ? { command: direct, prefix: [] } : null;
+  }
+  // The npm package ships a platform binary and puts only a .cmd shim on PATH.
+  // A .cmd cannot be spawned without a shell, and opencode.exe itself is not on
+  // PATH, so probe inside the package rather than trusting `where`.
+  const direct = [
+    whereFirst('opencode.exe'),
+    process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'node_modules', 'opencode-ai', 'bin', 'opencode.exe'),
+    path.join(home, '.opencode', 'bin', 'opencode.exe'),
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'opencode', 'opencode.exe'),
+  ].find((candidate) => candidate && fs.existsSync(candidate));
+  return direct ? { command: direct, prefix: [] } : null;
+}
 function runQuiet(command, args, timeout = 15000) {
   return new Promise((resolve) => {
     let out = ''; let child;
@@ -104,7 +123,7 @@ function runQuiet(command, args, timeout = 15000) {
   });
 }
 async function dependencyStatus() {
-  const claudeLaunch = findClaude(), codexLaunch = findCodex();
+  const claudeLaunch = findClaude(), codexLaunch = findCodex(), opencodeLaunch = findOpencode();
   const [ollama, node, claude] = await Promise.all([
     runQuiet(whereFirst(process.platform === 'win32' ? 'ollama.exe' : 'ollama') || 'ollama', ['--version']),
     runQuiet(whereFirst(process.platform === 'win32' ? 'node.exe' : 'node') || 'node', ['--version']),
@@ -113,7 +132,8 @@ async function dependencyStatus() {
   const codexVersion = codexLaunch ? await runQuiet(codexLaunch.command, [...codexLaunch.prefix, '--version']) : null;
   const codexLogin = codexLaunch ? await runQuiet(codexLaunch.command, [...codexLaunch.prefix, 'login', 'status']) : null;
   const codex = codexVersion ? `${codexVersion}${/logged in/i.test(codexLogin || '') && !/not logged in/i.test(codexLogin || '') ? '' : ' (not logged in)'}` : null;
-  return { ollama, node, claude, codex };
+  const opencode = opencodeLaunch ? await runQuiet(opencodeLaunch.command, [...opencodeLaunch.prefix, '--version']) : null;
+  return { ollama, node, claude, codex, opencode };
 }
 let config = null;
 const visionCapability = new Map();
@@ -439,6 +459,62 @@ function runCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, ima
   });
 }
 
+// opencode's `run --format json` prints one JSON object per line. Unlike Claude
+// Code it emits whole parts rather than token deltas, and a tool event arrives
+// already completed — input and output together — so each one becomes a
+// tool_call + tool_result pair keyed by callID. Events are deduped by part id
+// because a future opencode may stream a part cumulatively rather than once.
+function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = []) {
+  holder = holder || {};
+  return new Promise((resolve) => {
+    const launch = findOpencode();
+    if (!launch) {
+      send('chat-error', 'opencode is not installed. Install it with `npm i -g opencode-ai` (or from opencode.ai), then restart Axon.');
+      send('chat-done', { sessionId, ok: false });
+      return resolve();
+    }
+    if (images.length) send('chat-step', { type: 'tool_result', result: 'Images are not yet supported by Axon’s opencode bridge; this turn was sent as text only.' });
+    const root = cwd || ensureDefaultWorkspace();
+    const instruction = (systemPrompt?.trim() ? systemPrompt.trim() + '\n\n' : '') + prompt;
+    const args = ['run', '--format', 'json', '--thinking', '--dir', root];
+    if (model) args.push('--model', model);
+    if (sessionId) args.push('--session', sessionId);
+    args.push(instruction);
+    const child = spawn(launch.command, [...launch.prefix, ...args], { cwd: root, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    holder.child = child;
+    let buffer = '', resultSid = sessionId || null, stderr = '', failed = false;
+    const state = newOpencodeState();
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk; let newline;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
+        const ev = parseOpencodeEvent(line, state);
+        if (!ev) continue;
+        if (ev.sessionId) resultSid = ev.sessionId;
+        for (const f of ev.flow) {
+          if (f.act === 'delta') send('chat-delta', f.text);
+          else if (f.act === 'step') send('chat-step', f.step);
+          else if (f.act === 'error') { failed = true; send('chat-error', f.message); }
+        }
+      }
+    });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('exit', (code) => {
+      if (holder.child === child) holder.child = null;
+      if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
+      if (code && !failed) send('chat-error', `opencode exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
+      send('chat-done', { sessionId: resultSid, ok: !code && !failed });
+      resolve();
+    });
+    child.on('error', (error) => {
+      if (holder.child === child) holder.child = null;
+      send('chat-error', `Could not start opencode: ${error.message}`);
+      send('chat-done', { sessionId: resultSid, ok: false });
+      resolve();
+    });
+  });
+}
+
 // ---- IPC ------------------------------------------------------------------
 ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await ollama('/api/tags')));
 ipcMain.handle('refresh-cloud-models', async () => fetchCloudCatalogue());
@@ -461,9 +537,10 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   // ponytail: client mode forwards to the LAN server (cwd dropped -- the client's
   // project path is on the client device and doesn't map to the server's filesystem).
   if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null }); return { ok: true }; }
-  if (harness === 'codex') {
+  if (harness === 'codex' || harness === 'opencode') {
     const holder = {}; localHolders.set(requestId, holder);
-    runCodex(model, expanded, sessionId, send, systemPrompt, cwd, holder, safe)
+    const run = harness === 'opencode' ? runOpencode : runCodex;
+    run(model, expanded, sessionId, send, systemPrompt, cwd, holder, safe)
       .catch((error) => send('chat-error', error.message))
       .finally(() => localHolders.delete(requestId));
     return { ok: true };

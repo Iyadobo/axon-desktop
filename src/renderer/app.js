@@ -36,7 +36,7 @@ const FONT_STACKS = {
   mono: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
   serif: 'Georgia, "Times New Roman", serif',
 };
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', harness: 'claude', codexModel: '' };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', harness: 'claude', codexModel: '', opencodeModel: '' };
 let settings = { ...DEFAULT_SETTINGS };
 const ACCENTS = ['#2a4bd6', '#007d5a', '#b03060', '#8a3df0', '#c2410c', '#111827'];
 const persisted = {};
@@ -98,6 +98,8 @@ function openSettings() {
   $('fontSel').value = settings.font;
   $('harnessSel').value = settings.harness;
   $('codexModel').value = settings.codexModel;
+  $('opencodeModel').value = settings.opencodeModel;
+  syncHarnessFields();
   syncPaletteInputs(); renderSwatches(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
 }
@@ -591,23 +593,29 @@ function addSysNote(text) {
 // expander. Unknown tools fall back to their first short string argument.
 const baseName = (p) => String(p || '').split(/[\\/]/).filter(Boolean).pop() || String(p || '');
 const hostOf = (u) => { try { return new URL(String(u)).host; } catch { return String(u || ''); } };
+// Harnesses name the same tools differently — Claude Code uses `Read`/`Grep` with
+// snake_case arguments, opencode uses `read`/`grep` with camelCase — so match the
+// name case-insensitively and accept either argument spelling.
+const pick = (a, ...keys) => { for (const k of keys) if (a[k] != null && a[k] !== '') return a[k]; return undefined; };
 const TOOL_SUMMARY = {
-  Read: (a) => baseName(a.file_path) + (a.offset ? ' · from line ' + a.offset : ''),
-  Write: (a) => baseName(a.file_path),
-  Edit: (a) => baseName(a.file_path),
-  NotebookEdit: (a) => baseName(a.notebook_path),
-  Bash: (a) => a.description || a.command,
-  Grep: (a) => JSON.stringify(String(a.pattern ?? '')) + (a.glob ? ' in ' + a.glob : a.path ? ' in ' + baseName(a.path) : ''),
-  Glob: (a) => a.pattern + (a.path ? ' in ' + baseName(a.path) : ''),
-  WebFetch: (a) => hostOf(a.url),
-  WebSearch: (a) => a.query,
-  Task: (a) => a.description || a.subagent_type,
-  TodoWrite: (a) => (Array.isArray(a.todos) ? a.todos.length + ' items' : 'task list'),
+  read: (a) => baseName(pick(a, 'file_path', 'filePath')) + (a.offset ? ' · from line ' + a.offset : ''),
+  write: (a) => baseName(pick(a, 'file_path', 'filePath')),
+  edit: (a) => baseName(pick(a, 'file_path', 'filePath')),
+  patch: (a) => baseName(pick(a, 'file_path', 'filePath')),
+  notebookedit: (a) => baseName(a.notebook_path),
+  bash: (a) => a.description || a.command,
+  grep: (a) => JSON.stringify(String(a.pattern ?? '')) + (a.glob ? ' in ' + a.glob : a.path ? ' in ' + baseName(a.path) : ''),
+  glob: (a) => a.pattern + (a.path ? ' in ' + baseName(a.path) : ''),
+  list: (a) => baseName(pick(a, 'path', 'dirPath')) || 'working directory',
+  webfetch: (a) => hostOf(a.url),
+  websearch: (a) => a.query,
+  task: (a) => a.description || a.subagent_type || a.prompt,
+  todowrite: (a) => (Array.isArray(a.todos) ? a.todos.length + ' items' : 'task list'),
 };
 function toolSummary(fn, args) {
   if (typeof args === 'string') return args;
   const a = args && typeof args === 'object' ? args : {};
-  try { const made = TOOL_SUMMARY[fn]?.(a); if (made) return String(made).replace(/\s+/g, ' ').trim(); } catch { /* fall through */ }
+  try { const made = TOOL_SUMMARY[String(fn || '').toLowerCase()]?.(a); if (made) return String(made).replace(/\s+/g, ' ').trim(); } catch { /* fall through */ }
   const first = Object.values(a).find((v) => typeof v === 'string' && v.trim());
   return first ? String(first).replace(/\s+/g, ' ').trim() : '';
 }
@@ -822,8 +830,10 @@ function takeComposerEntry() {
   const text = $('prompt').value.trim();
   if (!text && !attachments.length) return null;
   const images = attachments.filter((a) => a.image).map((a) => ({ name: a.name, type: a.type, data: a.data }));
-  const codex = settings.harness === 'codex';
-  const entry = { text, combined: inlineAttachments(text), images, harness: settings.harness, model: codex ? (settings.codexModel.trim() || '') : $('model').value };
+  // Claude Code routes to the selected local Ollama model; the external harnesses
+  // pick their own model (blank = that CLI's account default).
+  const harnessModel = { codex: settings.codexModel, opencode: settings.opencodeModel }[settings.harness];
+  const entry = { text, combined: inlineAttachments(text), images, harness: settings.harness, model: harnessModel !== undefined ? harnessModel.trim() : $('model').value };
   clearInput(); clearAttachments(); return entry;
 }
 
@@ -1029,8 +1039,15 @@ $('themeSel').onchange = () => { settings.theme = $('themeSel').value; settings.
 $('densitySel').onchange = () => { settings.density = $('densitySel').value; saveSettings(); applyAppearance(); };
 $('motionSel').onchange = () => { settings.motion = $('motionSel').value; saveSettings(); applyAppearance(); };
 $('fontSel').onchange = () => { settings.font = $('fontSel').value; saveSettings(); applyAppearance(); };
-$('harnessSel').onchange = () => { settings.harness = $('harnessSel').value; saveSettings(); };
+// Only the selected harness's model field is relevant; hide the other one so the
+// row does not read as three unrelated inputs.
+function syncHarnessFields() {
+  $('codexModel').parentElement.style.display = settings.harness === 'codex' ? '' : 'none';
+  $('opencodeModel').parentElement.style.display = settings.harness === 'opencode' ? '' : 'none';
+}
+$('harnessSel').onchange = () => { settings.harness = $('harnessSel').value; syncHarnessFields(); saveSettings(); };
 $('codexModel').oninput = () => { settings.codexModel = $('codexModel').value.trim(); saveSettings(); };
+$('opencodeModel').oninput = () => { settings.opencodeModel = $('opencodeModel').value.trim(); saveSettings(); };
 for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor', 'background'], ['surfaceColor', 'surface'], ['textColor', 'text']]) {
   $(inputId).oninput = () => { settings.colors[colorKey] = $(inputId).value; if (colorKey === 'accent') settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); if (colorKey === 'accent') renderSwatches(); };
 }
