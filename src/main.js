@@ -231,7 +231,10 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.once('ready-to-show', () => win.show());
+  // Open maximized: Axon is a workspace, and the transcript plus the browser
+  // pane both want room. Maximize before showing so there is no resize flash;
+  // the width/height above stay as the restore-down size.
+  win.once('ready-to-show', () => { win.maximize(); win.show(); });
   // Axon is an agent host: closing the window keeps active work alive in the
   // background. The tray's explicit Quit item remains the kill switch.
   win.on('close', (event) => {
