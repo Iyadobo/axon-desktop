@@ -7,7 +7,22 @@
 <style>
   :root {
     --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
-    --font-size:14px; --pad:10px;
+    --font-size:15px; --pad:10px;
+    /* Type scale as ratios of the base so the density setting keeps working.
+       Four steps with real distance between them: the old palette had seven
+       sizes between 10 and 16px, which reads as no hierarchy at all. */
+    --t-body:var(--font-size);
+    --t-sm:calc(var(--font-size) * .87);
+    --t-xs:calc(var(--font-size) * .75);
+    --t-hero:calc(var(--font-size) * 2.3);
+    --t-mono:calc(var(--font-size) * .83);
+    /* Elevation mixes toward the theme's own text colour, so one set of tokens
+       lifts surfaces in the dark themes and tints them in paper. */
+    --elev-1:color-mix(in srgb, var(--color-text) 5.5%, var(--color-bg));
+    --elev-2:color-mix(in srgb, var(--color-text) 9%, var(--color-bg));
+    --elev-line:color-mix(in srgb, var(--color-text) 11%, transparent);
+    --shadow-1:0 1px 2px color-mix(in srgb, #000 22%, transparent);
+    --shadow-2:0 10px 30px color-mix(in srgb, #000 30%, transparent);
     --color-text:#f7f2f4; --color-divider:#2c292d; --color-surface:#151316; --color-surface-2:#211d22;
     --color-accent:#f45f96;
     --color-accent-600:color-mix(in srgb, var(--color-accent) 86%, #000);
@@ -21,8 +36,8 @@
   }
   [data-theme="midnight"] { --color-text:#e8e8e5; --color-divider:#2b2d31; --color-surface:#151619; --color-surface-2:#1d1f23; --color-neutral:#9b9da2; --color-bg:#0c0d0f; --color-bad:#ff7777; }
   [data-theme="paper"] { --color-text:#25231f; --color-divider:#dfdbd2; --color-surface:#f3f0e9; --color-surface-2:#ebe6dc; --color-neutral:#77736d; --color-bg:#fbfaf7; --color-bad:#a83b32; }
-  .density-compact    { --font-size:13px; --pad:8px; }
-  .density-comfortable { --font-size:15.5px; --pad:13px; }
+  .density-compact    { --font-size:13.5px; --pad:8px; }
+  .density-comfortable { --font-size:16.5px; --pad:13px; }
   * { box-sizing:border-box; }
   html, body { margin:0; height:100%; background:var(--color-bg); color:var(--color-text);
     font-family:var(--font-body); font-size:var(--font-size); line-height:1.5; overflow:hidden; }
@@ -352,29 +367,95 @@
   .recent:hover .rdel { opacity:.6; }
   .rdel:hover { opacity:1; }
 
-  /* Axon calm workspace pass: hierarchy from restrained surfaces and space. */
-  #side { width:252px; padding:16px 12px; border-right:1px solid var(--color-divider); background:color-mix(in srgb, var(--color-surface) 55%, transparent); }
-  .brand { margin-bottom:16px; padding:6px 9px; font-size:14px; letter-spacing:.01em; }
+  /* Axon refined-calm pass: hierarchy from a real type scale, layered surfaces
+     and a 4px spacing rhythm. Accent is punctuation, never decoration. */
+
+  /* Sidebar sits on its own plane. It used to be 55% surface over transparent,
+     which resolved to within a couple of percent of the background — the main
+     reason the whole window read as one flat sheet. Kept slightly translucent
+     so the ambient grid still shows through. */
+  #side { width:252px; padding:16px 10px; border-right:1px solid var(--elev-line);
+    background:color-mix(in srgb, var(--elev-1) 94%, transparent); }
+  .brand { margin-bottom:14px; padding:6px 8px; font-size:var(--t-body); font-weight:750; letter-spacing:-.01em; }
   .brand .logo { width:24px; height:24px; }
-  .newchat { border:1px solid var(--color-divider); border-radius:10px; padding:9px 10px; font-weight:650; background:color-mix(in srgb, var(--color-surface) 72%, var(--color-bg)); }
-  .newchat:hover { background:var(--color-surface-2); border-color:color-mix(in srgb, var(--color-accent) 35%, var(--color-divider)); }
-  .recents-label { margin-top:24px; margin-bottom:7px; font-size:10px; letter-spacing:.11em; }
-  .recent { border-radius:8px; padding:8px 10px; }
-  .recent.active { background:color-mix(in srgb, var(--color-accent) 9%, var(--color-bg)); color:var(--color-text); font-weight:650; box-shadow:inset 2px 0 0 var(--color-accent); }
-  .sidefoot { padding:12px 9px 5px; border-top:1px solid var(--color-divider); }
-  #browserToggle { -webkit-app-region:no-drag; border-radius:999px; padding:4px 10px; background:var(--color-surface); margin-right:8px; }
-  #home { padding:48px; }.card { border-radius:18px; background:color-mix(in srgb, var(--color-surface) 82%, var(--color-bg)); box-shadow:0 14px 36px color-mix(in srgb, var(--color-text) 7%, transparent); }
-  #home h1 { font-size:34px; letter-spacing:-.035em; text-wrap:balance; }.home-hint { margin-top:18px; }
-  .chip { border-radius:8px; background:transparent; }.chip:hover { background:var(--color-surface); }
-  #log { max-width:800px; padding:32px 24px 14px; }.turn { margin-bottom:26px; }
-  .bubble { border-radius:16px; }.turn.user .bubble { background:color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)); color:var(--color-text); border:1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-divider)); border-bottom-right-radius:16px; }
-  .turn.ai.error .block.text { color:var(--color-bad); }
-  .block.tool, .block.think { border-radius:0 8px 8px 0; background:color-mix(in srgb, var(--color-surface) 42%, transparent); }
-  .dots { min-height:24px; gap:6px; }.dots::after { content:"Thinking"; font-size:12px; color:var(--color-neutral); letter-spacing:.01em; margin-left:3px; animation:thinklabel 1.5s ease-in-out infinite; }
-  @keyframes thinklabel { 50% { opacity:.48; transform:translateX(2px); } }
-  #composerSlot { padding:16px 24px 22px; }.composer-foot { padding:9px 15px 13px; }
-  #model { border-radius:9px; background:var(--color-bg); } #send { border-radius:10px; box-shadow:0 4px 12px color-mix(in srgb, var(--color-accent) 24%, transparent); transition:transform .16s ease, box-shadow .16s ease, background .16s ease; }
+  .newchat { border:1px solid var(--elev-line); border-radius:10px; padding:9px 10px; font-size:var(--t-sm);
+    font-weight:650; background:var(--elev-2); box-shadow:var(--shadow-1); }
+  .newchat:hover { background:color-mix(in srgb, var(--color-accent) 10%, var(--elev-2));
+    border-color:color-mix(in srgb, var(--color-accent) 40%, var(--elev-line)); }
+  .side-section-head, .recents-label { font-size:var(--t-xs); letter-spacing:.09em; opacity:.62; font-weight:650; }
+  .side-section-head { margin-top:22px; padding:0 8px 6px; }
+  /* was a 16px glyph with no padding — below the 24px minimum hit target */
+  .side-section-head button { width:24px; height:24px; font-size:var(--t-body); line-height:1; border-radius:6px; }
+  .side-section-head button:hover { background:var(--elev-2); }
+  .recents-label { margin-top:22px; margin-bottom:6px; }
+  .sidebar-project { font-size:var(--t-sm); padding:7px 8px; min-height:30px; border-radius:8px; }
+  /* was a flat mix over --color-bg, which landed as a muddy maroon block;
+     match the recents treatment so "selected" reads the same way everywhere */
+  .sidebar-project.active { background:color-mix(in srgb, var(--color-accent) 10%, transparent);
+    color:var(--color-text); font-weight:650; box-shadow:inset 2px 0 0 var(--color-accent); }
+  /* NOT display:flex — the title relies on text-overflow:ellipsis, which a flex
+     container defeats, and the right padding is the gutter the absolutely
+     positioned delete button lives in. */
+  .recent { border-radius:8px; padding:8px 26px 8px 10px; font-size:var(--t-sm); line-height:1.35; opacity:.8; }
+  .recent:hover { background:var(--elev-2); opacity:1; }
+  .recent.active { background:color-mix(in srgb, var(--color-accent) 10%, transparent); color:var(--color-text);
+    font-weight:650; opacity:1; box-shadow:inset 2px 0 0 var(--color-accent); }
+  .sidefoot { padding:12px 8px 4px; border-top:1px solid var(--elev-line); font-size:var(--t-xs); opacity:.6; }
+  /* last two strays off the scale: the titlebar wordmark and the LOCAL badge */
+  .window-brand { font-size:var(--t-sm); }
+  .mode-badge { font-size:var(--t-xs); letter-spacing:.05em; }
+  .project-count { font-size:var(--t-xs); }
+  #browserToggle { -webkit-app-region:no-drag; border-radius:999px; padding:4px 10px; font-size:var(--t-xs);
+    background:var(--elev-2); border-color:var(--elev-line); margin-right:8px; }
+
+  /* Home: one focal point, and less stranded vertical space under the hint. */
+  #home { padding:40px 48px; }
+  #home h1 { font-size:var(--t-hero); letter-spacing:-.035em; text-wrap:balance; margin-bottom:8px; }
+  #home .sub { font-size:var(--t-body); opacity:.6; margin-bottom:24px; }
+  .hero-emblem { height:76px; margin:0 0 16px -2px; }
+  .hero-emblem img { width:54px; height:74px; }
+  .chips { margin-top:14px; gap:8px; }
+  .chip { border-radius:9px; background:transparent; border-color:var(--elev-line);
+    font-size:var(--t-sm); padding:7px 13px; }
+  .chip:hover { background:var(--elev-2); color:var(--color-text);
+    border-color:color-mix(in srgb, var(--color-accent) 45%, var(--elev-line)); }
+  .home-hint { margin-top:20px; font-size:var(--t-xs); opacity:.45; line-height:1.65; }
+
+  /* Composer: a lifted card with a focus ring, rather than a flat empty box. */
+  .card { border-radius:16px; background:var(--elev-2); border:1px solid var(--elev-line); box-shadow:var(--shadow-2); }
+  .card:focus-within { border-color:color-mix(in srgb, var(--color-accent) 45%, var(--elev-line));
+    box-shadow:var(--shadow-2), 0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+  #composerSlot { padding:14px 24px 20px; border-top-color:var(--elev-line); }
+  /* the card carried ~28px of dead height between the prompt and the model row */
+  #prompt { min-height:38px; padding-bottom:2px; }
+  .composer-foot { padding:4px 11px 10px; }
+  #model { border-radius:9px; background:var(--color-bg); border-color:var(--elev-line); font-size:var(--t-sm); }
+  #send { border-radius:10px; box-shadow:0 4px 12px color-mix(in srgb, var(--color-accent) 24%, transparent); transition:transform .16s ease, box-shadow .16s ease, background .16s ease; }
   #send:hover { transform:translateY(-1px); box-shadow:0 7px 16px color-mix(in srgb, var(--color-accent) 27%, transparent); }
+
+  /* Transcript: prose gets the body size and a reading line-height; the model
+     label recedes; tool blocks share the sidebar's elevation so the whole
+     window reads as two planes rather than a dozen near-identical greys. */
+  #log { max-width:780px; padding:28px 24px 14px; }
+  .turn { margin-bottom:24px; }
+  .turnhead { font-size:var(--t-xs); letter-spacing:.05em; opacity:.5; font-weight:650; }
+  .bubble { border-radius:15px; font-size:var(--t-body); }
+  .turn.user .bubble { max-width:70%; background:color-mix(in srgb, var(--color-accent) 13%, var(--elev-1));
+    color:var(--color-text); border:1px solid color-mix(in srgb, var(--color-accent) 24%, var(--elev-line));
+    border-bottom-right-radius:15px; }
+  .turn.ai.error .block.text { color:var(--color-bad); }
+  .block.text { font-size:var(--t-body); line-height:1.62; }
+  .block.tool, .block.think { border-radius:0 8px 8px 0; background:var(--elev-1); border-left-color:var(--elev-line); }
+  .tool-head, .block.think .think-toggle { font-size:var(--t-mono); }
+  .tool-head .summary, .tool-args, .tool-out pre { font-size:var(--t-mono); }
+  /* Tool output is code: wrapping grep hits mid-line strands a lone brace on the
+     next row and destroys the column. Scroll it instead, like a terminal does. */
+  .tool-out pre, .tool-args { white-space:pre; overflow-x:auto; overflow-wrap:normal; }
+  .tool-out pre::-webkit-scrollbar, .tool-args::-webkit-scrollbar { height:6px; }
+  .tool-out pre::-webkit-scrollbar-thumb, .tool-args::-webkit-scrollbar-thumb {
+    background:var(--elev-line); border-radius:3px; }
+  .dots { min-height:24px; gap:6px; }.dots::after { content:"Thinking"; font-size:var(--t-sm); color:var(--color-neutral); letter-spacing:.01em; margin-left:3px; animation:thinklabel 1.5s ease-in-out infinite; }
+  @keyframes thinklabel { 50% { opacity:.48; transform:translateX(2px); } }
   .modal { background:color-mix(in srgb, #000 42%, transparent); backdrop-filter:blur(10px); }.modal-card { width:min(640px,92vw); border-radius:18px; box-shadow:0 24px 70px rgba(0,0,0,.22); }
   .modal-head { padding:17px 20px; }.modal-body { padding:8px 20px 22px; gap:0; }.modal-body > .fld, .modal-body > .maintenance { padding:17px 0; border-bottom:1px solid var(--color-divider); }.modal-body > .maintenance { border-top:none; }.modal-body > :last-child { border-bottom:none; }
   .fld > span { font-size:12px; letter-spacing:.01em; }.fld textarea, .fld select, .fld input[type=text] { border-radius:10px; padding:10px 11px; }.proj-row button, .update-actions button, .update-dialog button { border-radius:9px; background:var(--color-bg); }
