@@ -36,7 +36,7 @@ const FONT_STACKS = {
   mono: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
   serif: 'Georgia, "Times New Roman", serif',
 };
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', harness: 'claude', codexModel: '', opencodeModel: '' };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', harness: 'claude', codexModel: '', opencodeModel: '', permissionMode: 'auto' };
 let settings = { ...DEFAULT_SETTINGS };
 const ACCENTS = ['#2a4bd6', '#007d5a', '#b03060', '#8a3df0', '#c2410c', '#111827'];
 const persisted = {};
@@ -100,6 +100,7 @@ function openSettings() {
   $('codexModel').value = settings.codexModel;
   $('opencodeModel').value = settings.opencodeModel;
   syncHarnessFields();
+  syncModes();
   syncPaletteInputs(); renderSwatches(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
 }
@@ -301,15 +302,131 @@ async function loadModels() {
       o.textContent = m.name + (m.source === 'cloud' ? ' · Cloud' : (m.details?.parameter_size ? ' · ' + m.details.parameter_size : ''));
       sel.appendChild(o);
     }
+    modelCatalogue = models;
     const pref = persisted.omodel;
     if (pref && models.some((m) => m.name === pref)) sel.value = pref;
+    syncModelButton();
+    if ($('modelPicker').classList.contains('show')) renderPicker();
     setStatus(true, localModels.length ? (cachedCloudCatalogue().models.length ? 'ready · cloud' : 'ready') : 'cloud cache');
   } catch { setStatus(false, 'offline'); }
 }
+// ---- model picker -----------------------------------------------------------
+// The <select id="model"> stays the source of truth (slash commands, saved
+// conversations and the send path all read it); this is a richer way to set it.
+let modelCatalogue = [];
+let pickerCursor = 0;
+// Family marks. Real vendor logos cannot be fetched under the page's CSP and
+// would misrepresent the vendors anyway, so each family gets its own glyph and
+// colour — enough to tell the list apart at a glance.
+const MODEL_FAMILIES = [
+  { test: /^llama|^codellama/i, name: 'Llama', color: '#7a6bff', shape: '<path d="M12 3 21 19H3Z"/>' },
+  { test: /^qwen/i, name: 'Qwen', color: '#ff7a45', shape: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>' },
+  { test: /^deepseek/i, name: 'DeepSeek', color: '#4ea1ff', shape: '<path d="M12 3 21 12 12 21 3 12Z"/>' },
+  { test: /^mistral|^mixtral|^codestral/i, name: 'Mistral', color: '#ffb020', shape: '<path d="M4 19V7l4 5 4-5 4 5 4-5v12"/>' },
+  { test: /^gemma|^gemini/i, name: 'Gemma', color: '#3fbf7f', shape: '<path d="M12 3c1.6 5.4 3.6 7.4 9 9-5.4 1.6-7.4 3.6-9 9-1.6-5.4-3.6-7.4-9-9 5.4-1.6 7.4-3.6 9-9Z"/>' },
+  { test: /^phi/i, name: 'Phi', color: '#e26bd8', shape: '<circle cx="12" cy="12" r="7"/><path d="M12 3v18"/>' },
+  { test: /^granite/i, name: 'Granite', color: '#8a94a6', shape: '<path d="M5 8h14v11H5Z"/><path d="M5 8l7-4 7 4"/>' },
+  { test: /^llava|^bakllava|vision/i, name: 'Vision', color: '#22c1c3', shape: '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.4"/>' },
+  { test: /^nomic|embed/i, name: 'Embedding', color: '#9aa0aa', shape: '<circle cx="6" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.4"/><circle cx="18" cy="12" r="2.4"/><path d="M6 12 12 6l6 6"/>' },
+];
+const DEFAULT_FAMILY = { name: 'Other', color: '#9aa0aa', shape: '<circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/>' };
+const familyOf = (name) => MODEL_FAMILIES.find((f) => f.test.test(String(name || ''))) || DEFAULT_FAMILY;
+// "8x7B" and "1.5B" both need to become a comparable number.
+function paramCount(model) {
+  const raw = String(model?.details?.parameter_size || '').trim();
+  const m = raw.match(/^([\d.]+)\s*x\s*([\d.]+)\s*([BbMm])/) || raw.match(/^([\d.]+)\s*([BbMm])/);
+  if (!m) return 0;
+  const unit = (m[3] || m[2] || '').toLowerCase() === 'm' ? 1e6 : 1e9;
+  return m[3] ? parseFloat(m[1]) * parseFloat(m[2]) * unit : parseFloat(m[1]) * unit;
+}
+const prettyParams = (n) => (!n ? '' : n >= 1e9 ? +(n / 1e9).toFixed(n >= 1e10 ? 0 : 1) + 'B' : Math.round(n / 1e6) + 'M');
+const prettyBytes = (n) => (!n ? '' : n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.round(n / 1e6) + ' MB');
+function syncModelButton() {
+  const name = $('model').value || '';
+  const entry = modelCatalogue.find((m) => m.name === name);
+  $('modelBtnName').textContent = name || 'Select a model';
+  $('modelBtn').title = name ? name + (entry?.source === 'cloud' ? ' · cloud' : ' · local') : 'Choose a model';
+  $('modelBtn').querySelector('.model-dot').className = 'model-dot ' + (entry?.source || '');
+}
+function pickerRows() {
+  const query = $('modelSearch').value.trim().toLowerCase();
+  const filter = document.querySelector('#modelFilters .pfilter.on')?.dataset.filter || 'all';
+  const sort = $('modelSort').value;
+  let rows = modelCatalogue.filter((m) => (filter === 'all' || m.source === filter)
+    && (!query || m.name.toLowerCase().includes(query) || familyOf(m.name).name.toLowerCase().includes(query)));
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  if (sort === 'params') rows.sort((a, b) => paramCount(b) - paramCount(a) || byName(a, b));
+  else if (sort === 'disk') rows.sort((a, b) => (b.size || 0) - (a.size || 0) || byName(a, b));
+  else if (sort === 'name') rows.sort(byName);
+  else rows.sort((a, b) => (a.source === b.source ? byName(a, b) : a.source === 'local' ? -1 : 1));
+  return rows;
+}
+function renderPicker() {
+  const list = $('modelList'); list.innerHTML = '';
+  const rows = pickerRows();
+  const current = $('model').value;
+  $('modelCount').textContent = rows.length + (rows.length === 1 ? ' model' : ' models');
+  if (!rows.length) {
+    const empty = document.createElement('div'); empty.className = 'picker-empty';
+    empty.textContent = 'No models match. Pull one with `ollama pull <name>`, or cache the cloud catalogue in Settings.';
+    list.appendChild(empty); return;
+  }
+  if (pickerCursor >= rows.length) pickerCursor = rows.length - 1;
+  if (pickerCursor < 0) pickerCursor = 0;
+  let lastGroup = null;
+  const grouped = $('modelSort').value === 'source';
+  rows.forEach((m, index) => {
+    if (grouped && m.source !== lastGroup) {
+      lastGroup = m.source;
+      const head = document.createElement('div'); head.className = 'picker-group';
+      head.textContent = m.source === 'local' ? 'On this machine' : 'Cloud';
+      list.appendChild(head);
+    }
+    const family = familyOf(m.name);
+    const row = document.createElement('button');
+    row.type = 'button'; row.className = 'mrow' + (m.name === current ? ' on' : '') + (index === pickerCursor ? ' cursor' : '');
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', m.name === current ? 'true' : 'false');
+    row.style.animationDelay = Math.min(index, 12) * 14 + 'ms';
+    const logo = document.createElement('span'); logo.className = 'mlogo'; logo.style.color = family.color;
+    logo.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true">' + family.shape + '</svg>';
+    const main = document.createElement('span'); main.className = 'mmain';
+    const nameEl = document.createElement('span'); nameEl.className = 'mname'; nameEl.textContent = m.name;
+    const meta = document.createElement('span'); meta.className = 'mmeta';
+    meta.textContent = [family.name, prettyParams(paramCount(m)), prettyBytes(m.size), m.details?.quantization_level].filter(Boolean).join(' · ');
+    main.append(nameEl, meta);
+    const tag = document.createElement('span'); tag.className = 'mtag ' + m.source; tag.textContent = m.source;
+    row.append(logo, main, tag);
+    row.onclick = () => chooseModel(m.name);
+    row.onmouseenter = () => { pickerCursor = index; markCursor(); };
+    list.appendChild(row);
+  });
+}
+function markCursor() {
+  const rows = [...document.querySelectorAll('#modelList .mrow')];
+  rows.forEach((r, i) => r.classList.toggle('cursor', i === pickerCursor));
+  rows[pickerCursor]?.scrollIntoView({ block: 'nearest' });
+}
+function chooseModel(name) {
+  const sel = $('model');
+  if (![...sel.options].some((o) => o.value === name)) {
+    const option = document.createElement('option'); option.value = name; option.textContent = name; sel.appendChild(option);
+  }
+  sel.value = name; saveState('omodel', name);
+  syncModelButton(); closeModelPicker();
+}
+function openModelPicker() {
+  $('modelPicker').classList.add('show');
+  const rows = pickerRows();
+  pickerCursor = Math.max(0, rows.findIndex((m) => m.name === $('model').value));
+  renderPicker();
+  $('modelSearch').value = ''; $('modelSearch').focus();
+}
+function closeModelPicker() { $('modelPicker').classList.remove('show'); }
 function setModelByName(name) {
   const sel = $('model');
   const opt = [...sel.options].find((o) => o.value === name || o.value.startsWith(name));
-  if (opt) { sel.value = opt.value; saveState('omodel', sel.value); showChatView(); addSysNote('Model set to ' + opt.value + '.'); }
+  if (opt) { sel.value = opt.value; saveState('omodel', sel.value); syncModelButton(); showChatView(); addSysNote('Model set to ' + opt.value + '.'); }
   else { showChatView(); addSysNote('Model "' + name + '" not found. Available: ' + [...sel.options].map((o) => o.value).join(', ')); }
   scrollBottom();
 }
@@ -322,6 +439,9 @@ function normalizeConversation(value) {
     id: String(value.id),
     title: typeof value.title === 'string' ? value.title : '(untitled chat)',
     model: typeof value.model === 'string' ? value.model : '',
+    // Permissions the user granted in this chat. Also arrives over LAN sharing,
+    // so it is coerced to plain strings here and re-checked in the main process.
+    grants: Array.isArray(value.grants) ? [...new Set(value.grants.filter((t) => typeof t === 'string').map(String))].slice(0, 20) : [],
     turns: Array.isArray(value.turns) ? value.turns
       .filter((turn) => turn && (turn.role === 'user' || turn.role === 'assistant'))
       .map((turn) => ({
@@ -341,7 +461,13 @@ function normalizeSteps(value) {
     if (!s || typeof s !== 'object') continue;
     if (s.k === 'text' || s.k === 'think') { const text = String(s.text ?? ''); if (text) out.push({ k: s.k, text }); }
     else if (s.k === 'tool') out.push({ k: 'tool', id: s.id ? String(s.id) : undefined, fn: String(s.fn ?? 'tool'), args: s.args ?? {} });
-    else if (s.k === 'result') out.push({ k: 'result', id: s.id ? String(s.id) : undefined, is_error: !!s.is_error, result: String(s.result ?? '') });
+    else if (s.k === 'result') {
+      const step = { k: 'result', id: s.id ? String(s.id) : undefined, is_error: !!s.is_error, result: String(s.result ?? '') };
+      if (s.denied && typeof s.denied === 'object') {
+        step.denied = { what: String(s.denied.what ?? 'this action'), tool: s.denied.tool ? String(s.denied.tool) : null };
+      }
+      out.push(step);
+    }
   }
   return out;
 }
@@ -353,6 +479,7 @@ function saveConvs() {
   // ponytail: keep readable history, never bulky base64 attachments or unlimited logs.
   const stored = conversations.slice(0, 50).map((c) => ({
     ...c,
+    grants: c.grants || [],
     turns: (c.turns || []).slice(-80).map((t) => ({
       role: t.role,
       content: String(t.content || '').slice(0, 64000),
@@ -671,9 +798,46 @@ function addToolResult(turn, s) {
     };
     out.appendChild(more);
   }
+  // A refused action is not a failure to report — it is a decision to put in
+  // front of the user, so it replaces the raw error text with an Allow control.
+  if (s.denied) {
+    out.innerHTML = '';
+    out.classList.add('denied');
+    const label = document.createElement('div'); label.className = 'denied-label';
+    label.textContent = 'Blocked: ' + s.denied.what;
+    out.appendChild(label);
+    if (s.denied.tool && !turn.replaying) {
+      const row = document.createElement('div'); row.className = 'denied-actions';
+      const allow = document.createElement('button'); allow.type = 'button'; allow.className = 'allow-btn';
+      allow.textContent = 'Allow ' + s.denied.tool + ' for this chat';
+      const keep = document.createElement('button'); keep.type = 'button'; keep.className = 'deny-btn';
+      keep.textContent = 'Keep blocked';
+      allow.onclick = () => { grantTool(turn.conversationId, s.denied.tool, row); };
+      keep.onclick = () => { row.replaceWith(Object.assign(document.createElement('div'), { className: 'denied-label', textContent: 'Left blocked.' })); };
+      row.append(allow, keep);
+      out.appendChild(row);
+    } else if (s.denied.tool) {
+      const note = document.createElement('div'); note.className = 'denied-label';
+      note.textContent = turn.grantedNote || '';
+      if (note.textContent) out.appendChild(note);
+    }
+  }
   host.el.appendChild(out);
   host.el.classList.remove('active');
-  record(turn, { k: 'result', id: s.id, is_error: !!s.is_error, result: full });
+  record(turn, { k: 'result', id: s.id, is_error: !!s.is_error, result: full, denied: s.denied || undefined });
+}
+// Granting is per conversation and persists with it, so resuming the session
+// later keeps the permission the user already gave.
+function grantTool(conversationId, tool, row) {
+  const conv = conversations.find((c) => c.id === conversationId);
+  if (!conv) return;
+  conv.grants = [...new Set([...(conv.grants || []), tool])];
+  saveConvs();
+  const done = document.createElement('div');
+  done.className = 'denied-label granted';
+  done.textContent = tool + ' allowed for this chat. Ask again to retry it.';
+  row.replaceWith(done);
+  syncComposerState();
 }
 function addStep(s, turn = currentTurn()) {
   if (!turn) return;
@@ -872,7 +1036,7 @@ async function startMessage(entry) {
   turn.conversationId = conv.id;
   activeTurns.set(requestId, turn);
   renderRecents(); syncComposerState();
-  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, harness: conv.harness || entry.harness });
+  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, harness: conv.harness || entry.harness, mode: settings.permissionMode, grants: conv.grants || [] });
   if (!result?.ok) {
     const failed = activeTurns.get(requestId);
     if (failed) { failed.turnEl.classList.add('error'); failed.streamEl.innerHTML = '<div class="block text">[error] ' + esc(result?.error || 'Could not start this chat.') + '</div>'; activeTurns.delete(requestId); renderRecents(); syncComposerState(); }
@@ -1045,6 +1209,33 @@ function syncHarnessFields() {
   $('codexModel').parentElement.style.display = settings.harness === 'codex' ? '' : 'none';
   $('opencodeModel').parentElement.style.display = settings.harness === 'opencode' ? '' : 'none';
 }
+// Permission mode: a segmented control rather than a <select>, because the
+// difference between the three is the description, not the label.
+function syncModes() {
+  for (const btn of document.querySelectorAll('#modes .mode')) {
+    const on = btn.dataset.mode === settings.permissionMode;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+  const badge = $('modeBadge');
+  if (badge) {
+    badge.textContent = { approve: 'Approve', auto: 'Auto', full: 'Full' }[settings.permissionMode] || 'Auto';
+    badge.className = 'composer-mode mode-' + settings.permissionMode;
+    badge.title = {
+      approve: 'Approve mode — writes and commands are blocked until you allow them',
+      auto: 'Auto mode — the standard tool set runs without asking',
+      full: 'Full mode — nothing is withheld',
+    }[settings.permissionMode] || '';
+  }
+}
+for (const btn of document.querySelectorAll('#modes .mode')) {
+  btn.onclick = () => { settings.permissionMode = btn.dataset.mode; syncModes(); saveSettings(); };
+}
+$('modeBadge').onclick = () => {
+  const order = ['approve', 'auto', 'full'];
+  settings.permissionMode = order[(order.indexOf(settings.permissionMode) + 1) % order.length];
+  syncModes(); saveSettings();
+};
 $('harnessSel').onchange = () => { settings.harness = $('harnessSel').value; syncHarnessFields(); saveSettings(); };
 $('codexModel').oninput = () => { settings.codexModel = $('codexModel').value.trim(); saveSettings(); };
 $('opencodeModel').oninput = () => { settings.opencodeModel = $('opencodeModel').value.trim(); saveSettings(); };
@@ -1055,6 +1246,29 @@ $('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settin
 $('recents-label').onclick = openSettings;
 $('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
+// model picker wiring
+$('modelBtn').onclick = openModelPicker;
+$('modelPickerClose').onclick = closeModelPicker;
+$('modelPicker').onclick = (e) => { if (e.target === $('modelPicker')) closeModelPicker(); };
+$('modelSearch').oninput = () => { pickerCursor = 0; renderPicker(); };
+$('modelSort').onchange = renderPicker;
+for (const btn of document.querySelectorAll('#modelFilters .pfilter')) {
+  btn.onclick = () => {
+    document.querySelectorAll('#modelFilters .pfilter').forEach((b) => b.classList.toggle('on', b === btn));
+    pickerCursor = 0; renderPicker();
+  };
+}
+$('modelPicker').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closeModelPicker(); return; }
+  // Arrow keys inside the sort <select> belong to the select — otherwise one
+  // press both changes the sort and moves the row cursor.
+  if (e.target === $('modelSort')) return;
+  const rows = pickerRows();
+  if (!rows.length) return;
+  if (e.key === 'ArrowDown') { e.preventDefault(); pickerCursor = (pickerCursor + 1) % rows.length; markCursor(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); pickerCursor = (pickerCursor - 1 + rows.length) % rows.length; markCursor(); }
+  else if (e.key === 'Enter') { e.preventDefault(); chooseModel(rows[pickerCursor].name); }
+});
 $('cloudModelsRefresh').onclick = refreshCloudCatalogue;
 $('workspacePick').onclick = async () => {
   const picked = await window.ollama.pickFolder();

@@ -346,15 +346,75 @@ const AXON_IDENTITY_PROMPT = [
   'Do not introduce yourself as Claude Code. When asked who you are, say you are the assistant running in Axon and, if useful, explain that Claude Code is the underlying harness.',
   'The Axon instructions below are direct requirements for your behaviour, tone, and constraints.',
 ].join('\n');
-function axonSystemPrompt(userInstructions) {
+
+// ---- permission modes -------------------------------------------------------
+// Three tiers, mapped onto whatever each harness actually enforces:
+//   approve — read-only by default. Anything that writes, deletes or runs a
+//             command is refused by the harness, and Axon surfaces the refusal
+//             as an Allow control in the transcript.
+//   auto    — the curated tool set runs without asking (the long-standing
+//             behaviour, and still the default).
+//   full    — nothing is withheld.
+// Claude Code's own flags do the enforcing, so a model cannot talk its way past
+// this the way it could past a system-prompt rule.
+const PERMISSION_MODES = new Set(['approve', 'auto', 'full']);
+const READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep', 'WebFetch'];
+const normalizeMode = (value) => (PERMISSION_MODES.has(value) ? value : 'auto');
+// Tool names Axon will let the user grant from the transcript. Anything outside
+// this list is not offerable, so a hostile tool name cannot smuggle extra
+// arguments into the CLI's --allowedTools list.
+const GRANTABLE_TOOLS = new Set([...ALLOWED_TOOLS, ...READ_ONLY_TOOLS]);
+function sanitizeGrants(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(String).filter((tool) => GRANTABLE_TOOLS.has(tool)))];
+}
+// The hesitation contract. Strongest in approve mode (where a refusal is
+// expected and the model should plan rather than flail), still present in full
+// mode, where nothing but the model's own judgement is left.
+function permissionPrompt(mode, grants) {
+  const lines = ['[Execution policy]'];
+  if (mode === 'approve') {
+    lines.push(
+      'You are in APPROVE mode. Only read-only tools are granted' + (grants.length ? `, plus these the user has approved this session: ${grants.join(', ')}.` : '.'),
+      'Before any action that writes, deletes, installs or runs a shell command: say what you intend to do and why, in one or two sentences, and then attempt it.',
+      'If the harness refuses the action, do not retry it and do not look for a way around it. Explain what you needed and stop; the user gets an Allow button and decides.',
+    );
+  } else if (mode === 'full') {
+    lines.push(
+      'You are in FULL mode. No permission checks will stop you, so your own judgement is the only safeguard.',
+      'Before anything destructive or hard to undo — deleting files, force-pushing, rewriting history, dropping data, mass edits — state what you are about to do and pause for the user to confirm in their next message.',
+      'Prefer the reversible version of an action when one exists.',
+    );
+  } else {
+    lines.push(
+      'You are in AUTO mode. Reading, writing, editing and ordinary shell commands run without asking.',
+      'Say what you are doing as you go. Before anything destructive or hard to undo — deleting files, force-pushing, rewriting history, dropping data, mass edits — stop and ask first rather than proceeding.',
+    );
+  }
+  lines.push('Never work around a refused permission by reaching for a different tool that achieves the same effect.');
+  return lines.join('\n');
+}
+function axonSystemPrompt(userInstructions, mode = 'auto', grants = []) {
   const user = String(userInstructions || '').trim();
-  return user ? `${AXON_IDENTITY_PROMPT}\n\n[Axon instructions]\n${user}` : AXON_IDENTITY_PROMPT;
+  const base = `${AXON_IDENTITY_PROMPT}\n\n${permissionPrompt(normalizeMode(mode), grants)}`;
+  return user ? `${base}\n\n[Axon instructions]\n${user}` : base;
 }
 function isVisionRejection(value) {
   const text = String(value || '');
   return /(?:image|vision|screenshot).{0,100}(?:not supported|unsupported|cannot|can't|does not support|not capable)|(?:400).{0,100}(?:image|vision|screenshot)/i.test(text);
 }
-function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], recovered = false) {
+// A refused action comes back as a normal tool_result carrying is_error, not as
+// a crash or a hang — verified against Claude Code in --permission-mode manual.
+// The renderer turns anything matching this into an Allow control.
+function permissionDenial(text) {
+  const value = String(text || '');
+  const claude = value.match(/requested permissions to (.+?), but you haven'?t granted it yet/i);
+  if (claude) return { what: claude[1].trim() };
+  if (/permission for this action was denied|Blocked by classifier/i.test(value)) return { what: 'this action' };
+  if (/permission denied by the user|rejected the tool/i.test(value)) return { what: 'this action' };
+  return null;
+}
+function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], recovered = false, mode = 'auto', grants = []) {
   holder = holder || {};
   return new Promise((resolve) => {
     const launch = findClaude();
@@ -365,9 +425,20 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
     }
     const newSession = !sessionId;
     const sid = sessionId || crypto.randomUUID();
-    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--model', model,
-      '--allowedTools', ...ALLOWED_TOOLS, newSession ? '--session-id' : '--resume', sid];
-    args.push('--append-system-prompt', axonSystemPrompt(systemPrompt));
+    const permission = normalizeMode(mode);
+    const granted = sanitizeGrants(grants);
+    // approve: read-only plus whatever the user has explicitly allowed this
+    // conversation. full: withhold nothing. auto: the curated set.
+    const tools = permission === 'approve' ? [...new Set([...READ_ONLY_TOOLS, ...granted])] : ALLOWED_TOOLS;
+    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--model', model];
+    if (permission !== 'full') args.push('--allowedTools', ...tools);
+    // `manual` makes a withheld tool come back as a refusal instead of running.
+    // `bypassPermissions` is the flag that actually works here — plain
+    // --dangerously-skip-permissions is gated behind an auto-mode classifier.
+    if (permission === 'approve') args.push('--permission-mode', 'manual');
+    else if (permission === 'full') args.push('--permission-mode', 'bypassPermissions');
+    args.push(newSession ? '--session-id' : '--resume', sid);
+    args.push('--append-system-prompt', axonSystemPrompt(systemPrompt, permission, granted));
     const child = spawn(launch.command, [...launch.prefix, ...args], {
       env: { ...process.env, ANTHROPIC_BASE_URL: OLLAMA_BASE, ANTHROPIC_AUTH_TOKEN: 'ollama' },
       cwd: cwd || undefined,
@@ -383,6 +454,7 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
     let buf = '';
     let resultSid = sid;
     let visionRejected = false;
+    const toolNames = new Map(); // tool_use id -> tool name, to label a refusal
     child.stdout.on('data', (chunk) => {
       buf += chunk;
       let nl; while ((nl = buf.indexOf('\n')) >= 0) {
@@ -390,6 +462,18 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
         const ev = parseEvent(line);
         if (!ev || !ev.flow) continue;
         for (const f of ev.flow) {
+          // Tag a refused action so the renderer can offer to grant it. Only
+          // tools Axon is willing to grant become offers; the rest stay plain
+          // errors, so nothing unexpected can end up in --allowedTools.
+          if (f.act === 'step' && f.step?.type === 'tool_call' && f.step.id) toolNames.set(f.step.id, f.step.fn);
+          if (f.act === 'step' && f.step?.type === 'tool_result' && f.step.is_error !== false) {
+            const denial = permissionDenial(f.step.result);
+            if (denial) {
+              const tool = toolNames.get(f.step.id);
+              f.step.denied = { what: denial.what, tool: GRANTABLE_TOOLS.has(tool) ? tool : null };
+              f.step.is_error = true;
+            }
+          }
           if (f.act === 'delta') send('chat-delta', f.text);
           else if (f.act === 'step') send('chat-step', f.step);
           else if (f.act === 'done') {
@@ -409,7 +493,7 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
       // not keep receiving the same 400 from a non-vision model.
       if (visionRejected && !recovered) {
         send('chat-step', { type: 'tool_result', result: 'This model rejected an image/screenshot. Retrying this request in a clean text-only session.' });
-        return runChat(model, prompt, null, send, systemPrompt, cwd, holder, [], true).then(resolve);
+        return runChat(model, prompt, null, send, systemPrompt, cwd, holder, [], true, permission, granted).then(resolve);
       }
       if (code && !stderrBuf.includes('connectors')) send('chat-error', `claude exited ${code}${stderrBuf ? ': ' + stderrBuf.trim().slice(0, 300) : ''}`);
       send('chat-done', { sessionId: resultSid, ok: !code });
@@ -421,7 +505,7 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
 
 // Codex's supported noninteractive interface emits JSONL events. We map the
 // useful parts into Axon's existing streaming/text/tool-step protocol.
-function runCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = []) {
+function runCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], mode = 'auto') {
   holder = holder || {};
   return new Promise((resolve) => {
     const launch = findCodex();
@@ -432,7 +516,9 @@ function runCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, ima
     }
     if (images.length) send('chat-step', { type: 'tool_result', result: 'Images are not yet supported by Axon’s Codex CLI bridge; this turn was sent as text only.' });
     const root = cwd || ensureDefaultWorkspace();
-    const common = ['--json', '--color', 'never', '--skip-git-repo-check', '--sandbox', 'workspace-write', '-C', root];
+    // Codex enforces the same three tiers through its own sandbox setting.
+    const sandbox = { approve: 'read-only', auto: 'workspace-write', full: 'danger-full-access' }[normalizeMode(mode)];
+    const common = ['--json', '--color', 'never', '--skip-git-repo-check', '--sandbox', sandbox, '-C', root];
     if (model) common.push('--model', model);
     const instruction = (systemPrompt?.trim() ? systemPrompt.trim() + '\n\n' : '') + prompt;
     const args = sessionId ? ['exec', 'resume', sessionId, ...common, instruction] : ['exec', ...common, instruction];
@@ -467,7 +553,7 @@ function runCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, ima
 // already completed — input and output together — so each one becomes a
 // tool_call + tool_result pair keyed by callID. Events are deduped by part id
 // because a future opencode may stream a part cumulatively rather than once.
-function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = []) {
+function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], mode = 'auto') {
   holder = holder || {};
   return new Promise((resolve) => {
     const launch = findOpencode();
@@ -480,6 +566,9 @@ function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
     const root = cwd || ensureDefaultWorkspace();
     const instruction = (systemPrompt?.trim() ? systemPrompt.trim() + '\n\n' : '') + prompt;
     const args = ['run', '--format', 'json', '--thinking', '--dir', root];
+    // opencode only exposes one lever here: --auto blanket-approves anything not
+    // explicitly denied, so it maps to full and nothing else.
+    if (normalizeMode(mode) === 'full') args.push('--auto');
     if (model) args.push('--model', model);
     if (sessionId) args.push('--session', sessionId);
     args.push(instruction);
@@ -532,7 +621,7 @@ function safeImages(value) {
   }
   return images;
 }
-ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, harness }) => {
+ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, harness, mode, grants }) => {
   if (!requestId || typeof requestId !== 'string') return { ok: false, error: 'Missing chat request ID.' };
   const expanded = maybeExpandSlash(prompt);
   const safe = safeImages(images);
@@ -540,10 +629,11 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   // ponytail: client mode forwards to the LAN server (cwd dropped -- the client's
   // project path is on the client device and doesn't map to the server's filesystem).
   if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null }); return { ok: true }; }
+  const permission = normalizeMode(mode);
   if (harness === 'codex' || harness === 'opencode') {
     const holder = {}; localHolders.set(requestId, holder);
     const run = harness === 'opencode' ? runOpencode : runCodex;
-    run(model, expanded, sessionId, send, systemPrompt, cwd, holder, safe)
+    run(model, expanded, sessionId, send, systemPrompt, cwd, holder, safe, permission)
       .catch((error) => send('chat-error', error.message))
       .finally(() => localHolders.delete(requestId));
     return { ok: true };
@@ -554,7 +644,7 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
     send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not advertise vision support.` });
   }
   const holder = {}; localHolders.set(requestId, holder);
-  runChat(model, expanded, sessionId, send, systemPrompt, cwd, holder, usableImages)
+  runChat(model, expanded, sessionId, send, systemPrompt, cwd, holder, usableImages, false, permission, sanitizeGrants(grants))
     .catch((e) => send('chat-error', e.message))
     .finally(() => localHolders.delete(requestId));
   return { ok: true };
