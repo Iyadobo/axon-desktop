@@ -429,14 +429,18 @@ function renderPicker() {
     const tag = document.createElement('span'); tag.className = 'mtag ' + m.source; tag.textContent = m.source;
     row.append(logo, main, tag);
     row.onclick = () => chooseModel(m.name);
-    row.onmouseenter = () => { pickerCursor = index; markCursor(); };
+    // Mouse hover moves the keyboard cursor but must NOT scroll — the row is
+    // visible or the mouse couldn't be over it, and calling scrollIntoView on
+    // every hover nudged the list, which could shift a different row under the
+    // cursor and re-trigger this handler: a hover/scroll jitter loop.
+    row.onmouseenter = () => { pickerCursor = index; markCursor(false); };
     list.appendChild(row);
   });
 }
-function markCursor() {
+function markCursor(scroll = true) {
   const rows = [...document.querySelectorAll('#modelList .mrow')];
   rows.forEach((r, i) => r.classList.toggle('cursor', i === pickerCursor));
-  rows[pickerCursor]?.scrollIntoView({ block: 'nearest' });
+  if (scroll) rows[pickerCursor]?.scrollIntoView({ block: 'nearest' });
 }
 function chooseModel(name) {
   const sel = $('model');
