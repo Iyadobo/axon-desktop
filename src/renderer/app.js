@@ -23,6 +23,25 @@ const queuedMessages = new Map(); // conversationId -> pending user messages
 const steering = new Set();
 function currentTurn() { return activeId ? [...activeTurns.values()].find((turn) => turn.conversationId === activeId) : null; }
 
+// ---- view switching --------------------------------------------------------
+let activeView = 'chat';
+function switchView(viewName) {
+  if (viewName === 'settings') { openSettings(); return; }
+  activeView = viewName;
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    item.classList.toggle('active', item.dataset.view === viewName);
+  });
+  document.querySelectorAll('.view').forEach((view) => {
+    view.classList.toggle('active', view.id === 'view-' + viewName);
+  });
+  document.querySelectorAll('.sidebar-view').forEach((view) => {
+    view.classList.toggle('active', view.id === viewName + 'Sidebar');
+  });
+  if (viewName === 'projects') renderProjectsPage();
+  if (viewName === 'models') renderModelsPage();
+  saveState('oactiveView', viewName);
+}
+
 // ---- settings / appearance --------------------------------------------------
 const THEME_PALETTES = {
   light: { accent: '#f45f96', background: '#ffffff', surface: '#f4f5f7', text: '#17131a' },
@@ -173,6 +192,129 @@ function renderSidebarProjects() {
     item.append(name, count); item.onclick = () => selectProject(project.id); box.appendChild(item);
   }
 }
+// ---- projects page ---------------------------------------------------------
+function renderProjectsPage() {
+  const box = $('projectsPageContent'); if (!box) return;
+  box.innerHTML = '';
+  if (!projects.length) {
+    box.innerHTML = '<div style="opacity:.5;font-size:var(--t-sm)">No projects yet. Create one to organize chats by folder.</div>';
+    return;
+  }
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px';
+  for (const p of projects) {
+    const card = document.createElement('div');
+    card.style.cssText = 'padding:16px;border:1px solid var(--elev-line);border-radius:12px;background:var(--elev-1);cursor:pointer;transition:background .16s ease,border-color .16s ease';
+    card.onmouseenter = () => { card.style.background = 'var(--elev-2)'; card.style.borderColor = 'color-mix(in srgb, var(--color-accent) 40%, var(--elev-line))'; };
+    card.onmouseleave = () => { card.style.background = 'var(--elev-1)'; card.style.borderColor = 'var(--elev-line)'; };
+    const count = conversations.filter((c) => c.projectId === p.id).length;
+    card.innerHTML = '<div style="font-weight:700;font-size:var(--t-body);margin-bottom:6px">' + esc(p.name) + '</div>'
+      + '<div style="font-size:var(--t-xs);color:var(--color-neutral);margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.path) + '">' + esc(p.path) + '</div>'
+      + (p.instructions ? '<div style="font-size:var(--t-xs);color:var(--color-neutral);opacity:.7;margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + esc(p.instructions.slice(0, 120)) + '</div>' : '')
+      + '<div style="display:flex;align-items:center;justify-content:space-between">'
+      + '<span style="font-size:var(--t-xs);color:var(--color-neutral)">' + count + ' chat' + (count === 1 ? '' : 's') + '</span>'
+      + '<button class="pdel" style="opacity:0;font-size:12px;padding:4px 8px;border:1px solid var(--elev-line);border-radius:6px;background:var(--color-bg);color:var(--color-bad);cursor:pointer">Delete</button>'
+      + '</div>';
+    card.querySelector('.pdel').onmouseenter = () => { card.querySelector('.pdel').style.opacity = '1'; };
+    card.querySelector('.pdel').onmouseleave = (e) => { if (!e.relatedTarget?.classList?.contains('pdel')) card.querySelector('.pdel').style.opacity = '0'; };
+    card.querySelector('.pdel').onclick = (e) => {
+      e.stopPropagation();
+      projects = projects.filter((x) => x.id !== p.id);
+      if (activeProjectId === p.id) { activeProjectId = null; saveState('oactiveProject', null); }
+      saveProjects(); renderProjects(); renderRecents(); updateProjectLabel(); renderProjectsPage();
+    };
+    card.onclick = () => { selectProject(p.id); switchView('chat'); };
+    grid.appendChild(card);
+  }
+  box.appendChild(grid);
+}
+
+// ---- models page -----------------------------------------------------------
+const RECOMMENDED_MODELS = [
+  { name: 'qwen3-coder', tag: 'Best for coding', category: 'coding' },
+  { name: 'qwen3:4b', tag: 'Good all-rounder', category: 'general' },
+  { name: 'llama3.1:8b', tag: 'Solid general purpose', category: 'general' },
+  { name: 'deepseek-coder-v2:16b', tag: 'Advanced coding', category: 'coding' },
+  { name: 'mistral:7b', tag: 'Fast & capable', category: 'general' },
+  { name: 'gemma2:9b', tag: 'Google quality', category: 'general' },
+];
+async function renderModelsPage() {
+  const box = $('modelsPageContent'); if (!box) return;
+  box.innerHTML = '<div style="opacity:.5;font-size:var(--t-sm)">Loading models…</div>';
+  let models = [];
+  try {
+    const data = await window.ollama.listModels();
+    models = data.models || [];
+  } catch {}
+  box.innerHTML = '';
+  // Installed models
+  const installed = document.createElement('div');
+  installed.innerHTML = '<h3 style="font-size:var(--t-body);font-weight:700;margin:0 0 12px">Installed Models</h3>';
+  if (!models.length) {
+    installed.innerHTML += '<div style="opacity:.5;font-size:var(--t-sm)">No models installed. Pull one with <code>ollama pull &lt;name&gt;</code> or check the recommended list below.</div>';
+  } else {
+    const list = document.createElement('div');
+    list.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+    for (const m of models) {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--elev-line);border-radius:10px;background:var(--elev-1)';
+      const family = familyOf(m.name);
+      const isVision = modelSupportsVision(m.name);
+      const size = m.size ? prettyBytes(m.size) : '';
+      const params = m.details?.parameter_size || '';
+      row.innerHTML = '<div style="font-weight:600;font-size:var(--t-sm)">' + esc(m.name) + '</div>'
+        + (params ? '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + esc(params) + '</div>' : '')
+        + (size ? '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + size + '</div>' : '')
+        + (isVision ? '<span style="font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid color-mix(in srgb, #22c1c3 40%, var(--elev-line));color:#22c1c3;font-weight:600">VISION</span>' : '')
+        + '<span style="font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid var(--elev-line);color:var(--color-neutral);font-weight:600">' + esc(family.name) + '</span>';
+      list.appendChild(row);
+    }
+    installed.appendChild(list);
+  }
+  box.appendChild(installed);
+  // Recommended models
+  const rec = document.createElement('div');
+  rec.style.cssText = 'margin-top:28px';
+  rec.innerHTML = '<h3 style="font-size:var(--t-body);font-weight:700;margin:0 0 4px">Recommended for Axon</h3>'
+    + '<div style="font-size:var(--t-xs);color:var(--color-neutral);margin-bottom:12px">Curated picks that work well with the Claude Code harness. Small models (&lt;3B) struggle with tool use.</div>';
+  const recList = document.createElement('div');
+  recList.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px';
+  for (const m of RECOMMENDED_MODELS) {
+    const isInstalled = models.some((x) => x.name === m.name || x.name.startsWith(m.name + ':'));
+    const card = document.createElement('div');
+    card.style.cssText = 'padding:12px;border:1px solid var(--elev-line);border-radius:10px;background:var(--elev-1);display:flex;flex-direction:column;gap:4px';
+    card.innerHTML = '<div style="font-weight:600;font-size:var(--t-sm)">' + esc(m.name) + '</div>'
+      + '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + esc(m.tag) + '</div>'
+      + '<div style="font-size:var(--t-xs);color:' + (isInstalled ? '#3fbf7f' : 'var(--color-neutral)') + '">' + (isInstalled ? '✓ Installed' : 'Not installed') + '</div>';
+    recList.appendChild(card);
+  }
+  rec.appendChild(recList);
+  box.appendChild(rec);
+  // Vision models section
+  const vis = document.createElement('div');
+  vis.style.cssText = 'margin-top:28px';
+  vis.innerHTML = '<h3 style="font-size:var(--t-body);font-weight:700;margin:0 0 4px">Vision Capable</h3>'
+    + '<div style="font-size:var(--t-xs);color:var(--color-neutral);margin-bottom:12px">Models that can process images. Attach screenshots or photos in chat to use them.</div>';
+  const visionModels = models.filter((m) => modelSupportsVision(m.name));
+  if (visionModels.length) {
+    const vList = document.createElement('div');
+    vList.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
+    for (const m of visionModels) {
+      const tag = document.createElement('span');
+      tag.style.cssText = 'padding:6px 12px;border:1px solid color-mix(in srgb, #22c1c3 40%, var(--elev-line));border-radius:999px;font-size:var(--t-xs);color:#22c1c3';
+      tag.textContent = m.name;
+      vList.appendChild(tag);
+    }
+    vis.appendChild(vList);
+  } else {
+    vis.innerHTML += '<div style="opacity:.5;font-size:var(--t-sm)">No vision models detected. Pull one with <code>ollama pull llava</code> or similar.</div>';
+  }
+  box.appendChild(vis);
+}
+function modelSupportsVision(model) {
+  return /llava|vision|bakllava|moondream/i.test(model);
+}
+
 function updateProjectLabel() {
   const label = $('recents-label'); const selected = activeProject();
   label.textContent = selected ? ('Recents · ' + selected.name) : 'All chats';
@@ -308,6 +450,30 @@ async function loadModels() {
     syncModelButton();
     if ($('modelPicker').classList.contains('show')) renderPicker();
     setStatus(true, localModels.length ? (cachedCloudCatalogue().models.length ? 'ready · cloud' : 'ready') : 'cloud cache');
+    // Update models sidebar quick list
+    const sidebarList = $('modelsSidebarList');
+    if (sidebarList) {
+      sidebarList.innerHTML = '';
+      if (models.length) {
+        for (const m of models.slice(0, 10)) {
+          const item = document.createElement('div');
+          item.style.cssText = 'padding:6px 8px;font-size:var(--t-xs);cursor:pointer;border-radius:6px;transition:background .12s';
+          item.textContent = m.name;
+          item.onmouseenter = () => { item.style.background = 'var(--elev-2)'; };
+          item.onmouseleave = () => { item.style.background = 'transparent'; };
+          item.onclick = () => { $('model').value = m.name; saveState('omodel', m.name); syncModelButton(); };
+          sidebarList.appendChild(item);
+        }
+        if (models.length > 10) {
+          const more = document.createElement('div');
+          more.style.cssText = 'padding:6px 8px;font-size:var(--t-xs);opacity:.5';
+          more.textContent = '+' + (models.length - 10) + ' more';
+          sidebarList.appendChild(more);
+        }
+      } else {
+        sidebarList.textContent = 'No models installed';
+      }
+    }
   } catch { setStatus(false, 'offline'); }
 }
 // ---- model picker -----------------------------------------------------------
@@ -608,7 +774,7 @@ function showChatView() {
   $('chat').classList.add('show');
   $('composerSlot').appendChild($('composerCard'));
 }
-function newChat() { activeId = null; $('log').innerHTML = ''; showHomeView(); renderRecents(); syncComposerState(); }
+function newChat() { activeId = null; $('log').innerHTML = ''; showHomeView(); renderRecents(); syncComposerState(); switchView('chat'); }
 
 // ---- log helpers -----------------------------------------------------------
 function addUserTurn(text, images = [], persist = true) {
@@ -658,11 +824,13 @@ function newAiTurn(model) {
   head.textContent = model || '';
   const stream = document.createElement('div'); stream.className = 'stream';
   const think = document.createElement('span'); think.className = 'dots'; think.innerHTML = '<i></i><i></i><i></i>';
+  const generating = document.createElement('div'); generating.className = 'generating'; generating.textContent = 'Generating…';
   stream.appendChild(think);
+  stream.appendChild(generating);
   if (head.textContent) t.appendChild(head);
   t.appendChild(stream); $('log').appendChild(t);
   scrollBottom();
-  return { turnEl: t, streamEl: stream, think, blocks: [], mode: null, tail: '', started: false, model };
+  return { turnEl: t, streamEl: stream, think, generating, blocks: [], mode: null, tail: '', started: false, model };
 }
 // One ordered block in the transcript stream: text | think | tool | result.
 // Ordered log of everything the turn produced, kept alongside the DOM so the
@@ -950,6 +1118,7 @@ window.ollama.on('chat-error', ({ requestId, message }) => {
 window.ollama.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   const turn = activeTurns.get(requestId); if (!turn) return;
   if (turn.think) { turn.think.remove(); turn.think = null; }
+  if (turn.generating) { turn.generating.remove(); turn.generating = null; }
   turn.blocks.forEach((b) => b.el.classList.remove('active'));
   const text = turnText(turn);
   if (steered || steering.has(requestId)) {
@@ -1230,7 +1399,11 @@ document.addEventListener('keydown', (e) => {
 });
 
 // settings
-$('settingsBtn').onclick = openSettings;
+for (const btn of document.querySelectorAll('#navBar .nav-item')) {
+  btn.onclick = () => switchView(btn.dataset.view);
+}
+$('projectsSidebarAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
+$('projectsPageAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('settingsClose').onclick = closeSettings;
 $('settings').addEventListener('click', (e) => { if (e.target.id === 'settings') closeSettings(); });
 $('sysPrompt').addEventListener('input', () => { settings.systemPrompt = $('sysPrompt').value; saveSettings(); });
@@ -1560,5 +1733,8 @@ function refreshGridColor() {
   refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
   try { renderLanDevices(await window.ollama.lanRefresh()); } catch {}
   await loadModels();
+  // Restore last active view
+  const savedView = persisted.oactiveView || 'chat';
+  if (savedView !== 'chat') switchView(savedView);
   setLoading('Ready', true);
 })();

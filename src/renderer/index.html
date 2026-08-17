@@ -88,8 +88,24 @@
   .mode-badge.host { color:var(--color-accent); border-color:var(--color-accent); }
   .mode-badge.client { color:#007d5a; border-color:#007d5a; }
 
+  /* navigation bar */
+  .nav-bar { display:flex; flex-direction:column; gap:2px; padding:0 4px; margin:8px 0 4px; }
+  .nav-item { display:flex; align-items:center; gap:9px; padding:8px 10px; border:none; background:transparent;
+    color:var(--color-neutral); font:inherit; font-size:var(--t-sm); border-radius:8px; cursor:pointer; width:100%;
+    text-align:left; transition:background .16s ease, color .16s ease; }
+  .nav-item:hover { background:var(--elev-2); color:var(--color-text); }
+  .nav-item.active { background:color-mix(in srgb, var(--color-accent) 10%, transparent); color:var(--color-text); font-weight:650; }
+  .nav-item svg { width:18px; height:18px; flex:none; stroke:currentColor; fill:none; stroke-width:1.8; }
+  .sidebar-view { display:none; flex-direction:column; overflow:hidden; flex:1; }
+  .sidebar-view.active { display:flex; }
+  .sidebar-empty { font-size:var(--t-xs); opacity:.45; padding:8px; }
+
   /* main column */
   #main { flex:1; display:flex; flex-direction:column; overflow:hidden; background:transparent; position:relative; }
+  .view { display:none; flex-direction:column; overflow:hidden; flex:1; }
+  .view.active { display:flex; }
+  .view-scroll { flex:1; overflow-y:auto; padding:28px 36px; max-width:960px; margin:0 auto; width:100%; }
+  .view-scroll h2 { font-size:22px; font-weight:800; margin:0 0 20px; letter-spacing:-.02em; }
   .titlebar { height:40px; flex-shrink:0; display:flex; align-items:center; border-bottom:1px solid color-mix(in srgb, var(--color-divider) 70%, transparent); background:var(--color-bg); -webkit-app-region:drag; user-select:none; }
   .window-brand { height:100%; width:252px; padding:0 17px; display:flex; gap:9px; align-items:center; border-right:1px solid color-mix(in srgb, var(--color-divider) 65%, transparent); font-size:13px; font-weight:720; letter-spacing:.01em; }
   .window-mark { width:20px; height:28px; object-fit:contain; flex:none; }
@@ -181,6 +197,11 @@
   .cursor { display:inline-block; width:7px; height:15px; background:var(--color-accent);
     vertical-align:-2px; animation:blink 1.1s steps(2) infinite; }
   @keyframes blink { 50% { opacity:0; } }
+  /* generating indicator — shows while AI is working */
+  .generating { display:flex; align-items:center; gap:8px; padding:8px 0; font-size:var(--t-xs); color:var(--color-neutral); opacity:.8; }
+  .generating::before { content:''; width:10px; height:10px; border:2px solid var(--color-accent); border-top-color:transparent;
+    border-radius:50%; animation:spin .7s linear infinite; flex:none; }
+  @keyframes spin { to { transform:rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) {
     .dots i, .block.tool.active, .cursor, .loading-mark img { animation:none !important; }
     .block.tool.active { background:rgba(244,95,150,.08); }
@@ -380,6 +401,8 @@
   #side { width:252px; padding:16px 10px; border-right:1px solid var(--elev-line);
     background:color-mix(in srgb, var(--elev-1) 94%, transparent); }
   .brand { margin-bottom:14px; padding:6px 8px; font-size:var(--t-body); font-weight:750; letter-spacing:-.01em; }
+  .nav-bar { margin:4px 0 8px; }
+  .nav-item { font-size:var(--t-sm); padding:7px 8px; min-height:32px; border-radius:8px; }
   .brand .logo { width:24px; height:24px; }
   .newchat { border:1px solid var(--elev-line); border-radius:10px; padding:9px 10px; font-size:var(--t-sm);
     font-weight:650; background:var(--elev-2); box-shadow:var(--shadow-1); }
@@ -569,12 +592,40 @@
 </header>
 <div id="app">
   <div id="side">
-    <div class="brand"><img class="logo" src="../assets/icon.png" alt="Axon" /><span style="flex:1">Axon</span><button class="iconbtn" id="settingsBtn" title="Settings" aria-label="Settings" style="width:26px;height:26px"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1 1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button></div>
+    <div class="brand"><img class="logo" src="../assets/icon.png" alt="Axon" /><span style="flex:1">Axon</span></div>
     <div class="newchat" id="newchat"><span style="opacity:.6">+</span><span>New chat</span></div>
-    <div class="side-section-head"><span>Projects</span><button id="sidebarProjectsAdd" type="button" title="Add project" aria-label="Add project">+</button></div>
-    <div id="sidebarProjects" aria-label="Projects"></div>
-    <div class="recents-label" id="recents-label">Recents</div>
-    <div id="recents"></div>
+    <nav class="nav-bar" id="navBar">
+      <button class="nav-item active" data-view="chat" type="button">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Chat</span>
+      </button>
+      <button class="nav-item" data-view="projects" type="button">
+        <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span>Projects</span>
+      </button>
+      <button class="nav-item" data-view="models" type="button">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        <span>Models</span>
+      </button>
+      <button class="nav-item" data-view="settings" type="button" id="settingsNav">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1 1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+    <div id="chatSidebar" class="sidebar-view active">
+      <div class="side-section-head"><span>Projects</span><button id="sidebarProjectsAdd" type="button" title="Add project" aria-label="Add project">+</button></div>
+      <div id="sidebarProjects" aria-label="Projects"></div>
+      <div class="recents-label" id="recents-label">Recents</div>
+      <div id="recents"></div>
+    </div>
+    <div id="projectsSidebar" class="sidebar-view">
+      <div class="side-section-head"><span>Quick Actions</span></div>
+      <div class="newchat" id="projectsSidebarAdd" style="margin:0 4px"><span style="opacity:.6">+</span><span>New project</span></div>
+    </div>
+    <div id="modelsSidebar" class="sidebar-view">
+      <div class="side-section-head"><span>Installed</span></div>
+      <div id="modelsSidebarList" class="sidebar-empty">Loading models…</div>
+    </div>
     <div class="sidefoot">
       <span id="backend">Ollama 11434</span>
       <span style="display:flex;align-items:center;gap:6px"><span id="modeBadge" class="mode-badge">Local</span><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
@@ -582,6 +633,7 @@
   </div>
 
   <div id="main">
+    <div id="view-chat" class="view active">
     <!-- home (empty) -->
     <div id="home">
       <div class="wrap">
@@ -626,6 +678,28 @@
       <div class="browserbar"><button id="browserBack" title="Back">←</button><button id="browserForward" title="Forward">→</button><button id="browserReload" title="Reload">↻</button><input id="browserUrl" aria-label="Browser address" placeholder="https://…" /><button id="browserClose" title="Close browser">×</button></div>
       <div id="browserSlot"></div>
     </aside>
+    </div><!-- /view-chat -->
+    <div id="view-projects" class="view">
+      <div class="view-scroll">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+          <h2 style="margin:0">Projects</h2>
+          <button class="newchat" id="projectsPageAdd" style="margin:0"><span style="opacity:.6">+</span><span>New project</span></button>
+        </div>
+        <div id="projectsPageContent"></div>
+      </div>
+    </div>
+    <div id="view-models" class="view">
+      <div class="view-scroll">
+        <h2>Models</h2>
+        <div id="modelsPageContent"></div>
+      </div>
+    </div>
+    <div id="view-settings" class="view">
+      <div class="view-scroll">
+        <h2>Settings</h2>
+        <div id="settingsPageContent"></div>
+      </div>
+    </div>
   </div>
 </div>
 
