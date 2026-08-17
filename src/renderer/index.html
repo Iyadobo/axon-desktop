@@ -444,7 +444,9 @@
   .model-btn:hover { background:var(--elev-2); border-color:color-mix(in srgb, var(--color-accent) 40%, var(--elev-line)); }
   .model-btn #modelBtnName { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .model-btn svg { flex:none; opacity:.6; }
-  .model-dot { width:7px; height:7px; border-radius:50%; flex:none; background:var(--color-neutral); }
+  .model-mark { width:15px; height:15px; flex:none; display:grid; place-items:center; }
+  .model-mark svg { width:15px; height:15px; }
+  .model-dot { width:6px; height:6px; border-radius:50%; flex:none; background:var(--color-neutral); }
   .model-dot.local { background:#3fbf7f; }
   .model-dot.cloud { background:#4ea1ff; }
   .picker-card { width:min(660px,94vw); max-height:82vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -595,7 +597,7 @@
               <button class="iconbtn" id="attachBtn" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10.5 19a2 2 0 0 1-3-3l8-8"/></svg></button>
               <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.json,.csv,.yaml,.yml,.toml,.xml,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.css,.html,.ini,.sh,.ps1,.sql" multiple style="display:none" />
               <button type="button" id="modelBtn" class="model-btn" title="Choose a model">
-                <span class="model-dot"></span><span id="modelBtnName">model</span>
+                <span class="model-mark" id="modelBtnMark"></span><span class="model-dot"></span><span id="modelBtnName">model</span>
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <span class="select-tag" hidden><select id="model"></select></span>
@@ -747,6 +749,7 @@
 <div class="modal" id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
   <div class="update-dialog"><h3 id="updateTitle">Axon update</h3><p id="updateBody"></p><div class="buttons" id="updateButtons"></div></div>
 </div>
+<script src="model-logos.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

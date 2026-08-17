@@ -315,22 +315,49 @@ async function loadModels() {
 // conversations and the send path all read it); this is a richer way to set it.
 let modelCatalogue = [];
 let pickerCursor = 0;
-// Family marks. Real vendor logos cannot be fetched under the page's CSP and
-// would misrepresent the vendors anyway, so each family gets its own glyph and
-// colour — enough to tell the list apart at a glance.
+// Family marks. Where a vendor's mark is available under a free licence it is
+// used (see model-logos.js); where it is not — Microsoft's Phi, IBM's Granite,
+// OpenAI — the family keeps an Axon glyph rather than an imitation of theirs.
 const MODEL_FAMILIES = [
-  { test: /^llama|^codellama/i, name: 'Llama', color: '#7a6bff', shape: '<path d="M12 3 21 19H3Z"/>' },
-  { test: /^qwen/i, name: 'Qwen', color: '#ff7a45', shape: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/>' },
-  { test: /^deepseek/i, name: 'DeepSeek', color: '#4ea1ff', shape: '<path d="M12 3 21 12 12 21 3 12Z"/>' },
-  { test: /^mistral|^mixtral|^codestral/i, name: 'Mistral', color: '#ffb020', shape: '<path d="M4 19V7l4 5 4-5 4 5 4-5v12"/>' },
-  { test: /^gemma|^gemini/i, name: 'Gemma', color: '#3fbf7f', shape: '<path d="M12 3c1.6 5.4 3.6 7.4 9 9-5.4 1.6-7.4 3.6-9 9-1.6-5.4-3.6-7.4-9-9 5.4-1.6 7.4-3.6 9-9Z"/>' },
+  { test: /^llama|^codellama/i, name: 'Llama', brand: 'meta' },
+  { test: /^qwen/i, name: 'Qwen', brand: 'qwen' },
+  { test: /^deepseek/i, name: 'DeepSeek', brand: 'deepseek' },
+  { test: /^mistral|^mixtral|^codestral|^devstral/i, name: 'Mistral', brand: 'mistral' },
+  { test: /^gemma|^gemini/i, name: 'Gemma', brand: 'gemini' },
+  { test: /^claude/i, name: 'Claude', brand: 'anthropic' },
   { test: /^phi/i, name: 'Phi', color: '#e26bd8', shape: '<circle cx="12" cy="12" r="7"/><path d="M12 3v18"/>' },
   { test: /^granite/i, name: 'Granite', color: '#8a94a6', shape: '<path d="M5 8h14v11H5Z"/><path d="M5 8l7-4 7 4"/>' },
+  { test: /^gpt|^o[13]-|^oss/i, name: 'GPT', color: '#69b39b', shape: '<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/>' },
   { test: /^llava|^bakllava|vision/i, name: 'Vision', color: '#22c1c3', shape: '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.4"/>' },
   { test: /^nomic|embed/i, name: 'Embedding', color: '#9aa0aa', shape: '<circle cx="6" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.4"/><circle cx="18" cy="12" r="2.4"/><path d="M6 12 12 6l6 6"/>' },
 ];
-const DEFAULT_FAMILY = { name: 'Other', color: '#9aa0aa', shape: '<circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/>' };
+// Anything unrecognised is still an Ollama-served model, so it gets Ollama's mark.
+const DEFAULT_FAMILY = { name: 'Model', brand: 'ollama' };
 const familyOf = (name) => MODEL_FAMILIES.find((f) => f.test.test(String(name || ''))) || DEFAULT_FAMILY;
+// Several brand colours are near-black (Ollama, Anthropic) and would disappear
+// on a dark surface, so very dark marks are blended toward the theme's text
+// colour. Light themes keep the brand colour as-is.
+function brandColor(hex) {
+  const v = String(hex || '').replace('#', '');
+  if (v.length !== 6) return 'var(--color-text)';
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16) / 255);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum < 0.22 ? `color-mix(in srgb, ${hex} 35%, var(--color-text))` : hex;
+}
+// Brand marks are single filled paths; Axon's own glyphs are stroked.
+function familyMarkup(family) {
+  const brand = family.brand && typeof BRAND_LOGOS !== 'undefined' ? BRAND_LOGOS[family.brand] : null;
+  if (brand) {
+    return {
+      color: brandColor(brand.hex),
+      svg: '<svg viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="' + esc(brand.title) + '"><path d="' + brand.path + '"/></svg>',
+    };
+  }
+  return {
+    color: family.color || '#9aa0aa',
+    svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true">' + (family.shape || '') + '</svg>',
+  };
+}
 // "8x7B" and "1.5B" both need to become a comparable number.
 function paramCount(model) {
   const raw = String(model?.details?.parameter_size || '').trim();
@@ -347,6 +374,9 @@ function syncModelButton() {
   $('modelBtnName').textContent = name || 'Select a model';
   $('modelBtn').title = name ? name + (entry?.source === 'cloud' ? ' · cloud' : ' · local') : 'Choose a model';
   $('modelBtn').querySelector('.model-dot').className = 'model-dot ' + (entry?.source || '');
+  const mark = $('modelBtnMark');
+  if (name) { const m = familyMarkup(familyOf(name)); mark.style.color = m.color; mark.innerHTML = m.svg; }
+  else mark.innerHTML = '';
 }
 function pickerRows() {
   const query = $('modelSearch').value.trim().toLowerCase();
@@ -388,8 +418,9 @@ function renderPicker() {
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', m.name === current ? 'true' : 'false');
     row.style.animationDelay = Math.min(index, 12) * 14 + 'ms';
-    const logo = document.createElement('span'); logo.className = 'mlogo'; logo.style.color = family.color;
-    logo.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true">' + family.shape + '</svg>';
+    const mark = familyMarkup(family);
+    const logo = document.createElement('span'); logo.className = 'mlogo'; logo.style.color = mark.color;
+    logo.innerHTML = mark.svg;
     const main = document.createElement('span'); main.className = 'mmain';
     const nameEl = document.createElement('span'); nameEl.className = 'mname'; nameEl.textContent = m.name;
     const meta = document.createElement('span'); meta.className = 'mmeta';

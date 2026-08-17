@@ -107,3 +107,22 @@ before the prompt reaches `claude`.
 - **Custom command expansion is app-side by necessity** — Claude Code does not expand
   `~/.claude/commands/*.md` in headless `-p` mode (verified). Built-in REPL commands can't run
   headless at all, so the few useful ones are reimplemented app-side.
+
+## Third-party marks
+
+The model picker shows each family's own logo. Those marks are vendored into
+`src/renderer/model-logos.js` from [simple-icons](https://github.com/simple-icons/simple-icons),
+whose icon data is CC0. Regenerate with:
+
+```
+npm i --no-save simple-icons && node scripts/gen-model-logos.js
+```
+
+The marks remain the trademarks of their respective owners. Axon uses them
+nominatively — to identify which model family a row refers to — which implies no
+affiliation with or endorsement by those companies.
+
+simple-icons deliberately does not carry Microsoft, IBM or OpenAI marks, so the
+Phi, Granite and GPT families keep Axon's own neutral glyphs instead. Those marks
+are not sourced from anywhere else, and that is on purpose: please don't swap in
+an imitation.
