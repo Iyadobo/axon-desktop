@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "0.6.7",
+  "version": "0.7.0",
   "description": "Axon is a local agent workspace powered by Claude Code and a selected Ollama model",
   "main": "src/main.js",
   "scripts": {
