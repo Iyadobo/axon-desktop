@@ -1488,6 +1488,7 @@ $('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settin
 $('recents-label').onclick = openSettings;
 $('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
 document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
+$('sidebarUpdate').onclick = () => { openSettings(); $('appUpdateBtn').click(); };
 $('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
 // model picker wiring
