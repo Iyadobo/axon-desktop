@@ -1590,7 +1590,9 @@ function updateLan(s) {
     const info = $('lanServerInfo'); const chk = $('lanServerChk'); const copy = $('lanCopyHost');
     if (s.server === 'listening') {
       const address = (s.ips || [])[0] ? (s.ips[0] + ':' + s.port) : '';
-      info.textContent = address ? 'Host ready — clients can pick this device below or use ' + address + '.' : 'Host ready — waiting for clients.';
+      const clients = Number(s.clients) || 0;
+      const presence = clients ? clients + ' client' + (clients === 1 ? '' : 's') + ' linked.' : 'waiting for clients.';
+      info.textContent = address ? 'Host ready — ' + presence + ' Clients can use ' + address + '.' : 'Host ready — ' + presence;
       copy.disabled = !address; copy.dataset.address = address;
     }
     else if (s.server === 'closed' || s.server === 'off') { info.textContent = ''; chk.checked = false; copy.disabled = true; copy.dataset.address = ''; }
@@ -1610,6 +1612,12 @@ function updateLan(s) {
     } else if (s.client === 'disconnected') {
       if (localConversationBackup) { conversations = localConversationBackup; localConversationBackup = null; renderRecents(); }
       info.textContent = ''; btn.textContent = 'Connect'; btn.dataset.mode = 'conn';
+    } else if (s.client === 'connecting') {
+      info.textContent = 'Connecting to Host…'; btn.textContent = 'Disconnect'; btn.dataset.mode = 'disc';
+    } else if (s.client === 'reconnecting') {
+      const seconds = Math.max(1, Math.ceil((Number(s.retryInMs) || 0) / 1000));
+      info.textContent = 'Connection lost — retrying in ' + seconds + ' second' + (seconds === 1 ? '' : 's') + '. Disconnect to stop.';
+      btn.textContent = 'Disconnect'; btn.dataset.mode = 'disc';
     }
     else if (s.client.startsWith('error')) { info.textContent = 'Connection failed: ' + s.client; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
     else { info.textContent = s.client; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
@@ -1650,7 +1658,7 @@ function renderLanDevices(devices) {
   }
 }
 window.ollama.on('lan-devices', renderLanDevices);
-$('lanServerChk').onchange = (e) => window.ollama.lanServer(e.target.checked);
+$('lanServerChk').onchange = (e) => { saveState('olanHostEnabled', e.target.checked); window.ollama.lanServer(e.target.checked); };
 $('lanCopyHost').onclick = async () => {
   const address = $('lanCopyHost').dataset.address;
   if (!address) return;
@@ -1743,7 +1751,7 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.ollama.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;
@@ -1761,6 +1769,7 @@ function refreshGridColor() {
   loadConvs();
   activeProjectId = projects.some((p) => p.id === persisted.oactiveProject) ? persisted.oactiveProject : null;
   $('lanHost').value = persisted.olanHost || '';
+  $('lanServerChk').checked = persisted.olanHostEnabled === true;
   $('prompt').value = typeof persisted.odraft === 'string' ? persisted.odraft : '';
   autosize();
   applyAppearance();
@@ -1768,6 +1777,7 @@ function refreshGridColor() {
   updateProjectLabel();
   refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
   try { renderLanDevices(await window.ollama.lanRefresh()); } catch {}
+  if ($('lanServerChk').checked) window.ollama.lanServer(true);
   await loadModels();
   // Restore last active view
   const savedView = persisted.oactiveView || 'chat';

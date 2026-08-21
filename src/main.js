@@ -710,6 +710,7 @@ ipcMain.handle('browser-action', (_e, action) => {
 // so the renderer UI is identical on either side. No HTTP, no web GUI.
 let lanServer = null, lanClient = null, lanClientConnected = false, lanDiscovery = null;
 let remoteModels = null;
+let lanReconnectTimer = null, lanDesiredHost = null, lanReconnectAttempt = 0;
 const lanInstanceId = crypto.randomUUID();
 let hostInstaller = null;
 const pendingUpdateRequests = new Map();
@@ -717,6 +718,16 @@ const pendingUpdateOffers = new Map();
 let inboundUpdate = null;
 function lanStatus(obj) { win?.webContents.send('lan-status', obj); }
 function updateEvent(channel, value) { win?.webContents.send(channel, value); }
+function clearLanReconnect() { if (lanReconnectTimer) clearTimeout(lanReconnectTimer); lanReconnectTimer = null; }
+function scheduleLanReconnect() {
+  if (!lanDesiredHost || lanReconnectTimer) return;
+  const delay = Math.min(15000, 1000 * (2 ** Math.min(lanReconnectAttempt++, 4)));
+  lanStatus({ client: 'reconnecting', retryInMs: delay });
+  lanReconnectTimer = setTimeout(() => {
+    lanReconnectTimer = null;
+    if (lanDesiredHost) connectLanClient(lanDesiredHost, { remember: false });
+  }, delay);
+}
 function compareVersions(left, right) {
   const parse = (version) => String(version || '').replace(/^v/i, '').split(/[.+-]/).map((part) => Number(part) || 0);
   const a = parse(left), b = parse(right);
@@ -885,6 +896,7 @@ function finishInboundUpdate(id) {
 
 ipcMain.handle('lan-server-toggle', (_e, enabled) => {
   if (enabled) {
+    config?.save({ olanHostEnabled: true });
     if (lanServer) return { on: true, ips: lan.lanIPs(), port: lan.PORT };
     lanServer = lan.startServer({
       onConnect: async (sock) => {
@@ -931,6 +943,7 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
     lanDiscovery?.refresh();
     return { on: true, ips: lan.lanIPs(), port: lan.PORT };
   }
+  config?.save({ olanHostEnabled: false });
   if (lanServer) { lanServer.stop(); lanServer = null; }
   lanDiscovery?.refresh();
   lanStatus({ server: 'off' });
@@ -950,11 +963,15 @@ ipcMain.handle('workspace-seed', (_e, conversations) => {
   return { ok: true };
 });
 
-function connectLanClient(host) {
-  if (lanClient) { try { lanClient.end(); } catch {} lanClient = null; lanClientConnected = false; }
+function connectLanClient(host, { remember = true } = {}) {
   const [h, p] = String(host || '').split(':');
   if (!h || !h.trim()) return false;
-  lanClient = lan.connectClient(h.trim(), p ? parseInt(p, 10) || lan.PORT : lan.PORT, {
+  const target = h.trim() + ':' + (p ? parseInt(p, 10) || lan.PORT : lan.PORT);
+  if (remember) { clearLanReconnect(); lanDesiredHost = target; lanReconnectAttempt = 0; }
+  const previous = lanClient;
+  lanClient = null; lanClientConnected = false;
+  try { previous?.end(); } catch {}
+  const client = lan.connectClient(h.trim(), p ? parseInt(p, 10) || lan.PORT : lan.PORT, {
     onMsg: (m) => {
       const send = win.webContents.send.bind(win.webContents);
       if (m.type === 'delta') send('chat-delta', { requestId: m.requestId, text: m.text });
@@ -973,8 +990,17 @@ function connectLanClient(host) {
       else if (m.type === 'update-end') finishInboundUpdate(m.id);
       else if (m.type === 'update-error') updateEvent('lan-update-error', { message: m.message || 'Transfer failed.' });
     },
-    onStatus: (state) => { lanClientConnected = (state === 'connected'); if (!lanClientConnected) remoteModels = null; lanStatus({ client: state }); },
+    onStatus: (state) => {
+      if (lanClient !== client) return;
+      lanClientConnected = (state === 'connected');
+      if (lanClientConnected) { lanReconnectAttempt = 0; clearLanReconnect(); }
+      else remoteModels = null;
+      lanStatus({ client: state });
+      if (state === 'disconnected' || state.startsWith('error:')) scheduleLanReconnect();
+    },
   });
+  lanClient = client;
+  lanStatus({ client: 'connecting' });
   return true;
 }
 ipcMain.handle('lan-connect', (_e, host) => {
@@ -987,6 +1013,7 @@ ipcMain.handle('lan-connect-device', (_e, device) => {
   return { ok: true, target: host + ':' + port };
 });
 ipcMain.handle('lan-disconnect', () => {
+  lanDesiredHost = null; lanReconnectAttempt = 0; clearLanReconnect();
   if (lanClient) { try { lanClient.end(); } catch {} lanClient = null; }
   lanClientConnected = false; lanStatus({ client: 'disconnected' }); return true;
 });
