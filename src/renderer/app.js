@@ -118,12 +118,36 @@ function openSettings() {
   $('harnessSel').value = settings.harness;
   $('codexModel').value = settings.codexModel;
   $('opencodeModel').value = settings.opencodeModel;
+  $('runtimeSel').value = persisted.oRuntime === 'exo' ? 'exo' : 'ollama';
+  $('exoUrl').value = persisted.oExoUrl || 'http://127.0.0.1:52415';
+  syncRuntimeFields();
   syncHarnessFields();
   syncModes();
   syncPaletteInputs(); renderSwatches(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
 }
 function closeSettings() { $('settings').classList.remove('show'); }
+function syncRuntimeFields() {
+  const exo = $('runtimeSel').value === 'exo';
+  $('exoUrl').parentElement.style.display = exo ? '' : 'none'; $('exoCheck').style.display = exo ? '' : 'none';
+  $('exoStatus').textContent = exo
+    ? 'Exo is an optional cluster runtime. Axon connects to its coordinator API; it does not install or emulate a cluster.'
+    : 'Local Ollama runs on this device.';
+}
+async function selectRuntime() {
+  const kind = $('runtimeSel').value; const url = $('exoUrl').value.trim();
+  $('exoStatus').textContent = kind === 'exo' ? 'Connecting to Exo…' : 'Switching to local Ollama…';
+  const result = await window.ollama.setRuntime({ kind, url });
+  if (result?.error) { $('exoStatus').textContent = 'Exo connection failed: ' + result.error; $('runtimeSel').value = persisted.oRuntime === 'exo' ? 'exo' : 'ollama'; syncRuntimeFields(); return; }
+  saveState('oRuntime', result.kind); saveState('oExoUrl', result.url || '');
+  $('exoStatus').textContent = result.kind === 'exo' ? 'Exo connected — ' + (result.url || url) + '.' : 'Using local Ollama.';
+  await loadModels();
+}
+async function testExo() {
+  $('exoStatus').textContent = 'Testing Exo coordinator…';
+  const result = await window.ollama.checkExo($('exoUrl').value.trim());
+  $('exoStatus').textContent = result?.ok ? `Exo ready — ${result.models} model${result.models === 1 ? '' : 's'} exposed.` : 'Exo check failed: ' + (result?.error || 'unknown error');
+}
 
 // ---- projects (folder workspaces) -----------------------------------------
 let projects = [];        // [{id, name, path, instructions}]
@@ -1596,6 +1620,8 @@ $('permissionModeButton').onclick = () => {
   syncModes(); saveSettings();
 };
 $('harnessSel').onchange = () => { settings.harness = $('harnessSel').value; syncHarnessFields(); saveSettings(); };
+$('runtimeSel').onchange = () => { syncRuntimeFields(); selectRuntime(); };
+$('exoCheck').onclick = testExo;
 $('codexModel').oninput = () => { settings.codexModel = $('codexModel').value.trim(); saveSettings(); };
 $('opencodeModel').oninput = () => { settings.opencodeModel = $('opencodeModel').value.trim(); saveSettings(); };
 for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor', 'background'], ['surfaceColor', 'surface'], ['textColor', 'text']]) {
@@ -1877,7 +1903,7 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.ollama.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;

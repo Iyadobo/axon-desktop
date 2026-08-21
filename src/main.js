@@ -28,8 +28,11 @@ app.on('second-instance', () => {
   win.show(); win.focus();
 });
 
-const OLLAMA_URL = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
-const OLLAMA_BASE = OLLAMA_URL.replace(/\/$/, ''); // claude talks to Ollama's native /v1/messages here
+const LOCAL_OLLAMA_URL = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
+let runtimeKind = 'ollama', exoBase = '';
+const activeOllamaUrl = () => runtimeKind === 'exo' ? exoBase + '/ollama' : LOCAL_OLLAMA_URL;
+const activeClaudeBase = () => runtimeKind === 'exo' ? exoBase : LOCAL_OLLAMA_URL.replace(/\/$/, '');
+const runtimeEndpoint = (pathname) => new URL(String(pathname || '').replace(/^\//, ''), activeOllamaUrl().replace(/\/?$/, '/'));
 // ponytail: scoped auto-approve instead of blanket --dangerously-skip-permissions; user wanted auto-run.
 const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 // The official release feed. Maintainers can point a fork at its own feed.
@@ -141,12 +144,13 @@ const visionCapability = new Map();
 // ---- ollama serve lifecycle ----------------------------------------------
 async function isOllamaUp() {
   return new Promise((resolve) => {
-    const req = http.get(`${OLLAMA_URL}/api/tags`, (res) => { res.resume(); resolve(res.statusCode === 200); });
+    const req = http.get(runtimeEndpoint('/api/tags'), (res) => { res.resume(); resolve(res.statusCode === 200); });
     req.on('error', () => resolve(false));
     req.setTimeout(2000, () => { req.destroy(); resolve(false); });
   });
 }
 async function ensureOllama() {
+  if (runtimeKind === 'exo') return setTray('Axon: Exo runtime selected');
   if (await isOllamaUp()) return setTray('Axon: running');
   ollamaProc = spawn('ollama', ['serve'], { windowsHide: true, shell: false });
   ollamaProc.on('exit', () => { ollamaProc = null; setTray('Axon: stopped'); });
@@ -157,9 +161,32 @@ async function ensureOllama() {
 
 function ollama(pathname) {
   return new Promise((resolve, reject) => {
-    const u = new URL(OLLAMA_URL); u.pathname = pathname;
+    const u = runtimeEndpoint(pathname);
     http.get(u, (res) => { let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => { try { resolve(JSON.parse(d)); } catch { resolve(d); } }); })
       .on('error', reject);
+  });
+}
+function normalizeExoUrl(value) {
+  const url = new URL(String(value || '').trim());
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Use an Exo HTTP address such as http://192.168.50.1:52415.');
+  return url.origin;
+}
+function checkExo(url) {
+  return new Promise((resolve) => {
+    let base;
+    try { base = normalizeExoUrl(url); } catch (error) { return resolve({ error: error.message }); }
+    const target = new URL('/v1/models', base); const client = target.protocol === 'https:' ? https : http;
+    const req = client.get(target, { headers: { Accept: 'application/json' } }, (res) => {
+      let body = ''; res.setEncoding('utf8');
+      res.on('data', (chunk) => { body += chunk; if (body.length > 1024 * 1024) req.destroy(); });
+      res.on('end', () => {
+        if (res.statusCode !== 200) return resolve({ error: `Exo returned ${res.statusCode}.` });
+        try { const parsed = JSON.parse(body); resolve({ ok: true, base, models: Array.isArray(parsed.data) ? parsed.data.length : Array.isArray(parsed.models) ? parsed.models.length : 0 }); }
+        catch { resolve({ error: 'Exo returned invalid model metadata.' }); }
+      });
+    });
+    req.on('error', (error) => resolve({ error: error.message }));
+    req.setTimeout(5000, () => req.destroy(new Error('Exo connection timed out.')));
   });
 }
 function fetchCloudCatalogue() {
@@ -196,7 +223,7 @@ function pullOllamaModel(value) {
     let settled = false;
     const finish = (error) => { if (settled) return; settled = true; activeModelPull = null; error ? reject(error) : resolve({ ok: true, model }); };
     const body = JSON.stringify({ model, stream: true });
-    const u = new URL(OLLAMA_URL); u.pathname = '/api/pull';
+    const u = new URL(LOCAL_OLLAMA_URL); u.pathname = '/api/pull';
     const req = http.request(u, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } }, (res) => {
       let buffer = '', completed = false;
       if (res.statusCode !== 200) { let text = ''; res.on('data', (chunk) => { text += chunk; }); res.on('end', () => finish(new Error(`Ollama pull failed (${res.statusCode}): ${text.slice(0, 180)}`))); return; }
@@ -253,7 +280,7 @@ async function modelSupportsVision(model) {
     if (Array.isArray(tag?.capabilities)) {
       const supported = tag.capabilities.includes('vision'); visionCapability.set(model, supported); return supported;
     }
-    const u = new URL(OLLAMA_URL); u.pathname = '/api/show';
+    const u = runtimeEndpoint('/api/show');
     const body = JSON.stringify({ model });
     const result = await new Promise((resolve, reject) => {
       const req = http.request(u, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } }, (res) => {
@@ -500,7 +527,7 @@ function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, imag
     args.push(newSession ? '--session-id' : '--resume', sid);
     args.push('--append-system-prompt', axonSystemPrompt(systemPrompt, permission, granted));
     const child = spawn(launch.command, [...launch.prefix, ...args], {
-      env: { ...process.env, ANTHROPIC_BASE_URL: OLLAMA_BASE, ANTHROPIC_AUTH_TOKEN: 'ollama' },
+      env: { ...process.env, ANTHROPIC_BASE_URL: activeClaudeBase(), ANTHROPIC_AUTH_TOKEN: 'ollama' },
       cwd: cwd || undefined,
       windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -669,6 +696,19 @@ function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
 
 // ---- IPC ------------------------------------------------------------------
 ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await ollama('/api/tags')));
+ipcMain.handle('check-exo', async (_e, url) => checkExo(url));
+ipcMain.handle('set-runtime', async (_e, runtime) => {
+  try {
+    const next = runtime?.kind === 'exo' ? 'exo' : 'ollama';
+    const nextExo = next === 'exo' ? normalizeExoUrl(runtime?.url) : '';
+    if (next === 'exo') {
+      const check = await checkExo(nextExo); if (!check.ok) return check;
+    }
+    runtimeKind = next; exoBase = nextExo; config?.save({ oRuntime: runtimeKind, oExoUrl: exoBase });
+    setTray(runtimeKind === 'exo' ? 'Axon: Exo runtime' : 'Axon: local Ollama');
+    return { ok: true, kind: runtimeKind, url: exoBase };
+  } catch (error) { return { error: error.message }; }
+});
 ipcMain.handle('refresh-cloud-models', async () => fetchCloudCatalogue());
 ipcMain.handle('model-download-catalogue', async () => fetchCloudCatalogue());
 ipcMain.handle('hardware-profile', async () => hardwareProfile());
@@ -1154,7 +1194,7 @@ function fetchCommands(model) {
     const launch = findClaude();
     if (!launch) return resolve([]);
     const child = spawn(launch.command, [...launch.prefix, '-p', '.', '--output-format', 'stream-json', '--verbose', '--model', model || 'qwen2.5:1.5b', '--allowedTools', 'Read'], {
-      env: { ...process.env, ANTHROPIC_BASE_URL: OLLAMA_BASE, ANTHROPIC_AUTH_TOKEN: 'ollama' },
+      env: { ...process.env, ANTHROPIC_BASE_URL: activeClaudeBase(), ANTHROPIC_AUTH_TOKEN: 'ollama' },
       windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
     });
     let buf = '', done = false;
@@ -1183,6 +1223,7 @@ app.whenReady().then(async () => {
   // Preserve all known predecessors. Merge only missing keys so the canonical
   // Axon folder wins while a dev/package casing change cannot lose history.
   const state = config.load(); const parent = path.dirname(userDataPath);
+  try { if (state.oRuntime === 'exo' && state.oExoUrl) { runtimeKind = 'exo'; exoBase = normalizeExoUrl(state.oExoUrl); } } catch { runtimeKind = 'ollama'; exoBase = ''; }
   const candidates = [
     path.join(parent, 'axon', 'settings.json'),
     path.join(parent, 'ollama-desktop-harness', 'settings.json'),

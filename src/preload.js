@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('ollama', {
   downloadCatalogue: () => ipcRenderer.invoke('model-download-catalogue'),
   pullModel: (model) => ipcRenderer.invoke('pull-model', model),
   hardwareProfile: () => ipcRenderer.invoke('hardware-profile'),
+  setRuntime: (runtime) => ipcRenderer.invoke('set-runtime', runtime),
+  checkExo: (url) => ipcRenderer.invoke('check-exo', url),
   listCommands: () => ipcRenderer.invoke('list-commands'),
   fetchCommands: (model) => ipcRenderer.invoke('fetch-commands', model),
   refreshCommands: (model) => ipcRenderer.invoke('refresh-commands', model),

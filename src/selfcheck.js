@@ -136,11 +136,12 @@ ok('assistant truly empty -> null', parseEvent(JSON.stringify({ type: 'assistant
   try {
     const store = createConfigStore(dir);
     const workspace = path.join(dir, 'workspace');
-    store.save({ osettings: { systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', odraft: 'unfinished note', oworkspace: workspace, olanHostEnabled: true, osharedConvs: [{ id: 'shared-1', turns: [] }], ocloudModels: { models: [{ name: 'example-cloud' }], fetchedAt: '2026-08-15T00:00:00.000Z' }, blocked: 'nope' });
+    store.save({ osettings: { systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', oRuntime: 'exo', oExoUrl: 'http://192.168.50.1:52415', odraft: 'unfinished note', oworkspace: workspace, olanHostEnabled: true, osharedConvs: [{ id: 'shared-1', turns: [] }], ocloudModels: { models: [{ name: 'example-cloud' }], fetchedAt: '2026-08-15T00:00:00.000Z' }, blocked: 'nope' });
     const loaded = store.load();
     ok('config persists approved app state', loaded.osettings.systemPrompt === 'Be concise.' && loaded.omodel === 'qwen3:4b');
     ok('config persists a bounded composer draft', loaded.odraft === 'unfinished note');
     ok('config persists the default workspace', loaded.oworkspace === workspace);
+    ok('config persists Exo runtime settings', loaded.oRuntime === 'exo' && loaded.oExoUrl === 'http://192.168.50.1:52415');
     ok('config persists LAN Host intent', loaded.olanHostEnabled === true);
     ok('config persists shared chat snapshots', loaded.osharedConvs?.[0]?.id === 'shared-1');
     ok('config persists the cloud model catalogue cache', loaded.ocloudModels?.models?.[0]?.name === 'example-cloud');
