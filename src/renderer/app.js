@@ -583,7 +583,6 @@ function renderPicker() {
     row.type = 'button'; row.className = 'mrow' + (m.name === current ? ' on' : '') + (index === pickerCursor ? ' cursor' : '');
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', m.name === current ? 'true' : 'false');
-    row.style.animationDelay = Math.min(index, 12) * 14 + 'ms';
     const mark = familyMarkup(family);
     const logo = document.createElement('span'); logo.className = 'mlogo'; logo.style.color = mark.color;
     logo.innerHTML = mark.svg;
@@ -595,11 +594,6 @@ function renderPicker() {
     const tag = document.createElement('span'); tag.className = 'mtag ' + m.source; tag.textContent = m.source;
     row.append(logo, main, tag);
     row.onclick = () => chooseModel(m.name);
-    // Mouse hover moves the keyboard cursor but must NOT scroll — the row is
-    // visible or the mouse couldn't be over it, and calling scrollIntoView on
-    // every hover nudged the list, which could shift a different row under the
-    // cursor and re-trigger this handler: a hover/scroll jitter loop.
-    row.onmouseenter = () => { pickerCursor = index; markCursor(false); };
     list.appendChild(row);
   });
 }
