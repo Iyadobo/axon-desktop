@@ -491,12 +491,12 @@
   .picker-sort { display:flex; align-items:center; gap:6px; font-size:var(--t-xs); color:var(--color-neutral); }
   .picker-sort select { border:1px solid var(--elev-line); border-radius:8px; background:var(--elev-1);
     color:var(--color-text); font:inherit; font-size:var(--t-sm); padding:6px 8px; }
-  .picker-list { flex:1; overflow:auto; padding:8px; display:flex; flex-direction:column; gap:2px; }
+  .picker-list { flex:1; overflow:auto; padding:8px; display:flex; flex-direction:column; gap:2px; min-width:0; }
   .picker-group { font-size:var(--t-xs); letter-spacing:.09em; font-weight:650; opacity:.5;
     padding:12px 10px 5px; text-transform:uppercase; }
-  .mrow { display:flex; align-items:center; gap:11px; width:100%; min-width:0; text-align:left; border:1px solid transparent;
+  .mrow { display:flex; align-items:center; gap:11px; text-align:left; border:1px solid transparent;
     border-radius:10px; background:transparent; color:var(--color-text); font:inherit; padding:9px 10px;
-    cursor:pointer; transition:background .13s ease, border-color .13s ease;
+    cursor:pointer; transition:background .13s ease, border-color .13s ease; flex-shrink:0;
     animation:rowin .22s cubic-bezier(.2,.7,.3,1) both; }
   @keyframes rowin { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
   .mrow:hover, .mrow.cursor { background:var(--elev-1); border-color:var(--elev-line); }
