@@ -241,11 +241,11 @@ const RECOMMENDED_MODELS = [
 async function renderModelsPage() {
   const box = $('modelsPageContent'); if (!box) return;
   box.innerHTML = '<div style="opacity:.5;font-size:var(--t-sm)">Loading models…</div>';
-  let models = [];
-  try {
-    const data = await window.ollama.listModels();
-    models = data.models || [];
-  } catch {}
+  let models = modelCatalogue;
+  if (!models.length) {
+    try { await loadModels(); } catch {}
+    models = modelCatalogue;
+  }
   box.innerHTML = '';
   // Installed models
   const installed = document.createElement('div');
