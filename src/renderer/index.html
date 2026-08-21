@@ -98,6 +98,10 @@
   .download-list { display:flex; flex-direction:column; gap:5px; max-height:min(58vh,560px); overflow:auto; padding:2px 0; }
   .download-hardware { display:flex; flex-wrap:wrap; gap:6px 12px; padding:9px 11px; border:1px solid var(--color-divider); border-radius:8px; background:var(--color-surface); color:var(--color-neutral); font-size:var(--t-xs); }
   .download-hardware strong { color:var(--color-text); font-weight:650; }
+  .download-tools { display:flex; align-items:center; gap:7px; margin:10px 0 8px; }
+  .download-filters { display:flex; gap:4px; flex:1; overflow:auto; }
+  .download-filter { white-space:nowrap; padding:5px 7px; border:1px solid var(--color-divider); border-radius:6px; background:transparent; color:var(--color-neutral); font:600 var(--t-xs) var(--font-ui); cursor:pointer; }
+  .download-filter.on { color:var(--color-text); border-color:var(--color-accent); background:color-mix(in srgb, var(--color-accent) 10%, transparent); }
   .download-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--color-divider); border-radius:8px; background:var(--color-surface); }
   .download-name { display:block; font-size:var(--t-sm); font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .download-meta { display:block; margin-top:3px; color:var(--color-neutral); font-size:var(--t-xs); }
@@ -107,6 +111,7 @@
   .fit.bad { color:var(--color-bad); background:color-mix(in srgb, var(--color-bad) 12%, transparent); }
   .download-row button { min-width:88px; }
   .download-empty { padding:20px 8px; color:var(--color-neutral); font-size:var(--t-sm); text-align:center; }
+  .download-more { align-self:center; margin:6px 0 2px; }
 
   /* navigation bar */
   .nav-bar { display:flex; flex-direction:column; gap:2px; padding:0 4px; margin:8px 0 4px; }
@@ -734,13 +739,14 @@
       <div class="newchat" id="projectsSidebarAdd" style="margin:0 4px"><span style="opacity:.6">+</span><span>New project</span></div>
     </div>
     <div id="modelsSidebar" class="sidebar-view">
+      <button id="modelsBrowse" class="newchat" type="button" style="margin:0 4px"><span style="opacity:.7">↓</span><span>Browse models</span></button>
       <div class="side-section-head"><span>Installed</span></div>
       <div id="modelsSidebarList" class="sidebar-empty">Loading models…</div>
     </div>
     <div class="sidefoot">
       <span id="backend">Ollama 11434</span>
       <span style="display:flex;align-items:center;gap:6px"><span id="lanModeBadge" class="mode-badge">Local</span><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
-      <button id="sidebarUpdate" class="sidebar-update" type="button" title="Install local Ollama models" aria-label="Install local Ollama models"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 18v3h16v-3"/></svg></button>
+      <button id="sidebarUpdate" class="sidebar-update" type="button" title="Check for Axon updates" aria-label="Check for Axon updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 18v3h16v-3"/></svg></button>
     </div>
   </div>
 
@@ -910,6 +916,7 @@
     <div class="modal-head"><h3 id="modelDownloadTitle">Install local models</h3><button class="x" id="modelDownloadClose" aria-label="Close">×</button></div>
     <div id="modelHardware" class="download-hardware">Scanning this device…</div>
     <input id="modelDownloadSearch" class="download-search" type="search" placeholder="Search Ollama models" autocomplete="off" />
+    <div class="download-tools"><div id="modelDownloadFilters" class="download-filters" role="tablist"><button class="download-filter on" type="button" data-filter="all">All</button><button class="download-filter" type="button" data-filter="hardware">For your hardware</button><button class="download-filter" type="button" data-filter="small">Under 8 GB</button></div><select id="modelDownloadSort" aria-label="Sort models"><option value="size">Smallest</option><option value="params">Largest parameters</option><option value="largest">Largest download</option><option value="name">Name</option></select></div>
     <div id="modelDownloadList" class="download-list" aria-live="polite"></div>
     <div class="picker-foot"><span id="modelDownloadCount"></span><span id="modelDownloadProgress">Scanning Ollama…</span></div>
   </div>

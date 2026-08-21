@@ -177,7 +177,7 @@ function fetchCloudCatalogue() {
       res.on('end', () => {
         try {
           const parsed = JSON.parse(body);
-          const models = Array.isArray(parsed.models) ? parsed.models.filter((model) => model && typeof model.name === 'string').slice(0, 200) : [];
+          const models = Array.isArray(parsed.models) ? parsed.models.filter((model) => model && typeof model.name === 'string') : [];
           resolve({ models, fetchedAt: new Date().toISOString() });
         } catch { reject(new Error('Ollama Cloud returned an invalid catalogue.')); }
       });

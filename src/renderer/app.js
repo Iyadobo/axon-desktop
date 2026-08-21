@@ -487,7 +487,8 @@ async function loadModels() {
   } catch { setStatus(false, 'offline'); }
 }
 // ---- local model downloads --------------------------------------------------
-let downloadCatalogue = [], downloadedModelNames = new Set(), downloadingModel = null, modelHardware = null;
+let downloadCatalogue = [], downloadedModelNames = new Set(), downloadingModel = null, modelHardware = null, modelDownloadPage = 1;
+const MODEL_DOWNLOAD_PAGE_SIZE = 24;
 const canonicalModelName = (name) => String(name || '').trim().toLowerCase().replace(/:latest$/, '');
 const gib = (bytes) => Number(bytes) > 0 ? (Number(bytes) / 1024 / 1024 / 1024).toFixed(Number(bytes) >= 10 * 1024 ** 3 ? 0 : 1) + ' GB' : 'unknown';
 function bestGpu() { return [...(modelHardware?.gpus || [])].sort((a, b) => Number(b.vramBytes) - Number(a.vramBytes))[0] || null; }
@@ -510,24 +511,39 @@ function renderModelHardware() {
   const note = document.createElement('span'); note.textContent = 'Fit labels reserve room for runtime overhead; they are not speed benchmarks.';
   box.append(ram, graphics, note);
 }
+function parameterCount(model) {
+  const raw = String(model?.details?.parameter_size || '').trim().toUpperCase();
+  const match = raw.match(/(\d+(?:\.\d+)?)\s*([KMBT])/); if (!match) return 0;
+  return Number(match[1]) * ({ K: 1e3, M: 1e6, B: 1e9, T: 1e12 }[match[2]] || 0);
+}
 function localDownloadCandidates() {
   const query = $('modelDownloadSearch').value.trim().toLowerCase();
-  return downloadCatalogue.filter((model) => {
+  const filter = document.querySelector('#modelDownloadFilters .download-filter.on')?.dataset.filter || 'all';
+  const sort = $('modelDownloadSort').value;
+  const rows = downloadCatalogue.filter((model) => {
     const name = String(model?.name || '');
-    return name && !name.includes(':cloud') && Number(model.size) > 0
-      && !downloadedModelNames.has(canonicalModelName(name))
-      && (!query || name.toLowerCase().includes(query));
-  }).sort((a, b) => Number(a.size) - Number(b.size) || String(a.name).localeCompare(String(b.name)));
+    if (!name || name.includes(':cloud') || Number(model.size) <= 0 || downloadedModelNames.has(canonicalModelName(name)) || (query && !name.toLowerCase().includes(query))) return false;
+    if (filter === 'hardware') return ['good', 'warn'].includes(modelFit(model).level);
+    if (filter === 'small') return Number(model.size) <= 8 * 1024 ** 3;
+    return true;
+  });
+  return rows.sort((a, b) => {
+    if (sort === 'params') return parameterCount(b) - parameterCount(a) || Number(a.size) - Number(b.size);
+    if (sort === 'largest') return Number(b.size) - Number(a.size);
+    if (sort === 'name') return String(a.name).localeCompare(String(b.name));
+    return Number(a.size) - Number(b.size) || String(a.name).localeCompare(String(b.name));
+  });
 }
 function renderModelDownloads() {
   const list = $('modelDownloadList'); const rows = localDownloadCandidates();
-  list.innerHTML = ''; $('modelDownloadCount').textContent = rows.length + (rows.length === 1 ? ' local model available' : ' local models available');
+  const visible = rows.slice(0, modelDownloadPage * MODEL_DOWNLOAD_PAGE_SIZE);
+  list.innerHTML = ''; $('modelDownloadCount').textContent = rows.length + (rows.length === 1 ? ' local model found' : ' local models found') + ' · showing ' + visible.length;
   if (!rows.length) {
     const empty = document.createElement('div'); empty.className = 'download-empty';
     empty.textContent = downloadCatalogue.length ? 'Everything in this view is already installed.' : 'No local Ollama models found.';
     list.appendChild(empty); return;
   }
-  for (const model of rows.slice(0, 160)) {
+  for (const model of visible) {
     const row = document.createElement('div'); row.className = 'download-row';
     const meta = document.createElement('div');
     const name = document.createElement('span'); name.className = 'download-name'; name.textContent = model.name;
@@ -540,6 +556,10 @@ function renderModelDownloads() {
     button.disabled = !!downloadingModel; button.onclick = () => downloadModel(model.name);
     row.append(meta, button); list.appendChild(row);
   }
+  if (visible.length < rows.length) {
+    const more = document.createElement('button'); more.type = 'button'; more.className = 'download-more'; more.textContent = 'Show ' + Math.min(MODEL_DOWNLOAD_PAGE_SIZE, rows.length - visible.length) + ' more';
+    more.onclick = () => { modelDownloadPage++; renderModelDownloads(); }; list.appendChild(more);
+  }
 }
 async function refreshModelDownloads() {
   $('modelDownloadProgress').textContent = 'Scanning installed models and Ollama…';
@@ -548,7 +568,7 @@ async function refreshModelDownloads() {
     downloadedModelNames = new Set((installed?.models || []).map((model) => canonicalModelName(model?.name)));
     downloadCatalogue = Array.isArray(catalogue?.models) ? catalogue.models : [];
     modelHardware = hardware || null; renderModelHardware();
-    $('modelDownloadProgress').textContent = 'Local downloads only · installed models hidden';
+    modelDownloadPage = 1; $('modelDownloadProgress').textContent = 'Local downloads only · installed models hidden · page by page';
     renderModelDownloads();
   } catch (error) {
     downloadCatalogue = []; $('modelDownloadProgress').textContent = 'Could not load the Ollama catalogue: ' + (error?.message || 'network error'); renderModelDownloads();
@@ -568,7 +588,7 @@ async function downloadModel(name) {
   } finally { downloadingModel = null; renderModelDownloads(); }
 }
 function openModelDownloads() {
-  $('modelDownload').classList.add('show'); $('modelDownloadSearch').value = ''; $('modelDownloadSearch').focus(); refreshModelDownloads();
+  $('modelDownload').classList.add('show'); $('modelDownloadSearch').value = ''; modelDownloadPage = 1; $('modelDownloadSearch').focus(); refreshModelDownloads();
 }
 function closeModelDownloads() { if (!downloadingModel) $('modelDownload').classList.remove('show'); }
 window.ollama.on('model-pull-progress', (update) => {
@@ -1585,7 +1605,8 @@ $('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settin
 $('recents-label').onclick = openSettings;
 $('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
 document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
-$('sidebarUpdate').onclick = openModelDownloads;
+$('sidebarUpdate').onclick = () => { openSettings(); $('appUpdateBtn').click(); };
+$('modelsBrowse').onclick = openModelDownloads;
 $('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
 // model picker wiring
@@ -1613,7 +1634,11 @@ $('modelPicker').addEventListener('keydown', (e) => {
 });
 $('modelDownloadClose').onclick = closeModelDownloads;
 $('modelDownload').onclick = (e) => { if (e.target === $('modelDownload')) closeModelDownloads(); };
-$('modelDownloadSearch').oninput = renderModelDownloads;
+$('modelDownloadSearch').oninput = () => { modelDownloadPage = 1; renderModelDownloads(); };
+$('modelDownloadSort').onchange = () => { modelDownloadPage = 1; renderModelDownloads(); };
+for (const filter of document.querySelectorAll('#modelDownloadFilters .download-filter')) {
+  filter.onclick = () => { document.querySelectorAll('#modelDownloadFilters .download-filter').forEach((item) => item.classList.toggle('on', item === filter)); modelDownloadPage = 1; renderModelDownloads(); };
+}
 $('cloudModelsRefresh').onclick = refreshCloudCatalogue;
 $('workspacePick').onclick = async () => {
   const picked = await window.ollama.pickFolder();
