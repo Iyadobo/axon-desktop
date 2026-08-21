@@ -10,6 +10,11 @@ const dgram = require('dgram');
 const PORT = 47301;
 const DISCOVERY_PORT = 47302;
 const NL = '\n';
+const CONNECT_TIMEOUT_MS = 8000;
+const HEARTBEAT_INTERVAL_MS = 12000;
+const HEARTBEAT_TIMEOUT_MS = 40000;
+const MAX_PENDING_MESSAGES = 100;
+const MAX_LINE_BYTES = 1024 * 1024;
 
 // IPv4 non-internal addresses -- what the server prints for the other device.
 function lanIPs() {
@@ -63,11 +68,16 @@ function createDiscovery({ id, name, getAdvertisement, onDevices, port = DISCOVE
 }
 
 // incremental NDJSON line splitter: feed chunks, calls onLine per complete line.
-function lineStream(onLine) {
+function lineStream(onLine, onOversize) {
   let buf = '';
   return {
     feed(chunk) {
       buf += chunk;
+      if (Buffer.byteLength(buf, 'utf8') > MAX_LINE_BYTES) {
+        buf = '';
+        onOversize?.();
+        return;
+      }
       let i;
       while ((i = buf.indexOf(NL)) >= 0) { onLine(buf.slice(0, i)); buf = buf.slice(i + 1); }
     },
@@ -82,26 +92,34 @@ function parseMsg(line) { try { return JSON.parse(line); } catch { return null; 
 // onStatus(state, info): 'listening' | 'error:<code>' | 'closed'
 function startServer({ onChat, onMessage, onStatus, onConnect, port }) {
   const sockets = new Map();
+  let address = null;
+  const listening = () => onStatus('listening', { port: address?.port, ips: lanIPs(), clients: sockets.size });
   const server = net.createServer((sock) => {
     const st = { child: null };
     sockets.set(sock, st);
+    sock.setKeepAlive(true, HEARTBEAT_INTERVAL_MS);
+    sock.setTimeout(HEARTBEAT_TIMEOUT_MS, () => sock.destroy(new Error('LAN client timed out.')));
     onConnect?.(sock, st);
     const ls = lineStream((line) => {
       const msg = parseMsg(line); if (!msg) return;
+      if (msg.type === 'ping') { sendTo(sock, { type: 'pong' }); return; }
+      if (msg.type === 'pong') return;
       if (onMessage) onMessage(msg, sock, st);
       else if (msg.type === 'chat') onChat?.(msg, sock, st);
       else if (msg.type === 'stop') { if (st.child && !st.child.killed) st.child.kill(); }
-    });
+    }, () => sock.destroy(new Error('LAN message exceeded 1 MB.')));
     sock.on('data', ls.feed);
     sock.on('error', () => {});
     sock.on('close', () => {
       if (st.holders) for (const holder of st.holders.values()) if (holder.child && !holder.child.killed) holder.child.kill();
       if (st.child && !st.child.killed) st.child.kill();
       sockets.delete(sock);
+      if (address) listening();
     });
+    if (address) listening();
   });
   server.on('error', (e) => onStatus('error:' + (e.code || e.message)));
-  server.on('listening', () => onStatus('listening', { port: server.address().port, ips: lanIPs() }));
+  server.on('listening', () => { address = server.address(); listening(); });
   server.on('close', () => onStatus('closed'));
   server.listen(port == null ? PORT : port);
   return {
@@ -116,28 +134,54 @@ function startServer({ onChat, onMessage, onStatus, onConnect, port }) {
 function sendTo(sock, obj) { try { sock.write(JSON.stringify(obj) + NL); } catch {} }
 
 // ---- client ----------------------------------------------------------------
-// onMsg(msg): a parsed server message. onStatus(state): 'connected' | 'disconnected' | 'error:<code>'
+// onMsg(msg): a parsed server message. onStatus(state): lifecycle state. The
+// caller owns reconnect policy so explicit Disconnect always wins.
 function connectClient(host, port, { onMsg, onStatus }) {
   let connected = false;
-  const queue = []; // ponytail: buffer sends issued before the socket connects.
+  let closed = false;
+  let heartbeat = null;
+  let connectTimer = null;
+  const queue = []; // Buffer only a short startup window; never retain an unbounded chat backlog.
   const sock = net.connect(port, host);
-  const ls = lineStream((line) => { const m = parseMsg(line); if (m) onMsg(m); });
+  const finish = () => {
+    if (heartbeat) clearInterval(heartbeat);
+    if (connectTimer) clearTimeout(connectTimer);
+    heartbeat = null; connectTimer = null;
+  };
+  const ls = lineStream((line) => {
+    const m = parseMsg(line); if (!m) return;
+    if (m.type === 'ping') { sendTo(sock, { type: 'pong' }); return; }
+    if (m.type === 'pong') return;
+    onMsg(m);
+  }, () => sock.destroy(new Error('LAN message exceeded 1 MB.')));
+  connectTimer = setTimeout(() => {
+    if (!connected && !closed) sock.destroy(Object.assign(new Error('LAN connection timed out.'), { code: 'ETIMEDOUT' }));
+  }, CONNECT_TIMEOUT_MS);
   sock.on('connect', () => {
     connected = true;
+    if (connectTimer) clearTimeout(connectTimer);
+    connectTimer = null;
+    sock.setKeepAlive(true, HEARTBEAT_INTERVAL_MS);
+    sock.setTimeout(HEARTBEAT_TIMEOUT_MS, () => sock.destroy(Object.assign(new Error('LAN host stopped responding.'), { code: 'ETIMEDOUT' })));
+    heartbeat = setInterval(() => { if (connected && !sock.destroyed) sendTo(sock, { type: 'ping' }); }, HEARTBEAT_INTERVAL_MS);
     for (const obj of queue) { try { sock.write(JSON.stringify(obj) + NL); } catch {} }
     queue.length = 0;
     onStatus('connected');
   });
   sock.on('data', ls.feed);
-  sock.on('error', (e) => onStatus('error:' + (e.code || e.message)));
-  sock.on('close', () => { connected = false; onStatus('disconnected'); });
+  sock.on('error', (e) => { if (!closed) onStatus('error:' + (e.code || e.message)); });
+  sock.on('close', () => { connected = false; finish(); if (!closed) onStatus('disconnected'); });
   return {
-    send(obj) { if (connected) { try { sock.write(JSON.stringify(obj) + NL); return true; } catch { return false; } } queue.push(obj); return true; },
-    end() { try { sock.end(); } catch {} },
+    send(obj) {
+      if (connected) { try { sock.write(JSON.stringify(obj) + NL); return true; } catch { return false; } }
+      if (closed || queue.length >= MAX_PENDING_MESSAGES) return false;
+      queue.push(obj); return true;
+    },
+    end() { closed = true; finish(); try { sock.end(); } catch {} },
   };
 }
 
-module.exports = { PORT, DISCOVERY_PORT, lanIPs, lineStream, parseMsg, startServer, sendTo, connectClient, createDiscovery };
+module.exports = { PORT, DISCOVERY_PORT, CONNECT_TIMEOUT_MS, HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS, lanIPs, lineStream, parseMsg, startServer, sendTo, connectClient, createDiscovery };
 
 // ---- self-check: TCP loopback, client sends chat -> server replies delta+done
 function selfcheck() {

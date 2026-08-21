@@ -136,11 +136,15 @@ ok('assistant truly empty -> null', parseEvent(JSON.stringify({ type: 'assistant
   try {
     const store = createConfigStore(dir);
     const workspace = path.join(dir, 'workspace');
-    store.save({ osettings: { systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', odraft: 'unfinished note', oworkspace: workspace, osharedConvs: [{ id: 'shared-1', turns: [] }], ocloudModels: { models: [{ name: 'example-cloud' }], fetchedAt: '2026-08-15T00:00:00.000Z' }, blocked: 'nope' });
+    store.save({ osettings: { systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', oRuntime: 'exo', oExoUrl: 'http://192.168.50.1:52415', odraft: 'unfinished note', oworkspace: workspace, olanHostEnabled: true, osharedConvs: [{ id: 'shared-1', turns: [] }], ocloudModels: { models: [{ name: 'example-cloud' }], fetchedAt: '2026-08-15T00:00:00.000Z' }, blocked: 'nope' });
     const loaded = store.load();
     ok('config persists approved app state', loaded.osettings.systemPrompt === 'Be concise.' && loaded.omodel === 'qwen3:4b');
     ok('config persists a bounded composer draft', loaded.odraft === 'unfinished note');
     ok('config persists the default workspace', loaded.oworkspace === workspace);
+    ok('config persists Exo runtime settings', loaded.oRuntime === 'exo' && loaded.oExoUrl === 'http://192.168.50.1:52415');
+    store.save({ oRuntime: 'llamacpp', oLlamaCpp: { role: 'host', modelPath: 'C:/models/test.gguf', rpcPeers: '192.168.50.2:50052', bindIp: '', apiPort: 8090, rpcPort: 50052, contextSize: 0 } });
+    ok('config persists llama.cpp RPC runtime settings', store.load().oRuntime === 'llamacpp' && store.load().oLlamaCpp.rpcPeers === '192.168.50.2:50052');
+    ok('config persists LAN Host intent', loaded.olanHostEnabled === true);
     ok('config persists shared chat snapshots', loaded.osharedConvs?.[0]?.id === 'shared-1');
     ok('config persists the cloud model catalogue cache', loaded.ocloudModels?.models?.[0]?.name === 'example-cloud');
     ok('config rejects unapproved state keys', !Object.hasOwn(loaded, 'blocked'));
@@ -155,6 +159,15 @@ ok('assistant truly empty -> null', parseEvent(JSON.stringify({ type: 'assistant
     req.on('error', () => { console.log('  ℹ ollama not reachable (start it to use the app)'); resolve(); });
     req.setTimeout(2000, () => { req.destroy(); resolve(); });
   });
+
+  // 9. llama.cpp Anthropic<->OpenAI bridge + RPC runtime orchestration (own
+  // self-contained suites: real loopback sockets, no Electron, no GPU needed).
+  console.log('\nllama.cpp bridge:');
+  const bridgeOk = await require('./llamacpp-bridge').selfcheck();
+  console.log('llama.cpp runtime:');
+  const runtimeOk = await require('./llamacpp-runtime').selfcheck();
+  if (!bridgeOk || !runtimeOk) failed++;
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })();

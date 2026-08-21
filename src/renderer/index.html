@@ -84,9 +84,34 @@
     display:inline-block; margin-left:5px; }
   .sidefoot .dot.on { background:var(--color-accent); }
   .sidefoot .dot.bad { background:var(--color-bad); }
+  .sidebar-update { width:32px; height:32px; flex:0 0 32px; display:grid; place-items:center; padding:0;
+    border:1px solid var(--color-divider); border-radius:50%; background:transparent; color:var(--color-neutral);
+    cursor:pointer; transition:background .16s ease, color .16s ease, border-color .16s ease; }
+  .sidebar-update svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .sidebar-update:hover { background:var(--color-surface); color:var(--color-accent); border-color:var(--color-accent); }
+  .sidebar-update:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
   .mode-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 7px; border:1px solid var(--color-divider); border-radius:999px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
   .mode-badge.host { color:var(--color-accent); border-color:var(--color-accent); }
   .mode-badge.client { color:#007d5a; border-color:#007d5a; }
+  .download-card { width:min(640px, calc(100vw - 32px)); }
+  .download-search { width:100%; margin:12px 0 8px; }
+  .download-list { display:flex; flex-direction:column; gap:5px; max-height:min(58vh,560px); overflow:auto; padding:2px 0; }
+  .download-hardware { display:flex; flex-wrap:wrap; gap:6px 12px; padding:9px 11px; border:1px solid var(--color-divider); border-radius:8px; background:var(--color-surface); color:var(--color-neutral); font-size:var(--t-xs); }
+  .download-hardware strong { color:var(--color-text); font-weight:650; }
+  .download-tools { display:flex; align-items:center; gap:7px; margin:10px 0 8px; }
+  .download-filters { display:flex; gap:4px; flex:1; overflow:auto; }
+  .download-filter { white-space:nowrap; padding:5px 7px; border:1px solid var(--color-divider); border-radius:6px; background:transparent; color:var(--color-neutral); font:600 var(--t-xs) var(--font-ui); cursor:pointer; }
+  .download-filter.on { color:var(--color-text); border-color:var(--color-accent); background:color-mix(in srgb, var(--color-accent) 10%, transparent); }
+  .download-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--color-divider); border-radius:8px; background:var(--color-surface); }
+  .download-name { display:block; font-size:var(--t-sm); font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .download-meta { display:block; margin-top:3px; color:var(--color-neutral); font-size:var(--t-xs); }
+  .fit { display:inline-flex; margin-top:6px; padding:2px 5px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+  .fit.good { color:#2e9a67; background:color-mix(in srgb, #2e9a67 13%, transparent); }
+  .fit.warn { color:#b27b26; background:color-mix(in srgb, #b27b26 13%, transparent); }
+  .fit.bad { color:var(--color-bad); background:color-mix(in srgb, var(--color-bad) 12%, transparent); }
+  .download-row button { min-width:88px; }
+  .download-empty { padding:20px 8px; color:var(--color-neutral); font-size:var(--t-sm); text-align:center; }
+  .download-more { align-self:center; margin:6px 0 2px; }
 
   /* navigation bar */
   .nav-bar { display:flex; flex-direction:column; gap:2px; padding:0 4px; margin:8px 0 4px; }
@@ -384,12 +409,18 @@
   .turn.ai:hover .copymsg { opacity:.85; }
   .copymsg:hover { color:var(--color-accent); border-color:var(--color-accent); opacity:1; }
 
-  /* delete-on-hover for recents */
-  .recent { position:relative; padding-right:24px; }
-  .rdel { position:absolute; right:6px; top:50%; transform:translateY(-50%); opacity:0;
-    font-size:11px; color:var(--color-bad); cursor:pointer; }
-  .recent:hover .rdel { opacity:.6; }
-  .rdel:hover { opacity:1; }
+  /* Chat actions have a reserved gutter, so hover never shifts a title. */
+  .recent { position:relative; padding-right:52px; }
+  .rpin, .rdel { position:absolute; top:50%; transform:translateY(-50%); width:22px; height:22px; border:0;
+    border-radius:5px; background:transparent; font:inherit; font-size:12px; cursor:pointer; opacity:0; }
+  .rpin { right:27px; color:var(--color-neutral); }.rdel { right:4px; color:var(--color-bad); }
+  .recent:hover .rpin, .recent:hover .rdel, .recent.pinned .rpin { opacity:.72; }
+  .rpin:hover, .rdel:hover { background:var(--elev-1); opacity:1 !important; }
+  .recent.pinned .rpin { color:var(--color-accent); }
+  .sidebar-project { position:relative; padding-right:34px; }
+  .project-manage { position:absolute; right:4px; top:50%; transform:translateY(-50%); width:24px; height:24px;
+    border:0; border-radius:5px; background:transparent; color:var(--color-neutral); cursor:pointer; opacity:0; }
+  .sidebar-project:hover .project-manage { opacity:.8; }.project-manage:hover { background:var(--elev-1); color:var(--color-text); }
 
   /* Axon refined-calm pass: hierarchy from a real type scale, layered surfaces
      and a 4px spacing rhythm. Accent is punctuation, never decoration. */
@@ -429,6 +460,24 @@
   .sidefoot { padding:12px 8px 4px; border-top:1px solid var(--elev-line); font-size:var(--t-xs); opacity:.6; }
   /* last two strays off the scale: the titlebar wordmark and the LOCAL badge */
   .window-brand { font-size:var(--t-sm); }
+  .title-recent { -webkit-app-region:no-drag; border:1px solid transparent; background:transparent; color:var(--color-neutral);
+    border-radius:6px; padding:5px 8px; font:inherit; font-size:var(--t-xs); cursor:pointer; }
+  .title-recent:hover, .title-recent[aria-expanded="true"] { background:var(--elev-2); color:var(--color-text); border-color:var(--elev-line); }
+  .recent-popover { position:fixed; top:35px; right:74px; z-index:70; width:min(420px,calc(100vw - 32px));
+    max-height:min(520px,calc(100vh - 56px)); display:none; overflow:auto; background:var(--elev-2);
+    border:1px solid var(--elev-line); border-radius:10px; box-shadow:0 18px 54px rgba(0,0,0,.34); padding:8px; }
+  .recent-popover.show { display:block; }
+  .recent-popover-head { display:flex; align-items:center; justify-content:space-between; padding:7px 8px 9px;
+    border-bottom:1px solid var(--elev-line); font-size:var(--t-xs); color:var(--color-neutral); letter-spacing:.06em; text-transform:uppercase; }
+  .recent-popover-item { position:relative; display:block; width:100%; min-height:54px; padding:8px 66px 8px 9px;
+    border:0; border-radius:6px; background:transparent; color:var(--color-text); font:inherit; text-align:left; cursor:pointer; }
+  .recent-popover-item:hover, .recent-popover-item.active { background:var(--elev-1); }
+  .recent-popover-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--t-sm); font-weight:630; }
+  .recent-popover-meta { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; color:var(--color-neutral); font-size:var(--t-xs); }
+  .recent-popover-pin, .recent-popover-delete { position:absolute; top:50%; width:26px; height:26px; transform:translateY(-50%);
+    border:0; border-radius:5px; background:transparent; color:var(--color-neutral); cursor:pointer; opacity:.72; }
+  .recent-popover-pin { right:34px; }.recent-popover-delete { right:5px; color:var(--color-bad); }
+  .recent-popover-pin:hover, .recent-popover-delete:hover { background:var(--color-bg); opacity:1; }
   .mode-badge { font-size:var(--t-xs); letter-spacing:.05em; }
   .project-count { font-size:var(--t-xs); }
   #browserToggle { -webkit-app-region:no-drag; border-radius:999px; padding:4px 10px; font-size:var(--t-xs);
@@ -491,33 +540,33 @@
   .picker-sort { display:flex; align-items:center; gap:6px; font-size:var(--t-xs); color:var(--color-neutral); }
   .picker-sort select { border:1px solid var(--elev-line); border-radius:8px; background:var(--elev-1);
     color:var(--color-text); font:inherit; font-size:var(--t-sm); padding:6px 8px; }
-  .picker-list { flex:1; overflow:auto; padding:8px; display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .picker-list { flex:1; min-width:0; overflow-y:auto; overflow-x:hidden; padding:8px; scrollbar-gutter:stable; }
   .picker-group { font-size:var(--t-xs); letter-spacing:.09em; font-weight:650; opacity:.5;
     padding:12px 10px 5px; text-transform:uppercase; }
-  .mrow { display:flex; align-items:center; gap:11px; text-align:left; border:1px solid transparent;
-    border-radius:10px; background:transparent; color:var(--color-text); font:inherit; padding:9px 10px;
-    cursor:pointer; transition:background .13s ease, border-color .13s ease; flex-shrink:0;
-    animation:rowin .22s cubic-bezier(.2,.7,.3,1) both; }
-  @keyframes rowin { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
+  /* Model rows deliberately never animate or change dimensions.  A stable grid
+     gives the title the only shrinkable column and permanently reserves space
+     for the source badge, so hover cannot move a neighbouring row or clip text. */
+  .mrow { width:100%; min-width:0; min-height:62px; box-sizing:border-box; display:grid;
+    grid-template-columns:30px minmax(0, 1fr) max-content; column-gap:11px; align-items:center;
+    text-align:left; border:1px solid transparent; border-radius:10px; background:transparent;
+    color:var(--color-text); font:inherit; padding:9px 10px; margin:0 0 4px; cursor:pointer;
+    transition:background .13s ease, border-color .13s ease; }
   .mrow:hover, .mrow.cursor { background:var(--elev-1); border-color:var(--elev-line); }
   .mrow.on { background:color-mix(in srgb, var(--color-accent) 10%, transparent);
     border-color:color-mix(in srgb, var(--color-accent) 35%, var(--elev-line)); }
   .mlogo { width:30px; height:30px; flex:none; border-radius:8px; display:grid; place-items:center;
     background:var(--elev-2); box-shadow:inset 0 0 0 1px var(--elev-line); }
   .mlogo svg { width:17px; height:17px; }
-  /* both are spans, so they need to be told to stack */
-  .mmain { min-width:0; flex:1; display:flex; flex-direction:column; gap:1px; }
+  .mmain { min-width:0; display:grid; gap:2px; }
   .mname { display:block; font-size:var(--t-sm); font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mmeta { display:block; font-size:var(--t-xs); color:var(--color-neutral); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mtag { flex:none; font-size:var(--t-xs); font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+  .mtag { justify-self:end; white-space:nowrap; font-size:var(--t-xs); font-weight:700; letter-spacing:.04em; text-transform:uppercase;
     padding:3px 8px; border-radius:999px; border:1px solid var(--elev-line); color:var(--color-neutral); }
   .mtag.local { color:#3fbf7f; border-color:color-mix(in srgb, #3fbf7f 40%, var(--elev-line)); }
   .mtag.cloud { color:#4ea1ff; border-color:color-mix(in srgb, #4ea1ff 40%, var(--elev-line)); }
   .picker-foot { display:flex; justify-content:space-between; align-items:center; gap:10px;
     padding:9px 16px; border-top:1px solid var(--elev-line); font-size:var(--t-xs); color:var(--color-neutral); }
   .picker-empty { padding:26px 12px; text-align:center; color:var(--color-neutral); font-size:var(--t-sm); }
-  .motion-calm .mrow { animation:none; }
-  @media (prefers-reduced-motion: reduce) { .mrow { animation:none; } }
 
   /* permission modes: segmented control in Settings, badge in the composer */
   .modes { display:grid; gap:8px; margin-top:8px; }
@@ -580,6 +629,72 @@
   .newchat, .recent, .chip, .iconbtn, #browserToggle, .proj-row button, .update-actions button, .device-row, .proj-item { transition:background .16s ease, color .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease; }
   .motion-calm *, .motion-calm *::before, .motion-calm *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
   @media (prefers-reduced-motion: reduce) { .dots::after { animation:none; } }
+
+  /* Claude-like workspace reframe: Axon's identity stays in the material, not
+     in competing cards or animated decoration. */
+  #grid { display:none; }
+  #side { position:relative; isolation:isolate; background:var(--elev-1); border-right-color:var(--elev-line); }
+  #side::before { content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; opacity:.095;
+    background:url('../assets/axon-sidebar-dendrites-v1.png') center/cover no-repeat; }
+  #side > * { position:relative; }
+  .brand { min-height:34px; margin-bottom:12px; font-size:15px; font-weight:720; }
+  .newchat { min-height:38px; border-radius:8px; box-shadow:none; background:var(--elev-2); }
+  .newchat:hover { background:color-mix(in srgb, var(--elev-2) 82%, var(--color-accent)); border-color:var(--elev-line); }
+  .nav-bar { margin:8px 0 14px; }
+  .nav-item { min-height:36px; padding:8px 9px; border-radius:6px; font-weight:520; }
+  .nav-item.active { background:var(--elev-2); box-shadow:inset 2px 0 0 var(--color-accent); color:var(--color-text); }
+  .nav-item:hover { background:color-mix(in srgb, var(--elev-2) 88%, var(--color-accent)); }
+  .side-section-head, .recents-label { letter-spacing:.1em; font-size:10px; opacity:.58; }
+ .sidebar-project, .recent { border-radius:6px; }
+ .sidebar-project { padding-right:34px; }
+ .recent { padding-right:52px; }
+  .sidebar-project.active, .recent.active { box-shadow:inset 2px 0 0 var(--color-accent); background:var(--elev-2); }
+  .sidefoot { background:color-mix(in srgb, var(--elev-1) 88%, transparent); }
+
+  #main { background:var(--color-bg); }
+  #home { position:relative; overflow:hidden; }
+  #home::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.12;
+    background:url('../assets/axon-neural-field-bg-v1.png') center/cover no-repeat; }
+  #home .wrap { position:relative; z-index:1; max-width:760px; }
+  .hero-emblem { height:52px; margin-bottom:10px; opacity:.82; }
+  .hero-emblem img { width:38px; height:52px; }
+  #home h1 { font-size:28px; letter-spacing:-.028em; margin-bottom:3px; }
+  #home .sub { margin-bottom:18px; font-size:15px; color:var(--color-neutral); }
+  .chips { gap:6px; }
+  .chip { border-radius:6px; box-shadow:none; background:transparent; }
+  .chip:hover { background:var(--elev-2); }
+
+  .card { border-radius:10px; box-shadow:none; background:var(--elev-2); }
+  .card:focus-within { box-shadow:0 0 0 2px color-mix(in srgb, var(--color-accent) 32%, transparent); }
+  #composerSlot { background:var(--color-bg); border-top:1px solid var(--elev-line); }
+  .composer-foot { min-height:38px; border-top:1px solid var(--elev-line); }
+  #send { width:30px; height:30px; border-radius:7px; box-shadow:none; transform:none !important; }
+  #send:hover { box-shadow:none; }
+  .composer-mode { border-radius:6px; }
+  .model-btn { border-radius:6px; }
+
+  #log { max-width:820px; padding-top:30px; }
+  .turn { margin-bottom:28px; gap:5px; }
+  .turnhead { font-family:var(--font-mono); font-size:11px; letter-spacing:.035em; }
+  .turn.ai .bubble, .turn.ai .block.text { background:transparent; border:0; border-radius:0; padding:0; }
+  .turn.ai .bubble { max-width:100%; }
+  .turn.ai .block.text { font-size:15px; line-height:1.68; }
+  .turn.ai .stream { max-width:100%; padding-left:14px; border-left:2px solid color-mix(in srgb, var(--elev-line) 84%, var(--color-accent)); }
+  .turn.user .bubble { max-width:76%; border-radius:8px; box-shadow:none; }
+  .block.tool, .tool-out { border-radius:6px; box-shadow:none; }
+  .tool-head { border-radius:6px; }
+  pre.code, .tool-out pre { border-radius:6px; }
+
+  .picker-card { border-radius:10px; }
+  .picker-tools { background:var(--elev-1); }
+  .picker-search, .picker-filters, .picker-sort select { border-radius:6px; }
+  .mrow { min-height:56px; border-radius:6px; margin-bottom:2px; }
+  .mrow.on { box-shadow:inset 2px 0 0 var(--color-accent); }
+  .mtag { border-radius:4px; font-size:10px; padding:2px 6px; opacity:.82; }
+
+  button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
+  .mode:hover, .allow-btn:hover, .deny-btn:hover { transform:none; }
+  @media (prefers-reduced-motion: reduce) { #side::before, #home::before { opacity:.07; } }
 </style>
 </head>
 <body>
@@ -588,6 +703,7 @@
 <header class="titlebar" aria-label="Axon window controls">
   <div class="window-brand"><svg class="window-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="currentColor"/><circle cx="9" cy="12" r="2.3" fill="var(--color-bg)"/><path d="M10.8 10.8 16.5 5.5M11.2 12h7M10.8 13.2l5.7 5.3" stroke="var(--color-bg)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="window-title">Axon</span></div>
   <div class="window-spacer"></div>
+  <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
   <div class="title-actions"><button id="browserToggle" title="Toggle agent browser">Browser</button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
 </header>
 <div id="app">
@@ -623,12 +739,14 @@
       <div class="newchat" id="projectsSidebarAdd" style="margin:0 4px"><span style="opacity:.6">+</span><span>New project</span></div>
     </div>
     <div id="modelsSidebar" class="sidebar-view">
+      <button id="modelsBrowse" class="newchat" type="button" style="margin:0 4px"><span style="opacity:.7">↓</span><span>Browse models</span></button>
       <div class="side-section-head"><span>Installed</span></div>
       <div id="modelsSidebarList" class="sidebar-empty">Loading models…</div>
     </div>
     <div class="sidefoot">
       <span id="backend">Ollama 11434</span>
-      <span style="display:flex;align-items:center;gap:6px"><span id="modeBadge" class="mode-badge">Local</span><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
+      <span style="display:flex;align-items:center;gap:6px"><span id="lanModeBadge" class="mode-badge">Local</span><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
+      <button id="sidebarUpdate" class="sidebar-update" type="button" title="Check for Axon updates" aria-label="Check for Axon updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 18v3h16v-3"/></svg></button>
     </div>
   </div>
 
@@ -653,7 +771,7 @@
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <span class="select-tag" hidden><select id="model"></select></span>
-              <button type="button" id="modeBadge" class="composer-mode mode-auto" title="Execution permissions">Auto</button>
+              <button type="button" id="permissionModeButton" class="composer-mode mode-auto" title="Execution permissions">Auto</button>
             </span>
             <button id="steer" title="Stop the current run and continue with this message" hidden>Steer</button>
             <button id="send" title="Send">→</button>
@@ -703,6 +821,8 @@
   </div>
 </div>
 
+<div id="recentPopup" class="recent-popover" role="dialog" aria-label="Recent chats"></div>
+
 <!-- settings modal -->
 <div class="modal" id="settings">
   <div class="modal-card">
@@ -730,7 +850,19 @@
         <div class="lan-info">Enforced by the harness itself, not by instructions the model could talk itself out of. In Approve mode a blocked action appears in the transcript with an Allow button.</div>
       </div>
       <div class="fld"><span>Agent harness</span><div class="row"><label class="fld"><select id="harnessSel"><option value="claude">Claude Code + local Ollama</option><option value="codex">Codex CLI</option><option value="opencode">opencode</option></select></label><label class="fld"><input id="codexModel" type="text" placeholder="Codex model (account default if blank)" /></label><label class="fld"><input id="opencodeModel" type="text" placeholder="opencode model, e.g. opencode/deepseek-v4-flash-free" /></label></div><div class="lan-info">Codex CLI and opencode each use their own signed-in account and your selected workspace; Claude Code requires its own CLI installation. Run <code>opencode models</code> to list the models available to you.</div></div>
-      <div class="fld"><span>Ollama Cloud catalogue</span><div class="proj-row"><button id="cloudModelsRefresh" type="button">Refresh &amp; cache cloud models</button><span id="cloudModelsInfo" class="lan-info"></span></div><div class="lan-info">Adds Ollama's official cloud catalogue to the model picker without downloading weights. Sign in once with <code>ollama signin</code> before running a cloud model.</div></div>
+      <div class="fld"><span>Inference runtime</span><div class="row"><label class="fld"><select id="runtimeSel"><option value="ollama">Local Ollama</option><option value="exo">Exo cluster</option><option value="llamacpp">llama.cpp RPC (2-PC VRAM pool)</option></select></label><label class="fld"><input id="exoUrl" type="url" placeholder="http://192.168.50.1:52415" /></label><button id="exoCheck" type="button">Test Exo</button></div><div id="exoStatus" class="lan-info">Local Ollama runs on this device. Exo connects to a separately running cluster coordinator.</div>
+        <div id="llamaCppFields" style="display:none">
+          <div class="lan-info">Experimental and unauthenticated (llama.cpp's own RPC docs call it out) — bind only to a direct, isolated Ethernet link between two PCs, never a routable network. Run Axon on both machines: one Host, one Worker.</div>
+          <div class="row"><label class="fld"><select id="llamaCppRole"><option value="host">This PC: Host — loads the model, pools in a remote GPU over --rpc</option><option value="worker">This PC: Worker — exposes this PC's GPU to a remote Host</option></select></label><button id="llamaCppInstallBtn" type="button">Install llama.cpp CUDA runtime</button></div>
+          <div id="llamaCppInstallStatus" class="lan-info"></div>
+          <div class="row" id="llamaCppHostFields"><label class="fld"><input id="llamaCppModelPath" type="text" placeholder="Choose a local .gguf model file" readonly /></label><button id="llamaCppBrowseBtn" type="button">Browse…</button></div>
+          <div class="row" id="llamaCppHostFields2"><label class="fld"><input id="llamaCppRpcPeers" type="text" placeholder="192.168.50.2:50052" /></label><button id="llamaCppTestPeerBtn" type="button">Test peer</button><label class="fld"><input id="llamaCppContextSize" type="number" min="0" placeholder="Context size (0 = model default)" /></label></div>
+          <div class="row" id="llamaCppWorkerFields"><label class="fld"><select id="llamaCppBindIp"></select></label><label class="fld"><input id="llamaCppRpcPort" type="number" min="1" max="65535" placeholder="50052" /></label></div>
+          <div class="row"><button id="llamaCppStartBtn" type="button">Start</button><button id="llamaCppStopBtn" type="button">Stop</button></div>
+          <div id="llamaCppStatus" class="lan-info"></div>
+        </div>
+      </div>
+      <div class="fld"><span>Ollama local model library</span><div class="proj-row"><button id="cloudModelsRefresh" type="button">Refresh download list</button><span id="cloudModelsInfo" class="lan-info"></span></div><div class="lan-info">Shows locally downloadable Ollama models. Models already installed on this device stay out of the list.</div></div>
       <div class="fld"><span>Appearance</span><div class="swatches" id="swatches"></div></div>
       <div class="row">
         <label class="fld"><span>Theme</span>
@@ -791,6 +923,16 @@
     </div>
   </div>
 </div>
+<div class="modal" id="modelDownload" role="dialog" aria-modal="true" aria-labelledby="modelDownloadTitle">
+  <div class="modal-card download-card">
+    <div class="modal-head"><h3 id="modelDownloadTitle">Install local models</h3><button class="x" id="modelDownloadClose" aria-label="Close">×</button></div>
+    <div id="modelHardware" class="download-hardware">Scanning this device…</div>
+    <input id="modelDownloadSearch" class="download-search" type="search" placeholder="Search Ollama models" autocomplete="off" />
+    <div class="download-tools"><div id="modelDownloadFilters" class="download-filters" role="tablist"><button class="download-filter on" type="button" data-filter="all">All</button><button class="download-filter" type="button" data-filter="hardware">For your hardware</button><button class="download-filter" type="button" data-filter="small">Under 8 GB</button></div><select id="modelDownloadSort" aria-label="Sort models"><option value="size">Smallest</option><option value="params">Largest parameters</option><option value="largest">Largest download</option><option value="name">Name</option></select></div>
+    <div id="modelDownloadList" class="download-list" aria-live="polite"></div>
+    <div class="picker-foot"><span id="modelDownloadCount"></span><span id="modelDownloadProgress">Scanning Ollama…</span></div>
+  </div>
+</div>
 <div class="modal" id="modelPicker" role="dialog" aria-modal="true" aria-labelledby="modelPickerTitle">
   <div class="modal-card picker-card">
     <div class="modal-head">
@@ -805,7 +947,6 @@
       <div class="picker-filters" id="modelFilters" role="tablist">
         <button type="button" class="pfilter on" data-filter="all" role="tab">All</button>
         <button type="button" class="pfilter" data-filter="local" role="tab">Local</button>
-        <button type="button" class="pfilter" data-filter="cloud" role="tab">Cloud</button>
       </div>
       <label class="picker-sort"><span>Sort</span>
         <select id="modelSort">

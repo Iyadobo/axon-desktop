@@ -88,7 +88,77 @@ before the prompt reaches `claude`.
 | `src/preload.js` | contextBridge IPC surface |
 | `src/renderer/{index.html,app.js}` | Relay-styled chat UI: sidebar, Recents, home/chat, slash commands |
 | `src/selfcheck.js` | assertions over the parser + command expansion + an Ollama reachability ping |
+| `src/llamacpp-bridge.js` | pure Anthropic Messages ⇄ OpenAI chat-completions translator + the loopback bridge server (self-checkable) |
+| `src/llamacpp-runtime.js` | installs/spawns the llama.cpp CUDA runtime for the two-PC RPC pool (self-checkable) |
 | `src/assets/icon.png` | generated 16×16 tray icon |
+
+## Two-PC llama.cpp RPC runtime (experimental)
+
+Settings → **Inference runtime** has a third option besides Local Ollama and Exo:
+**llama.cpp RPC (2-PC VRAM pool)**. It pools the VRAM of two Windows PCs over a
+direct, isolated Ethernet link using [llama.cpp's built-in RPC
+backend](https://github.com/ggml-org/llama.cpp) — one PC (**Host**) loads a GGUF
+model and runs `llama-server --rpc <peer>`; the other (**Worker**) runs
+`ggml-rpc-server`, exposing its GPU over the wire. Weights and KV cache are split
+across both GPUs' free memory automatically.
+
+**Ollama and Exo both speak the Anthropic Messages API natively, so Claude Code's
+`ANTHROPIC_BASE_URL` can point straight at them. llama.cpp only speaks
+OpenAI-style `/v1/chat/completions`, so this adapter is not a thin passthrough —
+`src/llamacpp-bridge.js` is a real, loopback-only translation layer** (Anthropic
+streaming events ⇄ OpenAI SSE chunks, including tool-call ⇄ `tool_calls`
+mapping) that Claude Code talks to instead.
+
+**What Axon does for you, on this PC:**
+- Downloads and installs the official prebuilt llama.cpp Windows CUDA release
+  (`ggml-org/llama.cpp` release `b10549`, ~640 MB: the CUDA build itself plus its
+  `cudart` DLLs) into `runtimes/llamacpp/bin` — no cmake/nvcc/ninja needed. This
+  only happens when you click **Install llama.cpp CUDA runtime**; nothing
+  downloads on its own.
+- Lets you pick a **local `.gguf` file** via a real file picker. Axon never
+  downloads a model for you — GGUF choice and placement is yours.
+- Spawns `llama-server` (Host) or `ggml-rpc-server` (Worker) and runs the
+  Anthropic⇄OpenAI bridge on loopback (`127.0.0.1:47420`) so Claude Code can talk
+  to it exactly like it talks to Ollama.
+
+**What you must do on the *other* PC — Axon cannot reach across the isolated
+link to configure it:**
+1. Give it a static IP on the same isolated NIC, e.g. `192.168.50.2/24`
+   (adjust to match whatever the Host PC actually uses).
+2. Install Axon there too (same build), open Settings → Inference runtime →
+   llama.cpp RPC → click **Install llama.cpp CUDA runtime**.
+3. Set role to **Worker**, pick its own IP as the bind address, **Start**.
+4. Back on the Host PC, set the RPC peer field to `<worker-ip>:50052` and use
+   **Test peer** to confirm the link before **Start**.
+
+**Network note:** a gigabit-capable NIC can still negotiate down to 100 Mbps
+on a short direct-connect link. On this dev machine that turned out to be
+Realtek's **Energy-Efficient Ethernet / Green Ethernet** power-saving features
+(`Get-NetAdapterAdvancedProperty` on the adapter) rather than a bad cable or a
+forced speed — worth checking on both PCs before assuming the cable is at
+fault. 100 Mbps still works end-to-end; it is just a much slower proof-only
+path for the sizes of tensor traffic RPC moves per token.
+
+**Security:** llama.cpp's own RPC docs call it experimental and unauthenticated
+— no auth, no transport encryption. Axon's Worker bind is checked in code
+against this machine's *own* interface addresses (never `0.0.0.0`, never an
+address you don't actually own), but nothing stops another device on that same
+subnet from talking to it. Only ever run this over a direct, physically
+isolated Ethernet cable between the two PCs — never on a shared/routable
+network.
+
+**Verified so far (this PC, RTX 5060 Laptop 8 GB, no second PC in this
+environment):** the installer downloads and extracts real binaries that run;
+`ggml-rpc-server` binds the real isolated-NIC address (`192.168.50.1:50052`),
+detects the GPU, and accepts a real TCP connection; the bind-guard rejects
+addresses this machine doesn't own; the Anthropic⇄OpenAI bridge is verified
+end-to-end over real loopback sockets (`npm run check`) including tool-call
+argument reassembly. **Not verified:** an actual two-PC RPC inference run (no
+second machine here) and a real chat turn through `llama-server` (no GGUF
+chosen — pick one in Settings and click Start to complete that last step
+yourself). Tool-calling fidelity through llama.cpp also depends on the GGUF's
+own chat template support for tool/function calling, unlike Ollama where Axon
+already knows this works.
 
 ## Notes / trade-offs (`ponytail:`)
 

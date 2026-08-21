@@ -118,12 +118,115 @@ function openSettings() {
   $('harnessSel').value = settings.harness;
   $('codexModel').value = settings.codexModel;
   $('opencodeModel').value = settings.opencodeModel;
+  $('runtimeSel').value = ['exo', 'llamacpp'].includes(persisted.oRuntime) ? persisted.oRuntime : 'ollama';
+  $('exoUrl').value = persisted.oExoUrl || 'http://127.0.0.1:52415';
+  syncRuntimeFields();
+  if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncHarnessFields();
   syncModes();
   syncPaletteInputs(); renderSwatches(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
 }
 function closeSettings() { $('settings').classList.remove('show'); }
+function syncRuntimeFields() {
+  const kind = $('runtimeSel').value; const exo = kind === 'exo'; const llamaCpp = kind === 'llamacpp';
+  $('exoUrl').parentElement.style.display = exo ? '' : 'none'; $('exoCheck').style.display = exo ? '' : 'none';
+  $('exoStatus').textContent = exo
+    ? 'Exo is an optional cluster runtime. Axon connects to its coordinator API; it does not install or emulate a cluster.'
+    : 'Local Ollama runs on this device.';
+  $('llamaCppFields').style.display = llamaCpp ? '' : 'none';
+  if (llamaCpp) syncLlamaCppRoleFields();
+}
+async function selectRuntime() {
+  const kind = $('runtimeSel').value; const url = $('exoUrl').value.trim();
+  $('exoStatus').textContent = kind === 'exo' ? 'Connecting to Exo…' : kind === 'llamacpp' ? '' : 'Switching to local Ollama…';
+  const result = await window.ollama.setRuntime({ kind, url });
+  if (result?.error) { $('exoStatus').textContent = 'Exo connection failed: ' + result.error; $('runtimeSel').value = ['exo', 'llamacpp'].includes(persisted.oRuntime) ? persisted.oRuntime : 'ollama'; syncRuntimeFields(); return; }
+  saveState('oRuntime', result.kind); saveState('oExoUrl', result.url || '');
+  $('exoStatus').textContent = result.kind === 'exo' ? 'Exo connected — ' + (result.url || url) + '.' : result.kind === 'llamacpp' ? '' : 'Using local Ollama.';
+  if (result.kind === 'llamacpp') await refreshLlamaCppStatus();
+  await loadModels();
+}
+async function testExo() {
+  $('exoStatus').textContent = 'Testing Exo coordinator…';
+  const result = await window.ollama.checkExo($('exoUrl').value.trim());
+  $('exoStatus').textContent = result?.ok ? `Exo ready — ${result.models} model${result.models === 1 ? '' : 's'} exposed.` : 'Exo check failed: ' + (result?.error || 'unknown error');
+}
+
+// ---- llama.cpp RPC runtime (two-PC VRAM pool) ------------------------------
+// Axon manages the local half only: install the CUDA binaries, spawn either
+// llama-server (Host, using --rpc to reach a remote GPU) or rpc-server (Worker,
+// exposing this PC's GPU). The other PC needs the same setup done there by hand
+// -- Axon cannot reach across the isolated link to configure it.
+let llamaCppInstalling = false;
+function syncLlamaCppRoleFields() {
+  const host = $('llamaCppRole').value !== 'worker';
+  $('llamaCppHostFields').style.display = host ? '' : 'none';
+  $('llamaCppHostFields2').style.display = host ? '' : 'none';
+  $('llamaCppWorkerFields').style.display = host ? 'none' : '';
+}
+async function refreshLlamaCppStatus() {
+  const status = await window.ollama.llamaCppStatus();
+  if (!status) return;
+  const cfg = status.config || {};
+  $('llamaCppRole').value = cfg.role === 'worker' ? 'worker' : 'host';
+  $('llamaCppModelPath').value = cfg.modelPath || '';
+  $('llamaCppRpcPeers').value = cfg.rpcPeers || '';
+  $('llamaCppContextSize').value = cfg.contextSize || '';
+  $('llamaCppRpcPort').value = cfg.rpcPort || 50052;
+  const bindSel = $('llamaCppBindIp'); bindSel.innerHTML = '';
+  for (const ip of status.ips || []) { const o = document.createElement('option'); o.value = ip; o.textContent = ip; bindSel.appendChild(o); }
+  if (cfg.bindIp && [...bindSel.options].some((o) => o.value === cfg.bindIp)) bindSel.value = cfg.bindIp;
+  syncLlamaCppRoleFields();
+  $('llamaCppInstallStatus').textContent = status.installed ? `llama.cpp CUDA runtime installed at ${status.dir}.` : 'llama.cpp CUDA runtime is not installed yet (download is ~640 MB from the official GitHub release).';
+  $('llamaCppInstallBtn').disabled = llamaCppInstalling;
+  const running = status.hostRunning || status.workerRunning;
+  $('llamaCppStartBtn').disabled = running || !status.installed;
+  $('llamaCppStopBtn').disabled = !running;
+  $('llamaCppStatus').textContent = status.hostRunning ? 'Host running — llama-server is loading/serving the model.' : status.workerRunning ? 'Worker running — this GPU is exposed to the isolated link.' : 'Stopped.';
+}
+async function saveLlamaCppConfigFromFields() {
+  await window.ollama.llamaCppSetConfig({
+    role: $('llamaCppRole').value,
+    modelPath: $('llamaCppModelPath').value.trim(),
+    rpcPeers: $('llamaCppRpcPeers').value.trim(),
+    contextSize: Number($('llamaCppContextSize').value) || 0,
+    bindIp: $('llamaCppBindIp').value,
+    rpcPort: Number($('llamaCppRpcPort').value) || 50052,
+  });
+}
+async function installLlamaCppRuntime() {
+  if (llamaCppInstalling) return;
+  llamaCppInstalling = true; $('llamaCppInstallBtn').disabled = true;
+  $('llamaCppInstallStatus').textContent = 'Downloading llama.cpp CUDA runtime (~640 MB)…';
+  try {
+    const result = await window.ollama.llamaCppInstall();
+    $('llamaCppInstallStatus').textContent = result?.error ? 'Install failed: ' + result.error : 'llama.cpp CUDA runtime installed at ' + result.status.dir + '.';
+  } finally { llamaCppInstalling = false; await refreshLlamaCppStatus(); }
+}
+async function pickLlamaCppModel() {
+  const picked = await window.ollama.llamaCppPickModel();
+  if (!picked) return;
+  $('llamaCppModelPath').value = picked;
+  await saveLlamaCppConfigFromFields();
+}
+async function testLlamaCppPeer() {
+  await saveLlamaCppConfigFromFields();
+  const peer = $('llamaCppRpcPeers').value.trim().split(',')[0]?.trim();
+  if (!peer) { $('llamaCppStatus').textContent = 'Enter the remote PC\'s rpc-server address first, e.g. 192.168.50.2:50052.'; return; }
+  $('llamaCppStatus').textContent = 'Testing ' + peer + '…';
+  const result = await window.ollama.llamaCppCheckPeer(peer);
+  $('llamaCppStatus').textContent = result?.ok ? peer + ' is reachable.' : peer + ' is not reachable: ' + (result?.error || 'unknown error') + '. Confirm the other PC is running Axon as a Worker on its isolated-Ethernet IP.';
+}
+async function startLlamaCppRuntime() {
+  await saveLlamaCppConfigFromFields();
+  $('llamaCppStatus').textContent = 'Starting…';
+  const result = await window.ollama.llamaCppStart();
+  $('llamaCppStatus').textContent = result?.error ? 'Could not start: ' + result.error : 'Starting…';
+  await refreshLlamaCppStatus();
+  if (!result?.error) await loadModels();
+}
+async function stopLlamaCppRuntime() { await window.ollama.llamaCppStop(); await refreshLlamaCppStatus(); }
 
 // ---- projects (folder workspaces) -----------------------------------------
 let projects = [];        // [{id, name, path, instructions}]
@@ -189,7 +292,10 @@ function renderSidebarProjects() {
     const name = document.createElement('span'); name.textContent = project.name;
     const count = document.createElement('span'); count.className = 'project-count';
     count.textContent = String(conversations.filter((chat) => chat.projectId === project.id).length);
-    item.append(name, count); item.onclick = () => selectProject(project.id); box.appendChild(item);
+    const manage = document.createElement('button'); manage.type = 'button'; manage.className = 'project-manage';
+    manage.textContent = '•••'; manage.title = 'Manage project'; manage.setAttribute('aria-label', 'Manage ' + project.name);
+    manage.onclick = (event) => { event.stopPropagation(); selectProject(project.id); openSettings(); setTimeout(() => $('projInstr').focus(), 0); };
+    item.append(name, count, manage); item.onclick = () => selectProject(project.id); box.appendChild(item);
   }
 }
 // ---- projects page ---------------------------------------------------------
@@ -403,17 +509,18 @@ function renderCloudCatalogueInfo() {
   const cache = cachedCloudCatalogue(); const info = $('cloudModelsInfo');
   if (!info) return;
   info.textContent = cache.models.length
-    ? `${cache.models.length} cloud models cached${cache.fetchedAt ? ' · refreshed ' + new Date(cache.fetchedAt).toLocaleString() : ''}`
-    : 'No cloud catalogue cached yet.';
+    ? `${cache.models.length} Ollama models cached${cache.fetchedAt ? ' · refreshed ' + new Date(cache.fetchedAt).toLocaleString() : ''}`
+    : 'No download list cached yet.';
 }
 async function refreshCloudCatalogue() {
   const button = $('cloudModelsRefresh'); button.disabled = true;
-  $('cloudModelsInfo').textContent = 'Refreshing official Ollama Cloud catalogue…';
+  $('cloudModelsInfo').textContent = 'Refreshing the official Ollama download list…';
   try {
     const cache = await window.ollama.refreshCloudModels();
     if (!Array.isArray(cache?.models) || !cache.models.length) throw new Error('No cloud models were returned.');
     saveState('ocloudModels', { models: cache.models, fetchedAt: cache.fetchedAt || new Date().toISOString() });
     await loadModels(); renderCloudCatalogueInfo();
+    if ($('modelDownload').classList.contains('show')) await refreshModelDownloads();
   } catch (error) {
     $('cloudModelsInfo').textContent = 'Could not refresh: ' + (error?.message || 'network error') + '. Existing cache was kept.';
   } finally { button.disabled = false; }
@@ -436,8 +543,14 @@ async function loadModels() {
     const data = await window.ollama.listModels();
     const sel = $('model'); sel.innerHTML = '';
     const localModels = data.models || [];
-    const models = mergeModels(localModels, data.remote ? [] : cachedCloudCatalogue().models);
-    if (!models.length) return setStatus(false, 'no models');
+    // Axon exposes only locally installed models as runnable choices. The
+    // download catalogue is separate and filters these names out before pull.
+    const models = localModels.map((model) => ({ ...model, source: 'local' }));
+    if (!models.length) {
+      modelCatalogue = []; syncModelButton();
+      const sidebarList = $('modelsSidebarList'); if (sidebarList) sidebarList.textContent = 'No local models installed';
+      return setStatus(false, 'no models');
+    }
     for (const m of models) {
       const o = document.createElement('option');
       o.value = m.name;
@@ -449,7 +562,7 @@ async function loadModels() {
     if (pref && models.some((m) => m.name === pref)) sel.value = pref;
     syncModelButton();
     if ($('modelPicker').classList.contains('show')) renderPicker();
-    setStatus(true, localModels.length ? (cachedCloudCatalogue().models.length ? 'ready · cloud' : 'ready') : 'cloud cache');
+    setStatus(true, localModels.length ? 'ready' : 'no models');
     // Update models sidebar quick list
     const sidebarList = $('modelsSidebarList');
     if (sidebarList) {
@@ -476,6 +589,116 @@ async function loadModels() {
     }
   } catch { setStatus(false, 'offline'); }
 }
+// ---- local model downloads --------------------------------------------------
+let downloadCatalogue = [], downloadedModelNames = new Set(), downloadingModel = null, modelHardware = null, modelDownloadPage = 1;
+const MODEL_DOWNLOAD_PAGE_SIZE = 24;
+const canonicalModelName = (name) => String(name || '').trim().toLowerCase().replace(/:latest$/, '');
+const gib = (bytes) => Number(bytes) > 0 ? (Number(bytes) / 1024 / 1024 / 1024).toFixed(Number(bytes) >= 10 * 1024 ** 3 ? 0 : 1) + ' GB' : 'unknown';
+function bestGpu() { return [...(modelHardware?.gpus || [])].sort((a, b) => Number(b.vramBytes) - Number(a.vramBytes))[0] || null; }
+function modelFit(model) {
+  const diskBytes = Number(model?.size) || 0;
+  const workingBytes = diskBytes * 1.2; // conservative model/runtime overhead; context length can still change the result.
+  const gpu = bestGpu(); const ramBytes = Number(modelHardware?.ramBytes) || 0;
+  if (gpu?.vramBytes >= workingBytes) return { level: 'good', label: 'GPU fit', detail: 'Estimated to fit in ' + gib(gpu.vramBytes) + ' VRAM' };
+  if (ramBytes >= workingBytes * 1.35 && gpu?.vramBytes) return { level: 'warn', label: 'Hybrid fit', detail: 'Will likely spill beyond ' + gib(gpu.vramBytes) + ' VRAM' };
+  if (ramBytes >= workingBytes * 1.35) return { level: 'warn', label: 'CPU fit', detail: 'Likely runs in system RAM; expect slower responses' };
+  return { level: 'bad', label: 'Tight fit', detail: 'May exceed available memory once context is included' };
+}
+function renderModelHardware() {
+  const box = $('modelHardware');
+  if (!modelHardware) { box.textContent = 'Hardware scan unavailable — model fit estimates are hidden.'; return; }
+  const gpu = bestGpu();
+  box.innerHTML = '';
+  const ram = document.createElement('span'); ram.innerHTML = '<strong>Memory</strong> ' + gib(modelHardware.ramBytes);
+  const graphics = document.createElement('span'); graphics.innerHTML = '<strong>GPU</strong> ' + (gpu ? gpu.name + ' · ' + gib(gpu.vramBytes) + ' VRAM' : 'not detected');
+  const note = document.createElement('span'); note.textContent = 'Fit labels reserve room for runtime overhead; they are not speed benchmarks.';
+  box.append(ram, graphics, note);
+}
+function parameterCount(model) {
+  const raw = String(model?.details?.parameter_size || '').trim().toUpperCase();
+  const match = raw.match(/(\d+(?:\.\d+)?)\s*([KMBT])/); if (!match) return 0;
+  return Number(match[1]) * ({ K: 1e3, M: 1e6, B: 1e9, T: 1e12 }[match[2]] || 0);
+}
+function localDownloadCandidates() {
+  const query = $('modelDownloadSearch').value.trim().toLowerCase();
+  const filter = document.querySelector('#modelDownloadFilters .download-filter.on')?.dataset.filter || 'all';
+  const sort = $('modelDownloadSort').value;
+  const rows = downloadCatalogue.filter((model) => {
+    const name = String(model?.name || '');
+    if (!name || name.includes(':cloud') || Number(model.size) <= 0 || downloadedModelNames.has(canonicalModelName(name)) || (query && !name.toLowerCase().includes(query))) return false;
+    if (filter === 'hardware') return ['good', 'warn'].includes(modelFit(model).level);
+    if (filter === 'small') return Number(model.size) <= 8 * 1024 ** 3;
+    return true;
+  });
+  return rows.sort((a, b) => {
+    if (sort === 'params') return parameterCount(b) - parameterCount(a) || Number(a.size) - Number(b.size);
+    if (sort === 'largest') return Number(b.size) - Number(a.size);
+    if (sort === 'name') return String(a.name).localeCompare(String(b.name));
+    return Number(a.size) - Number(b.size) || String(a.name).localeCompare(String(b.name));
+  });
+}
+function renderModelDownloads() {
+  const list = $('modelDownloadList'); const rows = localDownloadCandidates();
+  const visible = rows.slice(0, modelDownloadPage * MODEL_DOWNLOAD_PAGE_SIZE);
+  list.innerHTML = ''; $('modelDownloadCount').textContent = rows.length + (rows.length === 1 ? ' local model found' : ' local models found') + ' · showing ' + visible.length;
+  if (!rows.length) {
+    const empty = document.createElement('div'); empty.className = 'download-empty';
+    empty.textContent = downloadCatalogue.length ? 'Everything in this view is already installed.' : 'No local Ollama models found.';
+    list.appendChild(empty); return;
+  }
+  for (const model of visible) {
+    const row = document.createElement('div'); row.className = 'download-row';
+    const meta = document.createElement('div');
+    const name = document.createElement('span'); name.className = 'download-name'; name.textContent = model.name;
+    const details = document.createElement('span'); details.className = 'download-meta';
+    details.textContent = [model.details?.parameter_size, formatBytes(Number(model.size))].filter(Boolean).join(' · ');
+    const fit = modelFit(model); const fitLabel = document.createElement('span'); fitLabel.className = 'fit ' + fit.level; fitLabel.textContent = fit.label;
+    const fitDetail = document.createElement('span'); fitDetail.className = 'download-meta'; fitDetail.textContent = fit.detail;
+    meta.append(name, details, fitLabel, fitDetail);
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = downloadingModel === model.name ? 'Installing…' : 'Install';
+    button.disabled = !!downloadingModel; button.onclick = () => downloadModel(model.name);
+    row.append(meta, button); list.appendChild(row);
+  }
+  if (visible.length < rows.length) {
+    const more = document.createElement('button'); more.type = 'button'; more.className = 'download-more'; more.textContent = 'Show ' + Math.min(MODEL_DOWNLOAD_PAGE_SIZE, rows.length - visible.length) + ' more';
+    more.onclick = () => { modelDownloadPage++; renderModelDownloads(); }; list.appendChild(more);
+  }
+}
+async function refreshModelDownloads() {
+  $('modelDownloadProgress').textContent = 'Scanning installed models and Ollama…';
+  try {
+    const [installed, catalogue, hardware] = await Promise.all([window.ollama.listModels(), window.ollama.downloadCatalogue(), window.ollama.hardwareProfile()]);
+    downloadedModelNames = new Set((installed?.models || []).map((model) => canonicalModelName(model?.name)));
+    downloadCatalogue = Array.isArray(catalogue?.models) ? catalogue.models : [];
+    modelHardware = hardware || null; renderModelHardware();
+    modelDownloadPage = 1; $('modelDownloadProgress').textContent = 'Local downloads only · installed models hidden · page by page';
+    renderModelDownloads();
+  } catch (error) {
+    downloadCatalogue = []; $('modelDownloadProgress').textContent = 'Could not load the Ollama catalogue: ' + (error?.message || 'network error'); renderModelDownloads();
+  }
+}
+async function downloadModel(name) {
+  if (downloadingModel) return;
+  downloadingModel = name; $('modelDownloadProgress').textContent = 'Starting ' + name + '…'; renderModelDownloads();
+  try {
+    const result = await window.ollama.pullModel(name);
+    if (result?.error) throw new Error(result.error);
+    downloadedModelNames.add(canonicalModelName(name));
+    $('modelDownloadProgress').textContent = name + ' is ready locally.';
+    await loadModels(); renderModelDownloads();
+  } catch (error) {
+    $('modelDownloadProgress').textContent = 'Download failed: ' + (error?.message || 'Unknown error');
+  } finally { downloadingModel = null; renderModelDownloads(); }
+}
+function openModelDownloads() {
+  $('modelDownload').classList.add('show'); $('modelDownloadSearch').value = ''; modelDownloadPage = 1; $('modelDownloadSearch').focus(); refreshModelDownloads();
+}
+function closeModelDownloads() { if (!downloadingModel) $('modelDownload').classList.remove('show'); }
+window.ollama.on('model-pull-progress', (update) => {
+  if (!update || update.model !== downloadingModel) return;
+  const percent = update.total > 0 ? ' · ' + Math.min(100, Math.round(update.completed / update.total * 100)) + '%' : '';
+  $('modelDownloadProgress').textContent = String(update.status || 'Downloading…') + percent;
+});
 // ---- model picker -----------------------------------------------------------
 // The <select id="model"> stays the source of truth (slash commands, saved
 // conversations and the send path all read it); this is a richer way to set it.
@@ -583,7 +806,6 @@ function renderPicker() {
     row.type = 'button'; row.className = 'mrow' + (m.name === current ? ' on' : '') + (index === pickerCursor ? ' cursor' : '');
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', m.name === current ? 'true' : 'false');
-    row.style.animationDelay = Math.min(index, 12) * 14 + 'ms';
     const mark = familyMarkup(family);
     const logo = document.createElement('span'); logo.className = 'mlogo'; logo.style.color = mark.color;
     logo.innerHTML = mark.svg;
@@ -595,11 +817,6 @@ function renderPicker() {
     const tag = document.createElement('span'); tag.className = 'mtag ' + m.source; tag.textContent = m.source;
     row.append(logo, main, tag);
     row.onclick = () => chooseModel(m.name);
-    // Mouse hover moves the keyboard cursor but must NOT scroll — the row is
-    // visible or the mouse couldn't be over it, and calling scrollIntoView on
-    // every hover nudged the list, which could shift a different row under the
-    // cursor and re-trigger this handler: a hover/scroll jitter loop.
-    row.onmouseenter = () => { pickerCursor = index; markCursor(false); };
     list.appendChild(row);
   });
 }
@@ -717,6 +934,39 @@ function applySharedConversations(items) {
   renderRecents();
   if (activeId) openConv(activeId);
 }
+function conversationOrder(list) {
+  return [...list].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned)
+    || Number(b.updatedAt || b.ts || 0) - Number(a.updatedAt || a.ts || 0));
+}
+function deleteConversation(id) {
+  conversations = conversations.filter((chat) => chat.id !== id); saveConvs();
+  if (activeId === id) newChat(); else renderRecents();
+}
+function toggleConversationPin(id) {
+  const chat = conversations.find((item) => item.id === id); if (!chat) return;
+  chat.pinned = !chat.pinned; saveConvs(); renderRecents();
+}
+function renderRecentPopup() {
+  const box = $('recentPopup'); if (!box) return;
+  box.innerHTML = '<div class="recent-popover-head"><span>Recent chats</span><span>' + conversations.length + '</span></div>';
+  const recent = conversationOrder(conversations).slice(0, 18);
+  if (!recent.length) { box.innerHTML += '<div class="sidebar-empty">No chats yet.</div>'; return; }
+  for (const chat of recent) {
+    const row = document.createElement('div'); row.className = 'recent-popover-item' + (chat.id === activeId ? ' active' : '');
+    row.tabIndex = 0; row.setAttribute('role', 'button');
+    row.innerHTML = '<span class="recent-popover-title">' + esc(chat.title || '(empty)') + '</span><span class="recent-popover-meta">'
+      + esc(chat.projectId ? (projects.find((p) => p.id === chat.projectId)?.name || 'Project') : 'All chats') + ' · ' + esc(chat.model || chat.harness || 'Axon') + '</span>';
+    row.onclick = () => { openConv(chat.id); closeRecentPopup(); };
+    row.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openConv(chat.id); closeRecentPopup(); } };
+    const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'recent-popover-pin'; pin.textContent = chat.pinned ? '★' : '☆'; pin.title = chat.pinned ? 'Unpin chat' : 'Pin chat';
+    pin.onclick = (event) => { event.stopPropagation(); toggleConversationPin(chat.id); };
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'recent-popover-delete'; del.textContent = '×'; del.title = 'Delete chat';
+    del.onclick = (event) => { event.stopPropagation(); deleteConversation(chat.id); };
+    row.append(pin, del); box.appendChild(row);
+  }
+}
+function closeRecentPopup() { $('recentPopup')?.classList.remove('show'); $('recentPopupToggle')?.setAttribute('aria-expanded', 'false'); }
+function toggleRecentPopup() { const box = $('recentPopup'); const open = box.classList.toggle('show'); $('recentPopupToggle').setAttribute('aria-expanded', String(open)); if (open) renderRecentPopup(); }
 function renderRecents() {
   renderSidebarProjects();
   const box = $('recents'); box.innerHTML = '';
@@ -725,16 +975,19 @@ function renderRecents() {
     const e = document.createElement('div'); e.style.cssText = 'font-size:12px;opacity:.4;padding:7px 8px';
     e.textContent = activeProjectId ? 'No chats in this project yet.' : 'No chats yet.'; box.appendChild(e);
   }
-  for (const c of visible) {
+  for (const c of conversationOrder(visible)) {
     const d = document.createElement('div');
-    d.className = 'recent' + (c.id === activeId ? ' active' : '');
+    d.className = 'recent' + (c.id === activeId ? ' active' : '') + (c.pinned ? ' pinned' : '');
     d.textContent = (c.title || '(empty)') + ([...activeTurns.values()].some((turn) => turn.conversationId === c.id) ? ' · running' : '');
     d.title = c.title || '';
     d.onclick = () => openConv(c.id);
-    const del = document.createElement('span'); del.className = 'rdel'; del.textContent = '✕'; del.title = 'Delete chat';
-    del.onclick = (e) => { e.stopPropagation(); conversations = conversations.filter((x) => x.id !== c.id); saveConvs(); if (activeId === c.id) newChat(); else renderRecents(); };
-    d.appendChild(del); box.appendChild(d);
+    const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'rpin'; pin.textContent = c.pinned ? '★' : '☆'; pin.title = c.pinned ? 'Unpin chat' : 'Pin chat';
+    pin.onclick = (e) => { e.stopPropagation(); toggleConversationPin(c.id); };
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'rdel'; del.textContent = '×'; del.title = 'Delete chat';
+    del.onclick = (e) => { e.stopPropagation(); deleteConversation(c.id); };
+    d.append(pin, del); box.appendChild(d);
   }
+  renderRecentPopup();
 }
 function openConv(id) {
   const conv = conversations.find((c) => c.id === id);
@@ -1130,7 +1383,7 @@ window.ollama.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   } else if (turn.started && !turn.turnEl.classList.contains('error')) { addCopyBtn(turn.turnEl, text); }
   if (turn.started && text) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
-    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: text, steps: turn.record || [] }); saveConvs(); publishConversation(conv); }
+    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: text, steps: turn.record || [] }); conv.updatedAt = Date.now(); saveConvs(); publishConversation(conv); }
   }
   if (sessionId) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
@@ -1225,9 +1478,10 @@ async function startMessage(entry) {
   // create / reuse conversation
   let conv = activeId ? conversations.find((c) => c.id === activeId) : null;
   if (!conv) {
-    conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, harness: entry.harness, ts: Date.now(), projectId: activeProjectId, turns: [] };
+    conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, harness: entry.harness, ts: Date.now(), updatedAt: Date.now(), projectId: activeProjectId, turns: [] };
     conversations.unshift(conv); activeId = conv.id; renderRecents();
   }
+  conv.updatedAt = Date.now(); saveConvs();
   const systemPrompt = projectSystemPrompt();
   const fingerprint = instructionFingerprint(conv.harness || entry.harness, systemPrompt);
   // Claude Code preserves a session's initial system context on --resume. A
@@ -1393,7 +1647,7 @@ card.addEventListener('dragleave', (e) => { if (!card.contains(e.relatedTarget))
 card.addEventListener('drop', (e) => { e.preventDefault(); card.classList.remove('dragging'); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 $('prompt').addEventListener('paste', (e) => { const files = e.clipboardData?.files; if (files?.length) { e.preventDefault(); addFiles(files); } });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { if (cmdOpen) closeCmdList(); else closeSettings(); }
+  if (e.key === 'Escape') { if (cmdOpen) closeCmdList(); else if ($('recentPopup')?.classList.contains('show')) closeRecentPopup(); else if ($('modelDownload')?.classList.contains('show')) closeModelDownloads(); else closeSettings(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); $('prompt').focus(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); }
 });
@@ -1425,7 +1679,7 @@ function syncModes() {
     btn.classList.toggle('on', on);
     btn.setAttribute('aria-checked', on ? 'true' : 'false');
   }
-  const badge = $('modeBadge');
+  const badge = $('permissionModeButton');
   if (badge) {
     badge.textContent = { approve: 'Approve', auto: 'Auto', full: 'Full' }[settings.permissionMode] || 'Auto';
     badge.className = 'composer-mode mode-' + settings.permissionMode;
@@ -1439,12 +1693,36 @@ function syncModes() {
 for (const btn of document.querySelectorAll('#modes .mode')) {
   btn.onclick = () => { settings.permissionMode = btn.dataset.mode; syncModes(); saveSettings(); };
 }
-$('modeBadge').onclick = () => {
+$('permissionModeButton').onclick = () => {
   const order = ['approve', 'auto', 'full'];
   settings.permissionMode = order[(order.indexOf(settings.permissionMode) + 1) % order.length];
   syncModes(); saveSettings();
 };
 $('harnessSel').onchange = () => { settings.harness = $('harnessSel').value; syncHarnessFields(); saveSettings(); };
+$('runtimeSel').onchange = () => { syncRuntimeFields(); selectRuntime(); };
+$('exoCheck').onclick = testExo;
+$('llamaCppRole').onchange = () => { syncLlamaCppRoleFields(); saveLlamaCppConfigFromFields(); };
+$('llamaCppInstallBtn').onclick = installLlamaCppRuntime;
+$('llamaCppBrowseBtn').onclick = pickLlamaCppModel;
+$('llamaCppRpcPeers').onchange = saveLlamaCppConfigFromFields;
+$('llamaCppContextSize').onchange = saveLlamaCppConfigFromFields;
+$('llamaCppBindIp').onchange = saveLlamaCppConfigFromFields;
+$('llamaCppRpcPort').onchange = saveLlamaCppConfigFromFields;
+$('llamaCppTestPeerBtn').onclick = testLlamaCppPeer;
+$('llamaCppStartBtn').onclick = startLlamaCppRuntime;
+$('llamaCppStopBtn').onclick = stopLlamaCppRuntime;
+window.ollama.on('llamacpp-install-progress', (p) => {
+  if (!p) return;
+  if (p.phase === 'download') {
+    const pct = p.total ? Math.round((p.received / p.total) * 100) + '%' : formatBytes(p.received);
+    $('llamaCppInstallStatus').textContent = `Downloading ${p.label}… ${pct}`;
+  } else if (p.phase === 'extract') $('llamaCppInstallStatus').textContent = 'Extracting…';
+});
+window.ollama.on('llamacpp-status-change', (update) => {
+  if (!update) return;
+  $('llamaCppStatus').textContent = `${update.role === 'worker' ? 'Worker' : 'Host'} stopped${update.code ? ' (exit ' + update.code + ')' : ''}.${update.tail ? ' ' + update.tail.trim().slice(-300) : ''}`;
+  if ($('settings').classList.contains('show')) refreshLlamaCppStatus();
+});
 $('codexModel').oninput = () => { settings.codexModel = $('codexModel').value.trim(); saveSettings(); };
 $('opencodeModel').oninput = () => { settings.opencodeModel = $('opencodeModel').value.trim(); saveSettings(); };
 for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor', 'background'], ['surfaceColor', 'surface'], ['textColor', 'text']]) {
@@ -1452,6 +1730,10 @@ for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor'
 }
 $('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settings.theme] || THEME_PALETTES.midnight }; settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); renderSwatches(); syncPaletteInputs(); };
 $('recents-label').onclick = openSettings;
+$('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
+document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
+$('sidebarUpdate').onclick = () => { openSettings(); $('appUpdateBtn').click(); };
+$('modelsBrowse').onclick = openModelDownloads;
 $('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
 // model picker wiring
@@ -1477,6 +1759,13 @@ $('modelPicker').addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowUp') { e.preventDefault(); pickerCursor = (pickerCursor - 1 + rows.length) % rows.length; markCursor(); }
   else if (e.key === 'Enter') { e.preventDefault(); chooseModel(rows[pickerCursor].name); }
 });
+$('modelDownloadClose').onclick = closeModelDownloads;
+$('modelDownload').onclick = (e) => { if (e.target === $('modelDownload')) closeModelDownloads(); };
+$('modelDownloadSearch').oninput = () => { modelDownloadPage = 1; renderModelDownloads(); };
+$('modelDownloadSort').onchange = () => { modelDownloadPage = 1; renderModelDownloads(); };
+for (const filter of document.querySelectorAll('#modelDownloadFilters .download-filter')) {
+  filter.onclick = () => { document.querySelectorAll('#modelDownloadFilters .download-filter').forEach((item) => item.classList.toggle('on', item === filter)); modelDownloadPage = 1; renderModelDownloads(); };
+}
 $('cloudModelsRefresh').onclick = refreshCloudCatalogue;
 $('workspacePick').onclick = async () => {
   const picked = await window.ollama.pickFolder();
@@ -1524,7 +1813,7 @@ $('depsBtn').onclick = async () => {
 let lanClientConnected = false;
 let lanServerOn = false;
 function setModeBadge() {
-  const badge = $('modeBadge');
+  const badge = $('lanModeBadge');
   badge.className = 'mode-badge' + (lanServerOn ? ' host' : (lanClientConnected ? ' client' : ''));
   badge.textContent = lanServerOn ? 'Host' : (lanClientConnected ? 'Client' : 'Local');
 }
@@ -1554,7 +1843,9 @@ function updateLan(s) {
     const info = $('lanServerInfo'); const chk = $('lanServerChk'); const copy = $('lanCopyHost');
     if (s.server === 'listening') {
       const address = (s.ips || [])[0] ? (s.ips[0] + ':' + s.port) : '';
-      info.textContent = address ? 'Host ready — clients can pick this device below or use ' + address + '.' : 'Host ready — waiting for clients.';
+      const clients = Number(s.clients) || 0;
+      const presence = clients ? clients + ' client' + (clients === 1 ? '' : 's') + ' linked.' : 'waiting for clients.';
+      info.textContent = address ? 'Host ready — ' + presence + ' Clients can use ' + address + '.' : 'Host ready — ' + presence;
       copy.disabled = !address; copy.dataset.address = address;
     }
     else if (s.server === 'closed' || s.server === 'off') { info.textContent = ''; chk.checked = false; copy.disabled = true; copy.dataset.address = ''; }
@@ -1574,6 +1865,12 @@ function updateLan(s) {
     } else if (s.client === 'disconnected') {
       if (localConversationBackup) { conversations = localConversationBackup; localConversationBackup = null; renderRecents(); }
       info.textContent = ''; btn.textContent = 'Connect'; btn.dataset.mode = 'conn';
+    } else if (s.client === 'connecting') {
+      info.textContent = 'Connecting to Host…'; btn.textContent = 'Disconnect'; btn.dataset.mode = 'disc';
+    } else if (s.client === 'reconnecting') {
+      const seconds = Math.max(1, Math.ceil((Number(s.retryInMs) || 0) / 1000));
+      info.textContent = 'Connection lost — retrying in ' + seconds + ' second' + (seconds === 1 ? '' : 's') + '. Disconnect to stop.';
+      btn.textContent = 'Disconnect'; btn.dataset.mode = 'disc';
     }
     else if (s.client.startsWith('error')) { info.textContent = 'Connection failed: ' + s.client; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
     else { info.textContent = s.client; btn.textContent = 'Connect'; btn.dataset.mode = 'conn'; }
@@ -1614,7 +1911,7 @@ function renderLanDevices(devices) {
   }
 }
 window.ollama.on('lan-devices', renderLanDevices);
-$('lanServerChk').onchange = (e) => window.ollama.lanServer(e.target.checked);
+$('lanServerChk').onchange = (e) => { saveState('olanHostEnabled', e.target.checked); window.ollama.lanServer(e.target.checked); };
 $('lanCopyHost').onclick = async () => {
   const address = $('lanCopyHost').dataset.address;
   if (!address) return;
@@ -1707,7 +2004,7 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.ollama.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'olanHost', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;
@@ -1725,6 +2022,7 @@ function refreshGridColor() {
   loadConvs();
   activeProjectId = projects.some((p) => p.id === persisted.oactiveProject) ? persisted.oactiveProject : null;
   $('lanHost').value = persisted.olanHost || '';
+  $('lanServerChk').checked = persisted.olanHostEnabled === true;
   $('prompt').value = typeof persisted.odraft === 'string' ? persisted.odraft : '';
   autosize();
   applyAppearance();
@@ -1732,6 +2030,7 @@ function refreshGridColor() {
   updateProjectLabel();
   refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
   try { renderLanDevices(await window.ollama.lanRefresh()); } catch {}
+  if ($('lanServerChk').checked) window.ollama.lanServer(true);
   await loadModels();
   // Restore last active view
   const savedView = persisted.oactiveView || 'chat';
