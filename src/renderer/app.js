@@ -1419,7 +1419,7 @@ function syncModes() {
     btn.classList.toggle('on', on);
     btn.setAttribute('aria-checked', on ? 'true' : 'false');
   }
-  const badge = $('modeBadge');
+  const badge = $('permissionModeButton');
   if (badge) {
     badge.textContent = { approve: 'Approve', auto: 'Auto', full: 'Full' }[settings.permissionMode] || 'Auto';
     badge.className = 'composer-mode mode-' + settings.permissionMode;
@@ -1433,7 +1433,7 @@ function syncModes() {
 for (const btn of document.querySelectorAll('#modes .mode')) {
   btn.onclick = () => { settings.permissionMode = btn.dataset.mode; syncModes(); saveSettings(); };
 }
-$('modeBadge').onclick = () => {
+$('permissionModeButton').onclick = () => {
   const order = ['approve', 'auto', 'full'];
   settings.permissionMode = order[(order.indexOf(settings.permissionMode) + 1) % order.length];
   syncModes(); saveSettings();
@@ -1518,7 +1518,7 @@ $('depsBtn').onclick = async () => {
 let lanClientConnected = false;
 let lanServerOn = false;
 function setModeBadge() {
-  const badge = $('modeBadge');
+  const badge = $('lanModeBadge');
   badge.className = 'mode-badge' + (lanServerOn ? ' host' : (lanClientConnected ? ' client' : ''));
   badge.textContent = lanServerOn ? 'Host' : (lanClientConnected ? 'Client' : 'Local');
 }

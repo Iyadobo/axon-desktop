@@ -1104,7 +1104,9 @@ app.whenReady().then(async () => {
   ensureCliCommand();
   createTray();
   createWindow();
-  startLanDiscovery();
+  // Keeps visual/test launches from opening Windows' firewall prompt. Normal
+  // packaged launches retain discovery unless the flag is explicitly set.
+  if (process.env.AXON_DISABLE_LAN_DISCOVERY !== '1') startLanDiscovery();
   await ensureOllama();
 });
 app.on('before-quit', () => { isQuitting = true; if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
