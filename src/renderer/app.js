@@ -487,8 +487,29 @@ async function loadModels() {
   } catch { setStatus(false, 'offline'); }
 }
 // ---- local model downloads --------------------------------------------------
-let downloadCatalogue = [], downloadedModelNames = new Set(), downloadingModel = null;
+let downloadCatalogue = [], downloadedModelNames = new Set(), downloadingModel = null, modelHardware = null;
 const canonicalModelName = (name) => String(name || '').trim().toLowerCase().replace(/:latest$/, '');
+const gib = (bytes) => Number(bytes) > 0 ? (Number(bytes) / 1024 / 1024 / 1024).toFixed(Number(bytes) >= 10 * 1024 ** 3 ? 0 : 1) + ' GB' : 'unknown';
+function bestGpu() { return [...(modelHardware?.gpus || [])].sort((a, b) => Number(b.vramBytes) - Number(a.vramBytes))[0] || null; }
+function modelFit(model) {
+  const diskBytes = Number(model?.size) || 0;
+  const workingBytes = diskBytes * 1.2; // conservative model/runtime overhead; context length can still change the result.
+  const gpu = bestGpu(); const ramBytes = Number(modelHardware?.ramBytes) || 0;
+  if (gpu?.vramBytes >= workingBytes) return { level: 'good', label: 'GPU fit', detail: 'Estimated to fit in ' + gib(gpu.vramBytes) + ' VRAM' };
+  if (ramBytes >= workingBytes * 1.35 && gpu?.vramBytes) return { level: 'warn', label: 'Hybrid fit', detail: 'Will likely spill beyond ' + gib(gpu.vramBytes) + ' VRAM' };
+  if (ramBytes >= workingBytes * 1.35) return { level: 'warn', label: 'CPU fit', detail: 'Likely runs in system RAM; expect slower responses' };
+  return { level: 'bad', label: 'Tight fit', detail: 'May exceed available memory once context is included' };
+}
+function renderModelHardware() {
+  const box = $('modelHardware');
+  if (!modelHardware) { box.textContent = 'Hardware scan unavailable — model fit estimates are hidden.'; return; }
+  const gpu = bestGpu();
+  box.innerHTML = '';
+  const ram = document.createElement('span'); ram.innerHTML = '<strong>Memory</strong> ' + gib(modelHardware.ramBytes);
+  const graphics = document.createElement('span'); graphics.innerHTML = '<strong>GPU</strong> ' + (gpu ? gpu.name + ' · ' + gib(gpu.vramBytes) + ' VRAM' : 'not detected');
+  const note = document.createElement('span'); note.textContent = 'Fit labels reserve room for runtime overhead; they are not speed benchmarks.';
+  box.append(ram, graphics, note);
+}
 function localDownloadCandidates() {
   const query = $('modelDownloadSearch').value.trim().toLowerCase();
   return downloadCatalogue.filter((model) => {
@@ -512,8 +533,10 @@ function renderModelDownloads() {
     const name = document.createElement('span'); name.className = 'download-name'; name.textContent = model.name;
     const details = document.createElement('span'); details.className = 'download-meta';
     details.textContent = [model.details?.parameter_size, formatBytes(Number(model.size))].filter(Boolean).join(' · ');
-    meta.append(name, details);
-    const button = document.createElement('button'); button.type = 'button'; button.textContent = downloadingModel === model.name ? 'Downloading…' : 'Download';
+    const fit = modelFit(model); const fitLabel = document.createElement('span'); fitLabel.className = 'fit ' + fit.level; fitLabel.textContent = fit.label;
+    const fitDetail = document.createElement('span'); fitDetail.className = 'download-meta'; fitDetail.textContent = fit.detail;
+    meta.append(name, details, fitLabel, fitDetail);
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = downloadingModel === model.name ? 'Installing…' : 'Install';
     button.disabled = !!downloadingModel; button.onclick = () => downloadModel(model.name);
     row.append(meta, button); list.appendChild(row);
   }
@@ -521,9 +544,10 @@ function renderModelDownloads() {
 async function refreshModelDownloads() {
   $('modelDownloadProgress').textContent = 'Scanning installed models and Ollama…';
   try {
-    const [installed, catalogue] = await Promise.all([window.ollama.listModels(), window.ollama.downloadCatalogue()]);
+    const [installed, catalogue, hardware] = await Promise.all([window.ollama.listModels(), window.ollama.downloadCatalogue(), window.ollama.hardwareProfile()]);
     downloadedModelNames = new Set((installed?.models || []).map((model) => canonicalModelName(model?.name)));
     downloadCatalogue = Array.isArray(catalogue?.models) ? catalogue.models : [];
+    modelHardware = hardware || null; renderModelHardware();
     $('modelDownloadProgress').textContent = 'Local downloads only · installed models hidden';
     renderModelDownloads();
   } catch (error) {

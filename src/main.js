@@ -219,6 +219,33 @@ function pullOllamaModel(value) {
     req.write(body); req.end();
   });
 }
+async function hardwareProfile() {
+  const profile = {
+    ramBytes: os.totalmem(),
+    cpu: { name: os.cpus()?.[0]?.model || 'Unknown CPU', cores: os.cpus()?.length || 0 },
+    gpus: [],
+  };
+  if (process.platform !== 'win32') return profile;
+  try {
+    const raw = await runQuiet('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', "Get-CimInstance Win32_VideoController | Select-Object Name,AdapterRAM | ConvertTo-Json -Compress"], 8000);
+    const rows = raw ? JSON.parse(raw) : [];
+    for (const row of (Array.isArray(rows) ? rows : [rows])) {
+      const name = String(row?.Name || '').trim(); const vramBytes = Number(row?.AdapterRAM) || 0;
+      if (name && !/virtual|parsec|iddcx/i.test(name)) profile.gpus.push({ name, vramBytes });
+    }
+  } catch {}
+  try {
+    const smi = whereFirst('nvidia-smi');
+    const output = smi && await runQuiet(smi.command, [...smi.prefix, '--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], 8000);
+    for (const line of String(output || '').split(/\r?\n/)) {
+      const match = line.match(/^(.+?),\s*(\d+(?:\.\d+)?)\s*$/); if (!match) continue;
+      const name = match[1].trim(); const vramBytes = Math.round(Number(match[2]) * 1024 * 1024);
+      const index = profile.gpus.findIndex((gpu) => gpu.name.toLowerCase().includes('nvidia') || name.toLowerCase().includes(gpu.name.toLowerCase()));
+      if (index >= 0) profile.gpus[index] = { name, vramBytes }; else profile.gpus.push({ name, vramBytes });
+    }
+  } catch {}
+  return profile;
+}
 async function modelSupportsVision(model) {
   if (visionCapability.has(model)) return visionCapability.get(model);
   try {
@@ -644,6 +671,7 @@ function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
 ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await ollama('/api/tags')));
 ipcMain.handle('refresh-cloud-models', async () => fetchCloudCatalogue());
 ipcMain.handle('model-download-catalogue', async () => fetchCloudCatalogue());
+ipcMain.handle('hardware-profile', async () => hardwareProfile());
 ipcMain.handle('pull-model', async (_e, model) => {
   try { return await pullOllamaModel(model); } catch (error) { return { error: error.message }; }
 });

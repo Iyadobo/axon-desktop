@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('ollama', {
   refreshCloudModels: () => ipcRenderer.invoke('refresh-cloud-models'),
   downloadCatalogue: () => ipcRenderer.invoke('model-download-catalogue'),
   pullModel: (model) => ipcRenderer.invoke('pull-model', model),
+  hardwareProfile: () => ipcRenderer.invoke('hardware-profile'),
   listCommands: () => ipcRenderer.invoke('list-commands'),
   fetchCommands: (model) => ipcRenderer.invoke('fetch-commands', model),
   refreshCommands: (model) => ipcRenderer.invoke('refresh-commands', model),

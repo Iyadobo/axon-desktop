@@ -96,9 +96,15 @@
   .download-card { width:min(640px, calc(100vw - 32px)); }
   .download-search { width:100%; margin:12px 0 8px; }
   .download-list { display:flex; flex-direction:column; gap:5px; max-height:min(58vh,560px); overflow:auto; padding:2px 0; }
+  .download-hardware { display:flex; flex-wrap:wrap; gap:6px 12px; padding:9px 11px; border:1px solid var(--color-divider); border-radius:8px; background:var(--color-surface); color:var(--color-neutral); font-size:var(--t-xs); }
+  .download-hardware strong { color:var(--color-text); font-weight:650; }
   .download-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--color-divider); border-radius:8px; background:var(--color-surface); }
   .download-name { display:block; font-size:var(--t-sm); font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .download-meta { display:block; margin-top:3px; color:var(--color-neutral); font-size:var(--t-xs); }
+  .fit { display:inline-flex; margin-top:6px; padding:2px 5px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+  .fit.good { color:#2e9a67; background:color-mix(in srgb, #2e9a67 13%, transparent); }
+  .fit.warn { color:#b27b26; background:color-mix(in srgb, #b27b26 13%, transparent); }
+  .fit.bad { color:var(--color-bad); background:color-mix(in srgb, var(--color-bad) 12%, transparent); }
   .download-row button { min-width:88px; }
   .download-empty { padding:20px 8px; color:var(--color-neutral); font-size:var(--t-sm); text-align:center; }
 
@@ -734,7 +740,7 @@
     <div class="sidefoot">
       <span id="backend">Ollama 11434</span>
       <span style="display:flex;align-items:center;gap:6px"><span id="lanModeBadge" class="mode-badge">Local</span><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
-      <button id="sidebarUpdate" class="sidebar-update" type="button" title="Download local Ollama models" aria-label="Download local Ollama models"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 18v3h16v-3"/></svg></button>
+      <button id="sidebarUpdate" class="sidebar-update" type="button" title="Install local Ollama models" aria-label="Install local Ollama models"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 18v3h16v-3"/></svg></button>
     </div>
   </div>
 
@@ -901,7 +907,8 @@
 </div>
 <div class="modal" id="modelDownload" role="dialog" aria-modal="true" aria-labelledby="modelDownloadTitle">
   <div class="modal-card download-card">
-    <div class="modal-head"><h3 id="modelDownloadTitle">Download local models</h3><button class="x" id="modelDownloadClose" aria-label="Close">×</button></div>
+    <div class="modal-head"><h3 id="modelDownloadTitle">Install local models</h3><button class="x" id="modelDownloadClose" aria-label="Close">×</button></div>
+    <div id="modelHardware" class="download-hardware">Scanning this device…</div>
     <input id="modelDownloadSearch" class="download-search" type="search" placeholder="Search Ollama models" autocomplete="off" />
     <div id="modelDownloadList" class="download-list" aria-live="polite"></div>
     <div class="picker-foot"><span id="modelDownloadCount"></span><span id="modelDownloadProgress">Scanning Ollama…</span></div>
