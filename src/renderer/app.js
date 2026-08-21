@@ -406,17 +406,18 @@ function renderCloudCatalogueInfo() {
   const cache = cachedCloudCatalogue(); const info = $('cloudModelsInfo');
   if (!info) return;
   info.textContent = cache.models.length
-    ? `${cache.models.length} cloud models cached${cache.fetchedAt ? ' · refreshed ' + new Date(cache.fetchedAt).toLocaleString() : ''}`
-    : 'No cloud catalogue cached yet.';
+    ? `${cache.models.length} Ollama models cached${cache.fetchedAt ? ' · refreshed ' + new Date(cache.fetchedAt).toLocaleString() : ''}`
+    : 'No download list cached yet.';
 }
 async function refreshCloudCatalogue() {
   const button = $('cloudModelsRefresh'); button.disabled = true;
-  $('cloudModelsInfo').textContent = 'Refreshing official Ollama Cloud catalogue…';
+  $('cloudModelsInfo').textContent = 'Refreshing the official Ollama download list…';
   try {
     const cache = await window.ollama.refreshCloudModels();
     if (!Array.isArray(cache?.models) || !cache.models.length) throw new Error('No cloud models were returned.');
     saveState('ocloudModels', { models: cache.models, fetchedAt: cache.fetchedAt || new Date().toISOString() });
     await loadModels(); renderCloudCatalogueInfo();
+    if ($('modelDownload').classList.contains('show')) await refreshModelDownloads();
   } catch (error) {
     $('cloudModelsInfo').textContent = 'Could not refresh: ' + (error?.message || 'network error') + '. Existing cache was kept.';
   } finally { button.disabled = false; }
@@ -439,8 +440,14 @@ async function loadModels() {
     const data = await window.ollama.listModels();
     const sel = $('model'); sel.innerHTML = '';
     const localModels = data.models || [];
-    const models = mergeModels(localModels, data.remote ? [] : cachedCloudCatalogue().models);
-    if (!models.length) return setStatus(false, 'no models');
+    // Axon exposes only locally installed models as runnable choices. The
+    // download catalogue is separate and filters these names out before pull.
+    const models = localModels.map((model) => ({ ...model, source: 'local' }));
+    if (!models.length) {
+      modelCatalogue = []; syncModelButton();
+      const sidebarList = $('modelsSidebarList'); if (sidebarList) sidebarList.textContent = 'No local models installed';
+      return setStatus(false, 'no models');
+    }
     for (const m of models) {
       const o = document.createElement('option');
       o.value = m.name;
@@ -452,7 +459,7 @@ async function loadModels() {
     if (pref && models.some((m) => m.name === pref)) sel.value = pref;
     syncModelButton();
     if ($('modelPicker').classList.contains('show')) renderPicker();
-    setStatus(true, localModels.length ? (cachedCloudCatalogue().models.length ? 'ready · cloud' : 'ready') : 'cloud cache');
+    setStatus(true, localModels.length ? 'ready' : 'no models');
     // Update models sidebar quick list
     const sidebarList = $('modelsSidebarList');
     if (sidebarList) {
@@ -479,6 +486,72 @@ async function loadModels() {
     }
   } catch { setStatus(false, 'offline'); }
 }
+// ---- local model downloads --------------------------------------------------
+let downloadCatalogue = [], downloadedModelNames = new Set(), downloadingModel = null;
+const canonicalModelName = (name) => String(name || '').trim().toLowerCase().replace(/:latest$/, '');
+function localDownloadCandidates() {
+  const query = $('modelDownloadSearch').value.trim().toLowerCase();
+  return downloadCatalogue.filter((model) => {
+    const name = String(model?.name || '');
+    return name && !name.includes(':cloud') && Number(model.size) > 0
+      && !downloadedModelNames.has(canonicalModelName(name))
+      && (!query || name.toLowerCase().includes(query));
+  }).sort((a, b) => Number(a.size) - Number(b.size) || String(a.name).localeCompare(String(b.name)));
+}
+function renderModelDownloads() {
+  const list = $('modelDownloadList'); const rows = localDownloadCandidates();
+  list.innerHTML = ''; $('modelDownloadCount').textContent = rows.length + (rows.length === 1 ? ' local model available' : ' local models available');
+  if (!rows.length) {
+    const empty = document.createElement('div'); empty.className = 'download-empty';
+    empty.textContent = downloadCatalogue.length ? 'Everything in this view is already installed.' : 'No local Ollama models found.';
+    list.appendChild(empty); return;
+  }
+  for (const model of rows.slice(0, 160)) {
+    const row = document.createElement('div'); row.className = 'download-row';
+    const meta = document.createElement('div');
+    const name = document.createElement('span'); name.className = 'download-name'; name.textContent = model.name;
+    const details = document.createElement('span'); details.className = 'download-meta';
+    details.textContent = [model.details?.parameter_size, formatBytes(Number(model.size))].filter(Boolean).join(' · ');
+    meta.append(name, details);
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = downloadingModel === model.name ? 'Downloading…' : 'Download';
+    button.disabled = !!downloadingModel; button.onclick = () => downloadModel(model.name);
+    row.append(meta, button); list.appendChild(row);
+  }
+}
+async function refreshModelDownloads() {
+  $('modelDownloadProgress').textContent = 'Scanning installed models and Ollama…';
+  try {
+    const [installed, catalogue] = await Promise.all([window.ollama.listModels(), window.ollama.downloadCatalogue()]);
+    downloadedModelNames = new Set((installed?.models || []).map((model) => canonicalModelName(model?.name)));
+    downloadCatalogue = Array.isArray(catalogue?.models) ? catalogue.models : [];
+    $('modelDownloadProgress').textContent = 'Local downloads only · installed models hidden';
+    renderModelDownloads();
+  } catch (error) {
+    downloadCatalogue = []; $('modelDownloadProgress').textContent = 'Could not load the Ollama catalogue: ' + (error?.message || 'network error'); renderModelDownloads();
+  }
+}
+async function downloadModel(name) {
+  if (downloadingModel) return;
+  downloadingModel = name; $('modelDownloadProgress').textContent = 'Starting ' + name + '…'; renderModelDownloads();
+  try {
+    const result = await window.ollama.pullModel(name);
+    if (result?.error) throw new Error(result.error);
+    downloadedModelNames.add(canonicalModelName(name));
+    $('modelDownloadProgress').textContent = name + ' is ready locally.';
+    await loadModels(); renderModelDownloads();
+  } catch (error) {
+    $('modelDownloadProgress').textContent = 'Download failed: ' + (error?.message || 'Unknown error');
+  } finally { downloadingModel = null; renderModelDownloads(); }
+}
+function openModelDownloads() {
+  $('modelDownload').classList.add('show'); $('modelDownloadSearch').value = ''; $('modelDownloadSearch').focus(); refreshModelDownloads();
+}
+function closeModelDownloads() { if (!downloadingModel) $('modelDownload').classList.remove('show'); }
+window.ollama.on('model-pull-progress', (update) => {
+  if (!update || update.model !== downloadingModel) return;
+  const percent = update.total > 0 ? ' · ' + Math.min(100, Math.round(update.completed / update.total * 100)) + '%' : '';
+  $('modelDownloadProgress').textContent = String(update.status || 'Downloading…') + percent;
+});
 // ---- model picker -----------------------------------------------------------
 // The <select id="model"> stays the source of truth (slash commands, saved
 // conversations and the send path all read it); this is a richer way to set it.
@@ -1427,7 +1500,7 @@ card.addEventListener('dragleave', (e) => { if (!card.contains(e.relatedTarget))
 card.addEventListener('drop', (e) => { e.preventDefault(); card.classList.remove('dragging'); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 $('prompt').addEventListener('paste', (e) => { const files = e.clipboardData?.files; if (files?.length) { e.preventDefault(); addFiles(files); } });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { if (cmdOpen) closeCmdList(); else if ($('recentPopup')?.classList.contains('show')) closeRecentPopup(); else closeSettings(); }
+  if (e.key === 'Escape') { if (cmdOpen) closeCmdList(); else if ($('recentPopup')?.classList.contains('show')) closeRecentPopup(); else if ($('modelDownload')?.classList.contains('show')) closeModelDownloads(); else closeSettings(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); $('prompt').focus(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); }
 });
@@ -1488,7 +1561,7 @@ $('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settin
 $('recents-label').onclick = openSettings;
 $('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
 document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
-$('sidebarUpdate').onclick = () => { openSettings(); $('appUpdateBtn').click(); };
+$('sidebarUpdate').onclick = openModelDownloads;
 $('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
 // model picker wiring
@@ -1514,6 +1587,9 @@ $('modelPicker').addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowUp') { e.preventDefault(); pickerCursor = (pickerCursor - 1 + rows.length) % rows.length; markCursor(); }
   else if (e.key === 'Enter') { e.preventDefault(); chooseModel(rows[pickerCursor].name); }
 });
+$('modelDownloadClose').onclick = closeModelDownloads;
+$('modelDownload').onclick = (e) => { if (e.target === $('modelDownload')) closeModelDownloads(); };
+$('modelDownloadSearch').oninput = renderModelDownloads;
 $('cloudModelsRefresh').onclick = refreshCloudCatalogue;
 $('workspacePick').onclick = async () => {
   const picked = await window.ollama.pickFolder();

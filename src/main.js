@@ -186,6 +186,39 @@ function fetchCloudCatalogue() {
     req.setTimeout(10000, () => req.destroy(new Error('Ollama Cloud catalogue timed out.')));
   });
 }
+let activeModelPull = null;
+function pullOllamaModel(value) {
+  const model = String(value || '').trim();
+  if (!/^[a-zA-Z0-9._:/-]{1,160}$/.test(model)) return Promise.reject(new Error('Invalid Ollama model name.'));
+  if (activeModelPull) return Promise.reject(new Error(`${activeModelPull} is already downloading.`));
+  activeModelPull = model;
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error) => { if (settled) return; settled = true; activeModelPull = null; error ? reject(error) : resolve({ ok: true, model }); };
+    const body = JSON.stringify({ model, stream: true });
+    const u = new URL(OLLAMA_URL); u.pathname = '/api/pull';
+    const req = http.request(u, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } }, (res) => {
+      let buffer = '', completed = false;
+      if (res.statusCode !== 200) { let text = ''; res.on('data', (chunk) => { text += chunk; }); res.on('end', () => finish(new Error(`Ollama pull failed (${res.statusCode}): ${text.slice(0, 180)}`))); return; }
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        buffer += chunk; let newline;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
+          let update; try { update = JSON.parse(line); } catch { continue; }
+          if (update.error) return req.destroy(new Error(String(update.error)));
+          if (update.status === 'success') completed = true;
+          win?.webContents.send('model-pull-progress', { model, status: String(update.status || 'Downloading…'), completed: Number(update.completed) || 0, total: Number(update.total) || 0 });
+        }
+      });
+      res.on('end', () => completed ? finish() : finish(new Error('Ollama ended the download before it completed.')));
+      res.on('error', finish);
+    });
+    req.on('error', finish);
+    req.setTimeout(120000, () => req.destroy(new Error('Ollama stopped responding during the download.')));
+    req.write(body); req.end();
+  });
+}
 async function modelSupportsVision(model) {
   if (visionCapability.has(model)) return visionCapability.get(model);
   try {
@@ -610,6 +643,10 @@ function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
 // ---- IPC ------------------------------------------------------------------
 ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await ollama('/api/tags')));
 ipcMain.handle('refresh-cloud-models', async () => fetchCloudCatalogue());
+ipcMain.handle('model-download-catalogue', async () => fetchCloudCatalogue());
+ipcMain.handle('pull-model', async (_e, model) => {
+  try { return await pullOllamaModel(model); } catch (error) { return { error: error.message }; }
+});
 ipcMain.handle('list-commands', () => listCommands());
 function safeImages(value) {
   if (!Array.isArray(value)) return [];

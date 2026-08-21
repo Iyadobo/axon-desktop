@@ -86,12 +86,21 @@
   .sidefoot .dot.bad { background:var(--color-bad); }
   .sidebar-update { width:32px; height:32px; flex:0 0 32px; display:grid; place-items:center; padding:0;
     border:1px solid var(--color-divider); border-radius:50%; background:transparent; color:var(--color-neutral);
-    font:600 17px/1 var(--font-ui); cursor:pointer; transition:background .16s ease, color .16s ease, border-color .16s ease; }
+    cursor:pointer; transition:background .16s ease, color .16s ease, border-color .16s ease; }
+  .sidebar-update svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
   .sidebar-update:hover { background:var(--color-surface); color:var(--color-accent); border-color:var(--color-accent); }
   .sidebar-update:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
   .mode-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 7px; border:1px solid var(--color-divider); border-radius:999px; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
   .mode-badge.host { color:var(--color-accent); border-color:var(--color-accent); }
   .mode-badge.client { color:#007d5a; border-color:#007d5a; }
+  .download-card { width:min(640px, calc(100vw - 32px)); }
+  .download-search { width:100%; margin:12px 0 8px; }
+  .download-list { display:flex; flex-direction:column; gap:5px; max-height:min(58vh,560px); overflow:auto; padding:2px 0; }
+  .download-row { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--color-divider); border-radius:8px; background:var(--color-surface); }
+  .download-name { display:block; font-size:var(--t-sm); font-weight:650; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .download-meta { display:block; margin-top:3px; color:var(--color-neutral); font-size:var(--t-xs); }
+  .download-row button { min-width:88px; }
+  .download-empty { padding:20px 8px; color:var(--color-neutral); font-size:var(--t-sm); text-align:center; }
 
   /* navigation bar */
   .nav-bar { display:flex; flex-direction:column; gap:2px; padding:0 4px; margin:8px 0 4px; }
@@ -725,7 +734,7 @@
     <div class="sidefoot">
       <span id="backend">Ollama 11434</span>
       <span style="display:flex;align-items:center;gap:6px"><span id="lanModeBadge" class="mode-badge">Local</span><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
-      <button id="sidebarUpdate" class="sidebar-update" type="button" title="Check for Axon updates" aria-label="Check for Axon updates">↓</button>
+      <button id="sidebarUpdate" class="sidebar-update" type="button" title="Download local Ollama models" aria-label="Download local Ollama models"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 18v3h16v-3"/></svg></button>
     </div>
   </div>
 
@@ -829,7 +838,7 @@
         <div class="lan-info">Enforced by the harness itself, not by instructions the model could talk itself out of. In Approve mode a blocked action appears in the transcript with an Allow button.</div>
       </div>
       <div class="fld"><span>Agent harness</span><div class="row"><label class="fld"><select id="harnessSel"><option value="claude">Claude Code + local Ollama</option><option value="codex">Codex CLI</option><option value="opencode">opencode</option></select></label><label class="fld"><input id="codexModel" type="text" placeholder="Codex model (account default if blank)" /></label><label class="fld"><input id="opencodeModel" type="text" placeholder="opencode model, e.g. opencode/deepseek-v4-flash-free" /></label></div><div class="lan-info">Codex CLI and opencode each use their own signed-in account and your selected workspace; Claude Code requires its own CLI installation. Run <code>opencode models</code> to list the models available to you.</div></div>
-      <div class="fld"><span>Ollama Cloud catalogue</span><div class="proj-row"><button id="cloudModelsRefresh" type="button">Refresh &amp; cache cloud models</button><span id="cloudModelsInfo" class="lan-info"></span></div><div class="lan-info">Adds Ollama's official cloud catalogue to the model picker without downloading weights. Sign in once with <code>ollama signin</code> before running a cloud model.</div></div>
+      <div class="fld"><span>Ollama local model library</span><div class="proj-row"><button id="cloudModelsRefresh" type="button">Refresh download list</button><span id="cloudModelsInfo" class="lan-info"></span></div><div class="lan-info">Shows locally downloadable Ollama models. Models already installed on this device stay out of the list.</div></div>
       <div class="fld"><span>Appearance</span><div class="swatches" id="swatches"></div></div>
       <div class="row">
         <label class="fld"><span>Theme</span>
@@ -890,6 +899,14 @@
     </div>
   </div>
 </div>
+<div class="modal" id="modelDownload" role="dialog" aria-modal="true" aria-labelledby="modelDownloadTitle">
+  <div class="modal-card download-card">
+    <div class="modal-head"><h3 id="modelDownloadTitle">Download local models</h3><button class="x" id="modelDownloadClose" aria-label="Close">×</button></div>
+    <input id="modelDownloadSearch" class="download-search" type="search" placeholder="Search Ollama models" autocomplete="off" />
+    <div id="modelDownloadList" class="download-list" aria-live="polite"></div>
+    <div class="picker-foot"><span id="modelDownloadCount"></span><span id="modelDownloadProgress">Scanning Ollama…</span></div>
+  </div>
+</div>
 <div class="modal" id="modelPicker" role="dialog" aria-modal="true" aria-labelledby="modelPickerTitle">
   <div class="modal-card picker-card">
     <div class="modal-head">
@@ -904,7 +921,6 @@
       <div class="picker-filters" id="modelFilters" role="tablist">
         <button type="button" class="pfilter on" data-filter="all" role="tab">All</button>
         <button type="button" class="pfilter" data-filter="local" role="tab">Local</button>
-        <button type="button" class="pfilter" data-filter="cloud" role="tab">Cloud</button>
       </div>
       <label class="picker-sort"><span>Sort</span>
         <select id="modelSort">
