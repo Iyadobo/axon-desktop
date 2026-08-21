@@ -2,6 +2,9 @@ node_modules/
 .electron-data/
 dist/
 dist-*/
+# Vendored/downloaded runtimes (exo clone, llama.cpp CUDA binaries) -- large,
+# machine-specific, never meant to be committed.
+runtimes/
 *.log
 .env
 .env.*

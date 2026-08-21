@@ -12,6 +12,8 @@ const { parseOpencodeEvent, newOpencodeState } = require('./oc');
 const { maybeExpandSlash, listCommands } = require('./commands');
 const lan = require('./lan');
 const { createConfigStore } = require('./config');
+const llamacppRuntime = require('./llamacpp-runtime');
+const llamacppBridge = require('./llamacpp-bridge');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('io.axon.workspace'); } catch {}
@@ -30,9 +32,45 @@ app.on('second-instance', () => {
 
 const LOCAL_OLLAMA_URL = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
 let runtimeKind = 'ollama', exoBase = '';
+// llama.cpp only speaks OpenAI-style chat completions, not the Anthropic
+// Messages protocol Claude Code's CLI expects, so a local loopback-only bridge
+// (src/llamacpp-bridge.js) sits between them and translates. See ensureLlamaCppBridge().
+const LLAMACPP_BRIDGE_PORT = 47420;
+let llamaCppConfig = { role: 'host', modelPath: '', bindIp: '', rpcPeers: '', apiPort: 8090, rpcPort: 50052, contextSize: 0 };
+let llamaCppBridgeServer = null, llamaCppHostProc = null, llamaCppWorkerProc = null;
 const activeOllamaUrl = () => runtimeKind === 'exo' ? exoBase + '/ollama' : LOCAL_OLLAMA_URL;
-const activeClaudeBase = () => runtimeKind === 'exo' ? exoBase : LOCAL_OLLAMA_URL.replace(/\/$/, '');
+const activeClaudeBase = () => runtimeKind === 'exo' ? exoBase : runtimeKind === 'llamacpp' ? `http://127.0.0.1:${LLAMACPP_BRIDGE_PORT}` : LOCAL_OLLAMA_URL.replace(/\/$/, '');
 const runtimeEndpoint = (pathname) => new URL(String(pathname || '').replace(/^\//, ''), activeOllamaUrl().replace(/\/?$/, '/'));
+// Vendored/downloaded runtimes live at <repo>/runtimes in dev (matches the
+// existing runtimes/exo convention) and under userData once packaged, since
+// the packaged app's own directory is a read-only asar archive.
+function runtimeRoot() { return app.isPackaged ? path.join(app.getPath('userData'), 'runtimes') : path.join(__dirname, '..', 'runtimes'); }
+function normalizeLlamaCppConfig(value) {
+  const v = value || {};
+  const port = (x, d) => { const n = Number(x); return Number.isInteger(n) && n > 0 && n < 65536 ? n : d; };
+  return {
+    role: v.role === 'worker' ? 'worker' : 'host',
+    modelPath: typeof v.modelPath === 'string' ? v.modelPath : '',
+    bindIp: typeof v.bindIp === 'string' ? v.bindIp : '',
+    rpcPeers: typeof v.rpcPeers === 'string' ? v.rpcPeers : '',
+    apiPort: port(v.apiPort, 8090),
+    rpcPort: port(v.rpcPort, 50052),
+    contextSize: Number.isInteger(Number(v.contextSize)) && Number(v.contextSize) > 0 ? Number(v.contextSize) : 0,
+  };
+}
+async function ensureLlamaCppBridge() {
+  if (llamaCppBridgeServer) return;
+  llamaCppBridgeServer = await llamacppBridge.startBridge({ port: LLAMACPP_BRIDGE_PORT, upstreamBase: `http://127.0.0.1:${llamaCppConfig.apiPort}`, host: '127.0.0.1' });
+}
+function stopLlamaCppBridge() { if (llamaCppBridgeServer) { try { llamaCppBridgeServer.close(); } catch {} llamaCppBridgeServer = null; } }
+async function listActiveModels() {
+  if (runtimeKind === 'llamacpp') {
+    if (!llamaCppConfig.modelPath) return { models: [] };
+    let size = 0; try { size = fs.statSync(llamaCppConfig.modelPath).size; } catch {}
+    return { models: [{ name: path.basename(llamaCppConfig.modelPath), size, details: {} }] };
+  }
+  return await ollama('/api/tags');
+}
 // ponytail: scoped auto-approve instead of blanket --dangerously-skip-permissions; user wanted auto-run.
 const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 // The official release feed. Maintainers can point a fork at its own feed.
@@ -151,6 +189,7 @@ async function isOllamaUp() {
 }
 async function ensureOllama() {
   if (runtimeKind === 'exo') return setTray('Axon: Exo runtime selected');
+  if (runtimeKind === 'llamacpp') { try { await ensureLlamaCppBridge(); } catch {} return setTray('Axon: llama.cpp RPC runtime'); }
   if (await isOllamaUp()) return setTray('Axon: running');
   ollamaProc = spawn('ollama', ['serve'], { windowsHide: true, shell: false });
   ollamaProc.on('exit', () => { ollamaProc = null; setTray('Axon: stopped'); });
@@ -274,6 +313,7 @@ async function hardwareProfile() {
   return profile;
 }
 async function modelSupportsVision(model) {
+  if (runtimeKind === 'llamacpp') return null; // GGUF vision support isn't modeled here; the one-shot text recovery handles a rejection.
   if (visionCapability.has(model)) return visionCapability.get(model);
   try {
     const tag = (await ollama('/api/tags')).models?.find((item) => item.name === model);
@@ -695,19 +735,77 @@ function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
 }
 
 // ---- IPC ------------------------------------------------------------------
-ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await ollama('/api/tags')));
+ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await listActiveModels()));
 ipcMain.handle('check-exo', async (_e, url) => checkExo(url));
 ipcMain.handle('set-runtime', async (_e, runtime) => {
   try {
-    const next = runtime?.kind === 'exo' ? 'exo' : 'ollama';
+    const next = runtime?.kind === 'exo' ? 'exo' : runtime?.kind === 'llamacpp' ? 'llamacpp' : 'ollama';
     const nextExo = next === 'exo' ? normalizeExoUrl(runtime?.url) : '';
     if (next === 'exo') {
       const check = await checkExo(nextExo); if (!check.ok) return check;
     }
+    if (next === 'llamacpp') await ensureLlamaCppBridge(); else stopLlamaCppBridge();
     runtimeKind = next; exoBase = nextExo; config?.save({ oRuntime: runtimeKind, oExoUrl: exoBase });
-    setTray(runtimeKind === 'exo' ? 'Axon: Exo runtime' : 'Axon: local Ollama');
+    setTray(runtimeKind === 'exo' ? 'Axon: Exo runtime' : runtimeKind === 'llamacpp' ? 'Axon: llama.cpp RPC runtime' : 'Axon: local Ollama');
     return { ok: true, kind: runtimeKind, url: exoBase };
   } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('llamacpp-runtime-status', () => {
+  const status = llamacppRuntime.runtimeStatus(runtimeRoot());
+  return {
+    ...status,
+    hostRunning: !!(llamaCppHostProc && !llamaCppHostProc.killed),
+    workerRunning: !!(llamaCppWorkerProc && !llamaCppWorkerProc.killed),
+    ips: lan.lanIPs(),
+    config: llamaCppConfig,
+  };
+});
+ipcMain.handle('llamacpp-install', async () => {
+  try {
+    const status = await llamacppRuntime.installRuntime(runtimeRoot(), (progress) => win?.webContents.send('llamacpp-install-progress', progress));
+    return { ok: true, status };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('llamacpp-pick-model', async () => {
+  const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'GGUF model', extensions: ['gguf'] }] });
+  return r.canceled ? null : r.filePaths[0];
+});
+ipcMain.handle('llamacpp-check-peer', async (_e, peer) => {
+  try { const { host, port } = llamacppRuntime.validatePeer(String(peer || '').trim()); return await llamacppRuntime.checkPeerReachable(host, port); }
+  catch (error) { return { ok: false, error: error.message }; }
+});
+ipcMain.handle('llamacpp-set-config', (_e, next) => {
+  llamaCppConfig = normalizeLlamaCppConfig({ ...llamaCppConfig, ...next });
+  config?.save({ oLlamaCpp: llamaCppConfig });
+  return llamaCppConfig;
+});
+ipcMain.handle('llamacpp-start', async () => {
+  try {
+    const status = llamacppRuntime.runtimeStatus(runtimeRoot());
+    if (!status.installed) throw new Error('Install the llama.cpp CUDA runtime first.');
+    if (llamaCppConfig.role === 'worker') {
+      if (llamaCppWorkerProc && !llamaCppWorkerProc.killed) return { ok: true, already: true };
+      if (!llamaCppConfig.bindIp) throw new Error('Choose this machine\'s isolated-Ethernet IP to bind rpc-server to.');
+      llamaCppWorkerProc = llamacppRuntime.startWorker({
+        rpcServerPath: status.rpcServer, bindIp: llamaCppConfig.bindIp, port: llamaCppConfig.rpcPort,
+        onExit: (code, signal, tail) => { llamaCppWorkerProc = null; win?.webContents.send('llamacpp-status-change', { role: 'worker', running: false, code, tail }); },
+      });
+      return { ok: true };
+    }
+    if (llamaCppHostProc && !llamaCppHostProc.killed) return { ok: true, already: true };
+    await ensureLlamaCppBridge();
+    llamaCppHostProc = llamacppRuntime.startHost({
+      llamaServerPath: status.llamaServer, modelPath: llamaCppConfig.modelPath, apiPort: llamaCppConfig.apiPort,
+      rpcPeers: llamaCppConfig.rpcPeers, contextSize: llamaCppConfig.contextSize,
+      onExit: (code, signal, tail) => { llamaCppHostProc = null; win?.webContents.send('llamacpp-status-change', { role: 'host', running: false, code, tail }); },
+    });
+    return { ok: true };
+  } catch (error) { return { error: error.message }; }
+});
+ipcMain.handle('llamacpp-stop', () => {
+  if (llamaCppHostProc && !llamaCppHostProc.killed) llamaCppHostProc.kill();
+  if (llamaCppWorkerProc && !llamaCppWorkerProc.killed) llamaCppWorkerProc.kill();
+  return true;
 });
 ipcMain.handle('refresh-cloud-models', async () => fetchCloudCatalogue());
 ipcMain.handle('model-download-catalogue', async () => fetchCloudCatalogue());
@@ -1006,7 +1104,7 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
     lanServer = lan.startServer({
       onConnect: async (sock) => {
         let models = [];
-        try { models = (await ollama('/api/tags')).models || []; } catch {}
+        try { models = (await listActiveModels()).models || []; } catch {}
         lan.sendTo(sock, { type: 'workspace-init', host: os.hostname(), models, conversations: sharedSnapshot() });
       },
       onMessage: (msg, sock, st) => {
@@ -1223,7 +1321,11 @@ app.whenReady().then(async () => {
   // Preserve all known predecessors. Merge only missing keys so the canonical
   // Axon folder wins while a dev/package casing change cannot lose history.
   const state = config.load(); const parent = path.dirname(userDataPath);
-  try { if (state.oRuntime === 'exo' && state.oExoUrl) { runtimeKind = 'exo'; exoBase = normalizeExoUrl(state.oExoUrl); } } catch { runtimeKind = 'ollama'; exoBase = ''; }
+  try {
+    if (state.oRuntime === 'exo' && state.oExoUrl) { runtimeKind = 'exo'; exoBase = normalizeExoUrl(state.oExoUrl); }
+    else if (state.oRuntime === 'llamacpp') runtimeKind = 'llamacpp';
+  } catch { runtimeKind = 'ollama'; exoBase = ''; }
+  if (state.oLlamaCpp) llamaCppConfig = normalizeLlamaCppConfig(state.oLlamaCpp);
   const candidates = [
     path.join(parent, 'axon', 'settings.json'),
     path.join(parent, 'ollama-desktop-harness', 'settings.json'),
@@ -1242,5 +1344,14 @@ app.whenReady().then(async () => {
   if (process.env.AXON_DISABLE_LAN_DISCOVERY !== '1') startLanDiscovery();
   await ensureOllama();
 });
-app.on('before-quit', () => { isQuitting = true; if (ollamaProc && !ollamaProc.killed) ollamaProc.kill(); if (lanServer) lanServer.stop(); if (lanClient) { try { lanClient.end(); } catch {} } lanDiscovery?.stop(); });
+app.on('before-quit', () => {
+  isQuitting = true;
+  if (ollamaProc && !ollamaProc.killed) ollamaProc.kill();
+  if (llamaCppHostProc && !llamaCppHostProc.killed) llamaCppHostProc.kill();
+  if (llamaCppWorkerProc && !llamaCppWorkerProc.killed) llamaCppWorkerProc.kill();
+  stopLlamaCppBridge();
+  if (lanServer) lanServer.stop();
+  if (lanClient) { try { lanClient.end(); } catch {} }
+  lanDiscovery?.stop();
+});
 app.on('window-all-closed', () => app.quit());

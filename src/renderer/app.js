@@ -118,9 +118,10 @@ function openSettings() {
   $('harnessSel').value = settings.harness;
   $('codexModel').value = settings.codexModel;
   $('opencodeModel').value = settings.opencodeModel;
-  $('runtimeSel').value = persisted.oRuntime === 'exo' ? 'exo' : 'ollama';
+  $('runtimeSel').value = ['exo', 'llamacpp'].includes(persisted.oRuntime) ? persisted.oRuntime : 'ollama';
   $('exoUrl').value = persisted.oExoUrl || 'http://127.0.0.1:52415';
   syncRuntimeFields();
+  if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncHarnessFields();
   syncModes();
   syncPaletteInputs(); renderSwatches(); renderProjects(); renderCloudCatalogueInfo();
@@ -128,19 +129,22 @@ function openSettings() {
 }
 function closeSettings() { $('settings').classList.remove('show'); }
 function syncRuntimeFields() {
-  const exo = $('runtimeSel').value === 'exo';
+  const kind = $('runtimeSel').value; const exo = kind === 'exo'; const llamaCpp = kind === 'llamacpp';
   $('exoUrl').parentElement.style.display = exo ? '' : 'none'; $('exoCheck').style.display = exo ? '' : 'none';
   $('exoStatus').textContent = exo
     ? 'Exo is an optional cluster runtime. Axon connects to its coordinator API; it does not install or emulate a cluster.'
     : 'Local Ollama runs on this device.';
+  $('llamaCppFields').style.display = llamaCpp ? '' : 'none';
+  if (llamaCpp) syncLlamaCppRoleFields();
 }
 async function selectRuntime() {
   const kind = $('runtimeSel').value; const url = $('exoUrl').value.trim();
-  $('exoStatus').textContent = kind === 'exo' ? 'Connecting to Exo…' : 'Switching to local Ollama…';
+  $('exoStatus').textContent = kind === 'exo' ? 'Connecting to Exo…' : kind === 'llamacpp' ? '' : 'Switching to local Ollama…';
   const result = await window.ollama.setRuntime({ kind, url });
-  if (result?.error) { $('exoStatus').textContent = 'Exo connection failed: ' + result.error; $('runtimeSel').value = persisted.oRuntime === 'exo' ? 'exo' : 'ollama'; syncRuntimeFields(); return; }
+  if (result?.error) { $('exoStatus').textContent = 'Exo connection failed: ' + result.error; $('runtimeSel').value = ['exo', 'llamacpp'].includes(persisted.oRuntime) ? persisted.oRuntime : 'ollama'; syncRuntimeFields(); return; }
   saveState('oRuntime', result.kind); saveState('oExoUrl', result.url || '');
-  $('exoStatus').textContent = result.kind === 'exo' ? 'Exo connected — ' + (result.url || url) + '.' : 'Using local Ollama.';
+  $('exoStatus').textContent = result.kind === 'exo' ? 'Exo connected — ' + (result.url || url) + '.' : result.kind === 'llamacpp' ? '' : 'Using local Ollama.';
+  if (result.kind === 'llamacpp') await refreshLlamaCppStatus();
   await loadModels();
 }
 async function testExo() {
@@ -148,6 +152,81 @@ async function testExo() {
   const result = await window.ollama.checkExo($('exoUrl').value.trim());
   $('exoStatus').textContent = result?.ok ? `Exo ready — ${result.models} model${result.models === 1 ? '' : 's'} exposed.` : 'Exo check failed: ' + (result?.error || 'unknown error');
 }
+
+// ---- llama.cpp RPC runtime (two-PC VRAM pool) ------------------------------
+// Axon manages the local half only: install the CUDA binaries, spawn either
+// llama-server (Host, using --rpc to reach a remote GPU) or rpc-server (Worker,
+// exposing this PC's GPU). The other PC needs the same setup done there by hand
+// -- Axon cannot reach across the isolated link to configure it.
+let llamaCppInstalling = false;
+function syncLlamaCppRoleFields() {
+  const host = $('llamaCppRole').value !== 'worker';
+  $('llamaCppHostFields').style.display = host ? '' : 'none';
+  $('llamaCppHostFields2').style.display = host ? '' : 'none';
+  $('llamaCppWorkerFields').style.display = host ? 'none' : '';
+}
+async function refreshLlamaCppStatus() {
+  const status = await window.ollama.llamaCppStatus();
+  if (!status) return;
+  const cfg = status.config || {};
+  $('llamaCppRole').value = cfg.role === 'worker' ? 'worker' : 'host';
+  $('llamaCppModelPath').value = cfg.modelPath || '';
+  $('llamaCppRpcPeers').value = cfg.rpcPeers || '';
+  $('llamaCppContextSize').value = cfg.contextSize || '';
+  $('llamaCppRpcPort').value = cfg.rpcPort || 50052;
+  const bindSel = $('llamaCppBindIp'); bindSel.innerHTML = '';
+  for (const ip of status.ips || []) { const o = document.createElement('option'); o.value = ip; o.textContent = ip; bindSel.appendChild(o); }
+  if (cfg.bindIp && [...bindSel.options].some((o) => o.value === cfg.bindIp)) bindSel.value = cfg.bindIp;
+  syncLlamaCppRoleFields();
+  $('llamaCppInstallStatus').textContent = status.installed ? `llama.cpp CUDA runtime installed at ${status.dir}.` : 'llama.cpp CUDA runtime is not installed yet (download is ~640 MB from the official GitHub release).';
+  $('llamaCppInstallBtn').disabled = llamaCppInstalling;
+  const running = status.hostRunning || status.workerRunning;
+  $('llamaCppStartBtn').disabled = running || !status.installed;
+  $('llamaCppStopBtn').disabled = !running;
+  $('llamaCppStatus').textContent = status.hostRunning ? 'Host running — llama-server is loading/serving the model.' : status.workerRunning ? 'Worker running — this GPU is exposed to the isolated link.' : 'Stopped.';
+}
+async function saveLlamaCppConfigFromFields() {
+  await window.ollama.llamaCppSetConfig({
+    role: $('llamaCppRole').value,
+    modelPath: $('llamaCppModelPath').value.trim(),
+    rpcPeers: $('llamaCppRpcPeers').value.trim(),
+    contextSize: Number($('llamaCppContextSize').value) || 0,
+    bindIp: $('llamaCppBindIp').value,
+    rpcPort: Number($('llamaCppRpcPort').value) || 50052,
+  });
+}
+async function installLlamaCppRuntime() {
+  if (llamaCppInstalling) return;
+  llamaCppInstalling = true; $('llamaCppInstallBtn').disabled = true;
+  $('llamaCppInstallStatus').textContent = 'Downloading llama.cpp CUDA runtime (~640 MB)…';
+  try {
+    const result = await window.ollama.llamaCppInstall();
+    $('llamaCppInstallStatus').textContent = result?.error ? 'Install failed: ' + result.error : 'llama.cpp CUDA runtime installed at ' + result.status.dir + '.';
+  } finally { llamaCppInstalling = false; await refreshLlamaCppStatus(); }
+}
+async function pickLlamaCppModel() {
+  const picked = await window.ollama.llamaCppPickModel();
+  if (!picked) return;
+  $('llamaCppModelPath').value = picked;
+  await saveLlamaCppConfigFromFields();
+}
+async function testLlamaCppPeer() {
+  await saveLlamaCppConfigFromFields();
+  const peer = $('llamaCppRpcPeers').value.trim().split(',')[0]?.trim();
+  if (!peer) { $('llamaCppStatus').textContent = 'Enter the remote PC\'s rpc-server address first, e.g. 192.168.50.2:50052.'; return; }
+  $('llamaCppStatus').textContent = 'Testing ' + peer + '…';
+  const result = await window.ollama.llamaCppCheckPeer(peer);
+  $('llamaCppStatus').textContent = result?.ok ? peer + ' is reachable.' : peer + ' is not reachable: ' + (result?.error || 'unknown error') + '. Confirm the other PC is running Axon as a Worker on its isolated-Ethernet IP.';
+}
+async function startLlamaCppRuntime() {
+  await saveLlamaCppConfigFromFields();
+  $('llamaCppStatus').textContent = 'Starting…';
+  const result = await window.ollama.llamaCppStart();
+  $('llamaCppStatus').textContent = result?.error ? 'Could not start: ' + result.error : 'Starting…';
+  await refreshLlamaCppStatus();
+  if (!result?.error) await loadModels();
+}
+async function stopLlamaCppRuntime() { await window.ollama.llamaCppStop(); await refreshLlamaCppStatus(); }
 
 // ---- projects (folder workspaces) -----------------------------------------
 let projects = [];        // [{id, name, path, instructions}]
@@ -1622,6 +1701,28 @@ $('permissionModeButton').onclick = () => {
 $('harnessSel').onchange = () => { settings.harness = $('harnessSel').value; syncHarnessFields(); saveSettings(); };
 $('runtimeSel').onchange = () => { syncRuntimeFields(); selectRuntime(); };
 $('exoCheck').onclick = testExo;
+$('llamaCppRole').onchange = () => { syncLlamaCppRoleFields(); saveLlamaCppConfigFromFields(); };
+$('llamaCppInstallBtn').onclick = installLlamaCppRuntime;
+$('llamaCppBrowseBtn').onclick = pickLlamaCppModel;
+$('llamaCppRpcPeers').onchange = saveLlamaCppConfigFromFields;
+$('llamaCppContextSize').onchange = saveLlamaCppConfigFromFields;
+$('llamaCppBindIp').onchange = saveLlamaCppConfigFromFields;
+$('llamaCppRpcPort').onchange = saveLlamaCppConfigFromFields;
+$('llamaCppTestPeerBtn').onclick = testLlamaCppPeer;
+$('llamaCppStartBtn').onclick = startLlamaCppRuntime;
+$('llamaCppStopBtn').onclick = stopLlamaCppRuntime;
+window.ollama.on('llamacpp-install-progress', (p) => {
+  if (!p) return;
+  if (p.phase === 'download') {
+    const pct = p.total ? Math.round((p.received / p.total) * 100) + '%' : formatBytes(p.received);
+    $('llamaCppInstallStatus').textContent = `Downloading ${p.label}… ${pct}`;
+  } else if (p.phase === 'extract') $('llamaCppInstallStatus').textContent = 'Extracting…';
+});
+window.ollama.on('llamacpp-status-change', (update) => {
+  if (!update) return;
+  $('llamaCppStatus').textContent = `${update.role === 'worker' ? 'Worker' : 'Host'} stopped${update.code ? ' (exit ' + update.code + ')' : ''}.${update.tail ? ' ' + update.tail.trim().slice(-300) : ''}`;
+  if ($('settings').classList.contains('show')) refreshLlamaCppStatus();
+});
 $('codexModel').oninput = () => { settings.codexModel = $('codexModel').value.trim(); saveSettings(); };
 $('opencodeModel').oninput = () => { settings.opencodeModel = $('opencodeModel').value.trim(); saveSettings(); };
 for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor', 'background'], ['surfaceColor', 'surface'], ['textColor', 'text']]) {
