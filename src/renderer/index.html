@@ -384,12 +384,18 @@
   .turn.ai:hover .copymsg { opacity:.85; }
   .copymsg:hover { color:var(--color-accent); border-color:var(--color-accent); opacity:1; }
 
-  /* delete-on-hover for recents */
-  .recent { position:relative; padding-right:24px; }
-  .rdel { position:absolute; right:6px; top:50%; transform:translateY(-50%); opacity:0;
-    font-size:11px; color:var(--color-bad); cursor:pointer; }
-  .recent:hover .rdel { opacity:.6; }
-  .rdel:hover { opacity:1; }
+  /* Chat actions have a reserved gutter, so hover never shifts a title. */
+  .recent { position:relative; padding-right:52px; }
+  .rpin, .rdel { position:absolute; top:50%; transform:translateY(-50%); width:22px; height:22px; border:0;
+    border-radius:5px; background:transparent; font:inherit; font-size:12px; cursor:pointer; opacity:0; }
+  .rpin { right:27px; color:var(--color-neutral); }.rdel { right:4px; color:var(--color-bad); }
+  .recent:hover .rpin, .recent:hover .rdel, .recent.pinned .rpin { opacity:.72; }
+  .rpin:hover, .rdel:hover { background:var(--elev-1); opacity:1 !important; }
+  .recent.pinned .rpin { color:var(--color-accent); }
+  .sidebar-project { position:relative; padding-right:34px; }
+  .project-manage { position:absolute; right:4px; top:50%; transform:translateY(-50%); width:24px; height:24px;
+    border:0; border-radius:5px; background:transparent; color:var(--color-neutral); cursor:pointer; opacity:0; }
+  .sidebar-project:hover .project-manage { opacity:.8; }.project-manage:hover { background:var(--elev-1); color:var(--color-text); }
 
   /* Axon refined-calm pass: hierarchy from a real type scale, layered surfaces
      and a 4px spacing rhythm. Accent is punctuation, never decoration. */
@@ -429,6 +435,24 @@
   .sidefoot { padding:12px 8px 4px; border-top:1px solid var(--elev-line); font-size:var(--t-xs); opacity:.6; }
   /* last two strays off the scale: the titlebar wordmark and the LOCAL badge */
   .window-brand { font-size:var(--t-sm); }
+  .title-recent { -webkit-app-region:no-drag; border:1px solid transparent; background:transparent; color:var(--color-neutral);
+    border-radius:6px; padding:5px 8px; font:inherit; font-size:var(--t-xs); cursor:pointer; }
+  .title-recent:hover, .title-recent[aria-expanded="true"] { background:var(--elev-2); color:var(--color-text); border-color:var(--elev-line); }
+  .recent-popover { position:fixed; top:35px; right:74px; z-index:70; width:min(420px,calc(100vw - 32px));
+    max-height:min(520px,calc(100vh - 56px)); display:none; overflow:auto; background:var(--elev-2);
+    border:1px solid var(--elev-line); border-radius:10px; box-shadow:0 18px 54px rgba(0,0,0,.34); padding:8px; }
+  .recent-popover.show { display:block; }
+  .recent-popover-head { display:flex; align-items:center; justify-content:space-between; padding:7px 8px 9px;
+    border-bottom:1px solid var(--elev-line); font-size:var(--t-xs); color:var(--color-neutral); letter-spacing:.06em; text-transform:uppercase; }
+  .recent-popover-item { position:relative; display:block; width:100%; min-height:54px; padding:8px 66px 8px 9px;
+    border:0; border-radius:6px; background:transparent; color:var(--color-text); font:inherit; text-align:left; cursor:pointer; }
+  .recent-popover-item:hover, .recent-popover-item.active { background:var(--elev-1); }
+  .recent-popover-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--t-sm); font-weight:630; }
+  .recent-popover-meta { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; color:var(--color-neutral); font-size:var(--t-xs); }
+  .recent-popover-pin, .recent-popover-delete { position:absolute; top:50%; width:26px; height:26px; transform:translateY(-50%);
+    border:0; border-radius:5px; background:transparent; color:var(--color-neutral); cursor:pointer; opacity:.72; }
+  .recent-popover-pin { right:34px; }.recent-popover-delete { right:5px; color:var(--color-bad); }
+  .recent-popover-pin:hover, .recent-popover-delete:hover { background:var(--color-bg); opacity:1; }
   .mode-badge { font-size:var(--t-xs); letter-spacing:.05em; }
   .project-count { font-size:var(--t-xs); }
   #browserToggle { -webkit-app-region:no-drag; border-radius:999px; padding:4px 10px; font-size:var(--t-xs);
@@ -596,7 +620,9 @@
   .nav-item.active { background:var(--elev-2); box-shadow:inset 2px 0 0 var(--color-accent); color:var(--color-text); }
   .nav-item:hover { background:color-mix(in srgb, var(--elev-2) 88%, var(--color-accent)); }
   .side-section-head, .recents-label { letter-spacing:.1em; font-size:10px; opacity:.58; }
-  .sidebar-project, .recent { border-radius:6px; }
+ .sidebar-project, .recent { border-radius:6px; }
+ .sidebar-project { padding-right:34px; }
+ .recent { padding-right:52px; }
   .sidebar-project.active, .recent.active { box-shadow:inset 2px 0 0 var(--color-accent); background:var(--elev-2); }
   .sidefoot { background:color-mix(in srgb, var(--elev-1) 88%, transparent); }
 
@@ -652,6 +678,7 @@
 <header class="titlebar" aria-label="Axon window controls">
   <div class="window-brand"><svg class="window-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="currentColor"/><circle cx="9" cy="12" r="2.3" fill="var(--color-bg)"/><path d="M10.8 10.8 16.5 5.5M11.2 12h7M10.8 13.2l5.7 5.3" stroke="var(--color-bg)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="window-title">Axon</span></div>
   <div class="window-spacer"></div>
+  <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
   <div class="title-actions"><button id="browserToggle" title="Toggle agent browser">Browser</button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
 </header>
 <div id="app">
@@ -766,6 +793,8 @@
     </div>
   </div>
 </div>
+
+<div id="recentPopup" class="recent-popover" role="dialog" aria-label="Recent chats"></div>
 
 <!-- settings modal -->
 <div class="modal" id="settings">

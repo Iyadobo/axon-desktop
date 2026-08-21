@@ -189,7 +189,10 @@ function renderSidebarProjects() {
     const name = document.createElement('span'); name.textContent = project.name;
     const count = document.createElement('span'); count.className = 'project-count';
     count.textContent = String(conversations.filter((chat) => chat.projectId === project.id).length);
-    item.append(name, count); item.onclick = () => selectProject(project.id); box.appendChild(item);
+    const manage = document.createElement('button'); manage.type = 'button'; manage.className = 'project-manage';
+    manage.textContent = '•••'; manage.title = 'Manage project'; manage.setAttribute('aria-label', 'Manage ' + project.name);
+    manage.onclick = (event) => { event.stopPropagation(); selectProject(project.id); openSettings(); setTimeout(() => $('projInstr').focus(), 0); };
+    item.append(name, count, manage); item.onclick = () => selectProject(project.id); box.appendChild(item);
   }
 }
 // ---- projects page ---------------------------------------------------------
@@ -711,6 +714,39 @@ function applySharedConversations(items) {
   renderRecents();
   if (activeId) openConv(activeId);
 }
+function conversationOrder(list) {
+  return [...list].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned)
+    || Number(b.updatedAt || b.ts || 0) - Number(a.updatedAt || a.ts || 0));
+}
+function deleteConversation(id) {
+  conversations = conversations.filter((chat) => chat.id !== id); saveConvs();
+  if (activeId === id) newChat(); else renderRecents();
+}
+function toggleConversationPin(id) {
+  const chat = conversations.find((item) => item.id === id); if (!chat) return;
+  chat.pinned = !chat.pinned; saveConvs(); renderRecents();
+}
+function renderRecentPopup() {
+  const box = $('recentPopup'); if (!box) return;
+  box.innerHTML = '<div class="recent-popover-head"><span>Recent chats</span><span>' + conversations.length + '</span></div>';
+  const recent = conversationOrder(conversations).slice(0, 18);
+  if (!recent.length) { box.innerHTML += '<div class="sidebar-empty">No chats yet.</div>'; return; }
+  for (const chat of recent) {
+    const row = document.createElement('div'); row.className = 'recent-popover-item' + (chat.id === activeId ? ' active' : '');
+    row.tabIndex = 0; row.setAttribute('role', 'button');
+    row.innerHTML = '<span class="recent-popover-title">' + esc(chat.title || '(empty)') + '</span><span class="recent-popover-meta">'
+      + esc(chat.projectId ? (projects.find((p) => p.id === chat.projectId)?.name || 'Project') : 'All chats') + ' · ' + esc(chat.model || chat.harness || 'Axon') + '</span>';
+    row.onclick = () => { openConv(chat.id); closeRecentPopup(); };
+    row.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openConv(chat.id); closeRecentPopup(); } };
+    const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'recent-popover-pin'; pin.textContent = chat.pinned ? '★' : '☆'; pin.title = chat.pinned ? 'Unpin chat' : 'Pin chat';
+    pin.onclick = (event) => { event.stopPropagation(); toggleConversationPin(chat.id); };
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'recent-popover-delete'; del.textContent = '×'; del.title = 'Delete chat';
+    del.onclick = (event) => { event.stopPropagation(); deleteConversation(chat.id); };
+    row.append(pin, del); box.appendChild(row);
+  }
+}
+function closeRecentPopup() { $('recentPopup')?.classList.remove('show'); $('recentPopupToggle')?.setAttribute('aria-expanded', 'false'); }
+function toggleRecentPopup() { const box = $('recentPopup'); const open = box.classList.toggle('show'); $('recentPopupToggle').setAttribute('aria-expanded', String(open)); if (open) renderRecentPopup(); }
 function renderRecents() {
   renderSidebarProjects();
   const box = $('recents'); box.innerHTML = '';
@@ -719,16 +755,19 @@ function renderRecents() {
     const e = document.createElement('div'); e.style.cssText = 'font-size:12px;opacity:.4;padding:7px 8px';
     e.textContent = activeProjectId ? 'No chats in this project yet.' : 'No chats yet.'; box.appendChild(e);
   }
-  for (const c of visible) {
+  for (const c of conversationOrder(visible)) {
     const d = document.createElement('div');
-    d.className = 'recent' + (c.id === activeId ? ' active' : '');
+    d.className = 'recent' + (c.id === activeId ? ' active' : '') + (c.pinned ? ' pinned' : '');
     d.textContent = (c.title || '(empty)') + ([...activeTurns.values()].some((turn) => turn.conversationId === c.id) ? ' · running' : '');
     d.title = c.title || '';
     d.onclick = () => openConv(c.id);
-    const del = document.createElement('span'); del.className = 'rdel'; del.textContent = '✕'; del.title = 'Delete chat';
-    del.onclick = (e) => { e.stopPropagation(); conversations = conversations.filter((x) => x.id !== c.id); saveConvs(); if (activeId === c.id) newChat(); else renderRecents(); };
-    d.appendChild(del); box.appendChild(d);
+    const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'rpin'; pin.textContent = c.pinned ? '★' : '☆'; pin.title = c.pinned ? 'Unpin chat' : 'Pin chat';
+    pin.onclick = (e) => { e.stopPropagation(); toggleConversationPin(c.id); };
+    const del = document.createElement('button'); del.type = 'button'; del.className = 'rdel'; del.textContent = '×'; del.title = 'Delete chat';
+    del.onclick = (e) => { e.stopPropagation(); deleteConversation(c.id); };
+    d.append(pin, del); box.appendChild(d);
   }
+  renderRecentPopup();
 }
 function openConv(id) {
   const conv = conversations.find((c) => c.id === id);
@@ -1124,7 +1163,7 @@ window.ollama.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   } else if (turn.started && !turn.turnEl.classList.contains('error')) { addCopyBtn(turn.turnEl, text); }
   if (turn.started && text) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
-    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: text, steps: turn.record || [] }); saveConvs(); publishConversation(conv); }
+    if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: text, steps: turn.record || [] }); conv.updatedAt = Date.now(); saveConvs(); publishConversation(conv); }
   }
   if (sessionId) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
@@ -1219,9 +1258,10 @@ async function startMessage(entry) {
   // create / reuse conversation
   let conv = activeId ? conversations.find((c) => c.id === activeId) : null;
   if (!conv) {
-    conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, harness: entry.harness, ts: Date.now(), projectId: activeProjectId, turns: [] };
+    conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, harness: entry.harness, ts: Date.now(), updatedAt: Date.now(), projectId: activeProjectId, turns: [] };
     conversations.unshift(conv); activeId = conv.id; renderRecents();
   }
+  conv.updatedAt = Date.now(); saveConvs();
   const systemPrompt = projectSystemPrompt();
   const fingerprint = instructionFingerprint(conv.harness || entry.harness, systemPrompt);
   // Claude Code preserves a session's initial system context on --resume. A
@@ -1387,7 +1427,7 @@ card.addEventListener('dragleave', (e) => { if (!card.contains(e.relatedTarget))
 card.addEventListener('drop', (e) => { e.preventDefault(); card.classList.remove('dragging'); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
 $('prompt').addEventListener('paste', (e) => { const files = e.clipboardData?.files; if (files?.length) { e.preventDefault(); addFiles(files); } });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { if (cmdOpen) closeCmdList(); else closeSettings(); }
+  if (e.key === 'Escape') { if (cmdOpen) closeCmdList(); else if ($('recentPopup')?.classList.contains('show')) closeRecentPopup(); else closeSettings(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') { e.preventDefault(); $('prompt').focus(); }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') { e.preventDefault(); newChat(); }
 });
@@ -1446,6 +1486,8 @@ for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor'
 }
 $('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settings.theme] || THEME_PALETTES.midnight }; settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); renderSwatches(); syncPaletteInputs(); };
 $('recents-label').onclick = openSettings;
+$('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
+document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
 $('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
 // model picker wiring
