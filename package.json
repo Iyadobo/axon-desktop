@@ -17,6 +17,8 @@
     "asar": true,
     "files": [
       "src/**",
+      "!src/assets/axon-nervous-system-source.png",
+      "!src/assets/icon-preview-64.png",
       "package.json"
     ],
     "afterPack": "scripts/after-pack.js",
