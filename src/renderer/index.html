@@ -709,9 +709,11 @@
      four theme tokens as chat, so no settings text can become an orphaned
      low-contrast colour when a custom palette is active. */
   .workspace-switch { display:grid; grid-template-columns:repeat(3,1fr); gap:3px; margin:0 4px; padding:3px; background:var(--color-bg); border:1px solid var(--elev-line); border-radius:8px; }
-  .workspace-tab { min-height:32px; border:0; border-radius:5px; background:transparent; color:var(--color-neutral); font:700 12px/1 var(--font-body); letter-spacing:.015em; cursor:pointer; transition:background .16s ease,color .16s ease,box-shadow .16s ease; }
+  .workspace-tab { min-height:32px; display:inline-flex; align-items:center; justify-content:center; gap:5px; border:0; border-radius:5px; background:transparent; color:var(--color-neutral); font:700 12px/1 var(--font-body); letter-spacing:.015em; cursor:pointer; transition:background .16s ease,color .16s ease,box-shadow .16s ease; }
+  .workspace-tab .workspace-mark { width:21px; height:17px; flex:none; object-fit:contain; opacity:.7; transition:opacity .16s ease, transform .16s ease; }
   .workspace-tab:hover { color:var(--color-text); background:var(--elev-1); }
   .workspace-tab.active { color:var(--color-text); background:var(--elev-2); box-shadow:inset 0 -2px 0 var(--color-accent); }
+  .workspace-tab:hover .workspace-mark, .workspace-tab.active .workspace-mark { opacity:1; transform:translateY(-.5px); }
   .workspace-tab:focus-visible, .hex-field:focus-within, .appearance-advanced summary:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
   .workspace-note { min-height:24px; padding:7px 10px 2px; color:var(--color-neutral); font-size:11px; font-weight:600; letter-spacing:.01em; }
   #side.workspace-work .workspace-note { color:var(--color-accent); }
@@ -778,6 +780,7 @@
   .brand .logo { width:26px; height:31px; filter:none; }
   .workspace-switch { margin:0 0 12px; padding:0; gap:0; border:0; border-radius:0; background:transparent; border-bottom:1px solid var(--axon-rule); }
   .workspace-tab { min-height:42px; border-radius:0; color:var(--axon-muted); font-size:14px; font-weight:700; }
+  .workspace-tab .workspace-mark { width:22px; height:18px; }
   .workspace-tab:hover { background:var(--axon-soft); color:var(--color-text); }
   .workspace-tab.active { position:relative; background:transparent; color:var(--color-text); box-shadow:inset 0 -2px 0 var(--color-accent); }
   .workspace-tab.active::after { content:''; position:absolute; top:10px; left:13px; width:4px; height:4px; border-radius:50%; background:var(--color-accent); }
@@ -880,9 +883,18 @@
   <div id="side">
     <div class="brand"><img class="logo" src="../assets/icon.png" alt="Axon" /><span style="flex:1">Axon</span></div>
     <div class="workspace-switch" role="tablist" aria-label="Axon workspace">
-      <button id="chatWorkspace" class="workspace-tab active" type="button" role="tab" aria-selected="true">Chat</button>
-      <button id="codeWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">Code</button>
-      <button id="workWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">Work</button>
+      <button id="chatWorkspace" class="workspace-tab active" type="button" role="tab" aria-selected="true">
+        <img class="workspace-mark" src="../assets/axon-workspace-dendrite.png" alt="" />
+        <span>Chat</span>
+      </button>
+      <button id="codeWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">
+        <img class="workspace-mark" src="../assets/axon-workspace-terminal.png" alt="" />
+        <span>Code</span>
+      </button>
+      <button id="workWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">
+        <img class="workspace-mark" src="../assets/axon-workspace-myelin.png" alt="" />
+        <span>Work</span>
+      </button>
     </div>
     <div class="workspace-note" id="workspaceNote">Direct conversation · no tools</div>
     <div class="newchat" id="newchat"><span style="opacity:.6">+</span><span id="newChatLabel">New chat</span></div>
