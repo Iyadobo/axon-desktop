@@ -56,11 +56,10 @@ function syncWorkspaceShell() {
   $('recents-label').textContent = workspace === 'work' ? 'Recent work' : workspace === 'code' ? 'Recent code' : 'Recent chats';
   $('main')?.setAttribute('data-workspace', workspace);
   const copy = workspace === 'work'
-    ? { context: 'Work session', greet: 'What should Axon take on?', sub: 'Describe the outcome. Axon can plan, browse, and carry the task through.' }
+    ? { greet: 'What should Axon take on?', sub: 'Describe the outcome. Axon can plan, browse, and carry the task through.' }
     : workspace === 'code'
-      ? { context: 'Code session', greet: 'What are we building?', sub: 'Work directly in a repository with Axon Terminal at your side.' }
-      : { context: 'Chat session', greet: 'Good afternoon.', sub: 'What are we working on?' };
-  if ($('homeContext')) $('homeContext').textContent = copy.context;
+      ? { greet: 'What are we building?', sub: 'Work directly in a repository with Axon Terminal at your side.' }
+      : { greet: 'Good afternoon.', sub: 'What are we working on?' };
   if ($('greet')) $('greet').textContent = copy.greet;
   document.querySelector('#home .sub')?.replaceChildren(copy.sub);
   const hint = document.querySelector('.home-hint');

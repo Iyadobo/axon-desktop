@@ -27,7 +27,11 @@
     --color-accent:#f45f96;
     --color-accent-600:color-mix(in srgb, var(--color-accent) 86%, #000);
     --color-accent-700:color-mix(in srgb, var(--color-accent) 70%, #000);
-    --color-neutral:#8a8f98; --color-bg:#ffffff; --color-bad:#d03a3a;
+    /* Matches the midnight palette in app.js's DEFAULT_SETTINGS — this is what
+       paints before JS runs applyAppearance(). It used to default to a white
+       background under near-white text: invisible UI for one frame (or forever,
+       if applyAppearance never ran). */
+    --color-neutral:#8a8f98; --color-bg:#0c0d0f; --color-bad:#ff6b6b;
     --color-on-accent:#fff; --color-success:#2e9a67; --color-warning:#b27b26; --color-info:#4ea1ff;
     --color-overlay:color-mix(in srgb, #000 32%, transparent); --color-shadow:color-mix(in srgb, #000 22%, transparent);
     --color-scrollbar:color-mix(in srgb, var(--color-text) 20%, transparent); --color-scrollbar-hover:color-mix(in srgb, var(--color-text) 34%, transparent);
@@ -138,7 +142,6 @@
   .window-brand { height:100%; width:252px; padding:0 17px; display:flex; gap:9px; align-items:center; border-right:1px solid color-mix(in srgb, var(--color-divider) 65%, transparent); font-size:13px; font-weight:720; letter-spacing:.01em; }
   .window-mark { width:20px; height:28px; object-fit:contain; flex:none; }
   .window-brand { padding-left:17px; }
-  .window-brand .window-mark, .brand .logo { display:none; }
   .window-title { opacity:.9; }
   .window-spacer { flex:1; min-width:28px; }
   .title-actions { height:100%; display:flex; align-items:center; -webkit-app-region:no-drag; }
@@ -278,7 +281,8 @@
   .hint { max-width:760px; margin:6px auto 0; font-size:11px; opacity:.4; text-align:center; }
 
   /* polish: thin scrollbars, transitions, focus rings */
-  #scroller, #recents, #cmdlist { scrollbar-width: thin; scrollbar-color: var(--color-scrollbar) transparent; }
+  #scroller, #recents, #cmdlist, .view-scroll, .modal-body, .picker-list, .download-list, #subagentsList, .device-list, #home {
+    scrollbar-width: thin; scrollbar-color: var(--color-scrollbar) transparent; }
   ::-webkit-scrollbar { width:10px; height:10px; }
   ::-webkit-scrollbar-thumb { background:var(--color-scrollbar); border-radius:6px; border:3px solid transparent; background-clip:content-box; }
   ::-webkit-scrollbar-thumb:hover { background:var(--color-scrollbar-hover); background-clip:content-box; }
@@ -802,8 +806,6 @@
   .hero-emblem { width:33px; height:39px; margin:0 0 18px; }
   #greet { max-width:720px; margin:0; font-size:clamp(30px, 3vw, 45px); letter-spacing:-.048em; line-height:1.08; text-wrap:balance; }
   #home .sub { margin:11px 0 28px; color:var(--axon-muted); font-size:16px; }
-  .home-context { display:flex; align-items:center; gap:8px; margin:0 0 15px; color:var(--color-accent); font-size:11px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
-  .home-context::before { content:''; width:7px; height:7px; border:1px solid currentColor; border-radius:50%; }
   #composerCard { max-width:none; border:1px solid var(--axon-rule); border-radius:9px; background:var(--axon-soft); box-shadow:none; }
   #composerCard:focus-within { border-color:color-mix(in srgb, var(--color-accent) 62%, var(--axon-rule)); box-shadow:0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent); }
   #prompt { min-height:70px; padding:19px 20px 12px; font-size:15px; }
@@ -817,7 +819,6 @@
   .home-hint { max-width:720px; margin:20px 0 0; color:var(--axon-muted); font-size:12px; line-height:1.7; }
   #main[data-workspace="work"] #home .wrap { max-width:1080px; }
   #main[data-workspace="work"] #greet { font-size:clamp(32px, 3.2vw, 48px); }
-  #main[data-workspace="work"] .home-context { margin-top:8px; }
   #main[data-workspace="work"] #composerCard { border-left:2px solid var(--color-accent); }
 
   #log { max-width:900px; padding:52px 52px 40px; }
@@ -930,7 +931,6 @@
     <!-- home (empty) -->
     <div id="home">
       <div class="wrap">
-        <div class="home-context" id="homeContext">Chat session</div>
         <div class="hero-emblem"><img src="../assets/axon-nervous-system.png" alt="Axon nervous-system mark" /></div>
         <h1 id="greet">Good afternoon.</h1>
         <p class="sub">What are we working on?</p>
