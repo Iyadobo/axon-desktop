@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "0.7.20",
+  "version": "0.7.21",
   "description": "Axon is a local-first Chat, Code, and Agent workspace powered by Ollama and Axon Terminal",
   "main": "src/main.js",
   "scripts": {
