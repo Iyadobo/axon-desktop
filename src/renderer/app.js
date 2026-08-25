@@ -54,6 +54,26 @@ function syncWorkspaceShell() {
   $('newChatLabel').textContent = workspace === 'work' ? 'New task' : workspace === 'code' ? 'New code session' : 'New chat';
   $('workspaceProjectsLabel').textContent = workspace === 'work' ? 'Workspaces' : 'Projects';
   $('recents-label').textContent = workspace === 'work' ? 'Recent work' : workspace === 'code' ? 'Recent code' : 'Recent chats';
+  $('main')?.setAttribute('data-workspace', workspace);
+  const copy = workspace === 'work'
+    ? { context: 'Work session', greet: 'What should Axon take on?', sub: 'Describe the outcome. Axon can plan, browse, and carry the task through.' }
+    : workspace === 'code'
+      ? { context: 'Code session', greet: 'What are we building?', sub: 'Work directly in a repository with Axon Terminal at your side.' }
+      : { context: 'Chat session', greet: 'Good afternoon.', sub: 'What are we working on?' };
+  if ($('homeContext')) $('homeContext').textContent = copy.context;
+  if ($('greet')) $('greet').textContent = copy.greet;
+  document.querySelector('#home .sub')?.replaceChildren(copy.sub);
+  const hint = document.querySelector('.home-hint');
+  if (hint) hint.textContent = workspace === 'work'
+    ? 'Work plans multi-step tasks, opens the browser when it is useful, and can delegate focused sub-tasks.'
+    : workspace === 'code'
+      ? 'Code works in the selected repository through Axon Terminal. Browser research stays focused on the task.'
+      : 'Chat is a direct conversation. It does not reach into a workspace, browser, or automated task.';
+  const chips = [...document.querySelectorAll('#chips .chip')];
+  const labels = workspace === 'work' ? ['Research a topic', 'Plan a task', 'Compare options', 'Run a workflow']
+    : workspace === 'code' ? ['Explain code', 'Debug an error', 'Review changes', 'Write tests']
+      : ['Ask anything', 'Brainstorm', 'Write something', 'Learn a topic'];
+  chips.forEach((chip, index) => { chip.textContent = labels[index] || chip.textContent; });
 }
 function setWorkspace(group) {
   settings.productMode = group === 'work' ? 'agent' : group === 'code' ? 'code' : 'chat';
@@ -315,26 +335,22 @@ function renderProjectsPage() {
   const box = $('projectsPageContent'); if (!box) return;
   box.innerHTML = '';
   if (!projects.length) {
-    box.innerHTML = '<div style="opacity:.5;font-size:var(--t-sm)">No projects yet. Create one to organize chats by folder.</div>';
+    box.innerHTML = '<div class="empty-state">No projects yet. Create one to organize chats by folder and keep its instructions close.</div>';
     return;
   }
   const grid = document.createElement('div');
-  grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px';
+  grid.className = 'ops-grid project-grid';
   for (const p of projects) {
     const card = document.createElement('div');
-    card.style.cssText = 'padding:16px;border:1px solid var(--elev-line);border-radius:12px;background:var(--elev-1);cursor:pointer;transition:background .16s ease,border-color .16s ease';
-    card.onmouseenter = () => { card.style.background = 'var(--elev-2)'; card.style.borderColor = 'color-mix(in srgb, var(--color-accent) 40%, var(--elev-line))'; };
-    card.onmouseleave = () => { card.style.background = 'var(--elev-1)'; card.style.borderColor = 'var(--elev-line)'; };
+    card.className = 'ops-card project-card';
     const count = conversations.filter((c) => c.projectId === p.id).length;
-    card.innerHTML = '<div style="font-weight:700;font-size:var(--t-body);margin-bottom:6px">' + esc(p.name) + '</div>'
-      + '<div style="font-size:var(--t-xs);color:var(--color-neutral);margin-bottom:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.path) + '">' + esc(p.path) + '</div>'
-      + (p.instructions ? '<div style="font-size:var(--t-xs);color:var(--color-neutral);opacity:.7;margin-bottom:8px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + esc(p.instructions.slice(0, 120)) + '</div>' : '')
-      + '<div style="display:flex;align-items:center;justify-content:space-between">'
-      + '<span style="font-size:var(--t-xs);color:var(--color-neutral)">' + count + ' chat' + (count === 1 ? '' : 's') + '</span>'
-      + '<button class="pdel" style="opacity:0;font-size:12px;padding:4px 8px;border:1px solid var(--elev-line);border-radius:6px;background:var(--color-bg);color:var(--color-bad);cursor:pointer">Delete</button>'
+    card.innerHTML = '<h3 class="ops-card-title">' + esc(p.name) + '</h3>'
+      + '<div class="ops-card-path" title="' + esc(p.path) + '">' + esc(p.path) + '</div>'
+      + (p.instructions ? '<div class="ops-card-note">' + esc(p.instructions.slice(0, 120)) + '</div>' : '')
+      + '<div class="ops-card-footer">'
+      + '<span>' + count + ' chat' + (count === 1 ? '' : 's') + '</span>'
+      + '<button class="pdel ops-danger">Delete</button>'
       + '</div>';
-    card.querySelector('.pdel').onmouseenter = () => { card.querySelector('.pdel').style.opacity = '1'; };
-    card.querySelector('.pdel').onmouseleave = (e) => { if (!e.relatedTarget?.classList?.contains('pdel')) card.querySelector('.pdel').style.opacity = '0'; };
     card.querySelector('.pdel').onclick = (e) => {
       e.stopPropagation();
       projects = projects.filter((x) => x.id !== p.id);
@@ -358,7 +374,7 @@ const RECOMMENDED_MODELS = [
 ];
 async function renderModelsPage() {
   const box = $('modelsPageContent'); if (!box) return;
-  box.innerHTML = '<div style="opacity:.5;font-size:var(--t-sm)">Loading models…</div>';
+  box.innerHTML = '<div class="empty-state">Loading local model inventory…</div>';
   let models = modelCatalogue;
   if (!models.length) {
     try { await loadModels(); } catch {}
@@ -366,66 +382,55 @@ async function renderModelsPage() {
   }
   box.innerHTML = '';
   // Installed models
-  const installed = document.createElement('div');
-  installed.innerHTML = '<h3 style="font-size:var(--t-body);font-weight:700;margin:0 0 12px">Installed Models</h3>';
+  const installed = document.createElement('section'); installed.className = 'ops-section';
+  installed.innerHTML = '<div class="ops-section-head"><h3>Installed models</h3><p>Available to the active runtime.</p></div>';
   if (!models.length) {
-    installed.innerHTML += '<div style="opacity:.5;font-size:var(--t-sm)">No models installed. Pull one with <code>ollama pull &lt;name&gt;</code> or check the recommended list below.</div>';
+    installed.innerHTML += '<div class="empty-state">No models installed. Pull one with <code>ollama pull &lt;name&gt;</code> or check the recommendations below.</div>';
   } else {
-    const list = document.createElement('div');
-    list.style.cssText = 'display:flex;flex-direction:column;gap:6px';
+    const list = document.createElement('div'); list.className = 'ops-list';
     for (const m of models) {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--elev-line);border-radius:10px;background:var(--elev-1)';
+      const row = document.createElement('div'); row.className = 'model-row';
       const family = familyOf(m.name);
       const isVision = modelSupportsVision(m.name);
       const size = m.size ? prettyBytes(m.size) : '';
       const params = m.details?.parameter_size || '';
-      row.innerHTML = '<div style="font-weight:600;font-size:var(--t-sm)">' + esc(m.name) + '</div>'
-        + (params ? '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + esc(params) + '</div>' : '')
-        + (size ? '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + size + '</div>' : '')
-        + (isVision ? '<span style="font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid color-mix(in srgb, var(--color-info) 40%, var(--elev-line));color:var(--color-info);font-weight:600">VISION</span>' : '')
-        + '<span style="font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid var(--elev-line);color:var(--color-neutral);font-weight:600">' + esc(family.name) + '</span>';
+      row.innerHTML = '<div class="model-name">' + esc(m.name) + '</div>'
+        + '<div class="model-meta">' + esc([params, size].filter(Boolean).join(' · ')) + '</div>'
+        + (isVision ? '<span class="ops-tag vision">Vision</span>' : '<span></span>')
+        + '<span class="ops-tag">' + esc(family.name) + '</span>';
       list.appendChild(row);
     }
     installed.appendChild(list);
   }
   box.appendChild(installed);
   // Recommended models
-  const rec = document.createElement('div');
-  rec.style.cssText = 'margin-top:28px';
-  rec.innerHTML = '<h3 style="font-size:var(--t-body);font-weight:700;margin:0 0 4px">Recommended for Axon</h3>'
-    + '<div style="font-size:var(--t-xs);color:var(--color-neutral);margin-bottom:12px">Curated local picks for Axon. Small models (&lt;3B) are best for Chat; use a capable coder model for Code or Agent.</div>';
-  const recList = document.createElement('div');
-  recList.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px';
+  const rec = document.createElement('section'); rec.className = 'ops-section';
+  rec.innerHTML = '<div class="ops-section-head"><div><h3>Recommended for Axon</h3><p>Local picks calibrated for Chat, Code, and Work.</p></div></div>';
+  const recList = document.createElement('div'); recList.className = 'ops-grid project-grid';
   for (const m of RECOMMENDED_MODELS) {
     const isInstalled = models.some((x) => x.name === m.name || x.name.startsWith(m.name + ':'));
-    const card = document.createElement('div');
-    card.style.cssText = 'padding:12px;border:1px solid var(--elev-line);border-radius:10px;background:var(--elev-1);display:flex;flex-direction:column;gap:4px';
-    card.innerHTML = '<div style="font-weight:600;font-size:var(--t-sm)">' + esc(m.name) + '</div>'
-      + '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + esc(m.tag) + '</div>'
-      + '<div style="font-size:var(--t-xs);color:' + (isInstalled ? 'var(--color-success)' : 'var(--color-neutral)') + '">' + (isInstalled ? '✓ Installed' : 'Not installed') + '</div>';
+    const card = document.createElement('div'); card.className = 'ops-card';
+    card.innerHTML = '<h3 class="ops-card-title">' + esc(m.name) + '</h3>'
+      + '<div class="ops-card-note">' + esc(m.tag) + '</div>'
+      + '<div class="ops-card-footer"><span class="ops-tag ' + (isInstalled ? 'installed' : '') + '">' + (isInstalled ? 'Installed' : 'Available') + '</span></div>';
     recList.appendChild(card);
   }
   rec.appendChild(recList);
   box.appendChild(rec);
   // Vision models section
-  const vis = document.createElement('div');
-  vis.style.cssText = 'margin-top:28px';
-  vis.innerHTML = '<h3 style="font-size:var(--t-body);font-weight:700;margin:0 0 4px">Vision Capable</h3>'
-    + '<div style="font-size:var(--t-xs);color:var(--color-neutral);margin-bottom:12px">Models that can process images. Attach screenshots or photos in chat to use them.</div>';
+  const vis = document.createElement('section'); vis.className = 'ops-section';
+  vis.innerHTML = '<div class="ops-section-head"><div><h3>Vision checked</h3><p>Only verified vision-capable models receive screenshots.</p></div></div>';
   const visionModels = models.filter((m) => modelSupportsVision(m.name));
   if (visionModels.length) {
-    const vList = document.createElement('div');
-    vList.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
+    const vList = document.createElement('div'); vList.className = 'ops-list';
     for (const m of visionModels) {
-      const tag = document.createElement('span');
-      tag.style.cssText = 'padding:6px 12px;border:1px solid color-mix(in srgb, var(--color-info) 40%, var(--elev-line));border-radius:999px;font-size:var(--t-xs);color:var(--color-info)';
+      const tag = document.createElement('span'); tag.className = 'ops-tag vision';
       tag.textContent = m.name;
       vList.appendChild(tag);
     }
     vis.appendChild(vList);
   } else {
-    vis.innerHTML += '<div style="opacity:.5;font-size:var(--t-sm)">No vision models detected. Pull one with <code>ollama pull llava</code> or similar.</div>';
+    vis.innerHTML += '<div class="empty-state">No verified vision models found. Pull one with <code>ollama pull llava</code> or similar.</div>';
   }
   box.appendChild(vis);
 }
@@ -1268,7 +1273,7 @@ function renderProviderProfiles() {
   select.value = profile.id; $('providerName').value = profile.name; $('providerKind').value = profile.kind; $('providerEndpoint').value = profile.endpoint; $('providerModel').value = profile.model;
   $('providerApiKey').value = '';
   $('providerStatus').textContent = profile.kind === 'ollama'
-    ? 'Ollama uses the current local or configured runtime. No API key is stored.'
+    ? 'Ollama uses the current local runtime. Cloud models also work in Code and Work after you sign in with Ollama; no Axon API key is needed.'
     : (profile.credentialId ? 'API key saved in the OS credential store.' : 'Add an API key to use this profile. It will not be written to normal settings.');
 }
 async function saveProviderProfile() {
@@ -1658,6 +1663,9 @@ function syncBrowserBounds() {
 }
 function setBrowserOpen(open) {
   browserOpen = open; $('browserPanel').classList.toggle('show', open); $('browserToggle').classList.toggle('active', open);
+  $('browserToggle').setAttribute('aria-expanded', String(open));
+  $('browserToggle').title = open ? 'Close agent browser' : 'Open agent browser';
+  const label = document.querySelector('.browser-toggle-label'); if (label) label.textContent = open ? 'Browser open' : 'Browser';
   if (open) requestAnimationFrame(syncBrowserBounds); else window.ollama.browserHide();
 }
 function openBrowserAt(url) {

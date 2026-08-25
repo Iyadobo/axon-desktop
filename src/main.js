@@ -80,12 +80,20 @@ function whereFirst(command) {
 }
 function findAxonTerminal() {
   const executable = process.platform === 'win32' ? 'axon.exe' : 'axon';
+  // A cleaned development checkout may deliberately omit Cargo's 15+ GB
+  // release cache. On Windows, reuse the already-installed Axon terminal for
+  // preview sessions instead of forcing an immediate cold Rust rebuild. This
+  // path is dev-only; packaged releases still carry their own binary.
+  const installedPreviewTerminal = !app.isPackaged && process.platform === 'win32'
+    ? path.join(process.env.LOCALAPPDATA || app.getPath('home'), 'Programs', 'Axon', 'resources', 'axon-terminal', executable)
+    : null;
   const candidates = [
     // Development checkout: build this controlled fork locally.
     path.join(__dirname, '..', 'axon-terminal', 'codex-rs', 'target', 'release', executable),
     path.join(__dirname, '..', 'axon-terminal', 'codex-rs', 'target', 'debug', executable),
     // Packaged builds place the terminal next to the application resources.
     app.isPackaged && path.join(process.resourcesPath, 'axon-terminal', executable),
+    installedPreviewTerminal,
     whereFirst(executable),
   ].filter(Boolean);
   const command = candidates.find((candidate) => candidate && fs.existsSync(candidate));
@@ -495,6 +503,8 @@ function ensureAxonBrowserMcpConfig(provider = null) {
 // Axon Terminal enforces the sandbox; this only validates the renderer value.
 const PERMISSION_MODES = new Set(['approve', 'auto', 'full']);
 const normalizeMode = (value) => (PERMISSION_MODES.has(value) ? value : 'auto');
+const isOllamaCloudModel = (model, provider) =>
+  (!provider?.kind || provider.kind === 'ollama') && /(?:^|[:._-])cloud$/i.test(String(model || ''));
 
 // Axon Chat deliberately avoids an agent harness. It is a fast, local-first
 // conversation surface backed by the selected Ollama-compatible runtime.
@@ -644,6 +654,7 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
       prompt,
     ].filter(Boolean).join('\n\n');
     const providerKind = provider?.kind || 'ollama';
+    const usingOllamaCloud = isOllamaCloudModel(model, provider);
     if (!['ollama', 'responses'].includes(providerKind)) {
       send('chat-error', 'This API profile supports Axon Chat, but Code and Agent require a Responses-compatible provider for tool calling.');
       send('chat-done', { sessionId, ok: false });
@@ -681,7 +692,17 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
         if (event.type === 'item.started' && event.item?.type === 'command_execution') send('chat-step', { type: 'tool_call', fn: 'Axon Terminal', args: { command: event.item.command || 'Running tool' } });
         if (event.type === 'item.completed' && event.item?.type === 'command_execution') send('chat-step', { type: 'tool_result', result: event.item.aggregated_output || event.item.status || 'Command completed' });
         if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) send('chat-delta', event.item.text);
-        if (event.type === 'turn.failed' || event.type === 'error') { failed = true; send('chat-error', event.error?.message || event.message || 'Axon Terminal failed to complete this turn.'); }
+        if (event.type === 'turn.failed' || event.type === 'error') {
+          failed = true;
+          const message = event.error?.message || event.message || 'Axon Terminal failed to complete this turn.';
+          // A few cloud models still reject one of the richer terminal tool
+          // schemas. Keep the real cause in the UI, but make it actionable:
+          // this is a per-model provider limitation, not a VRAM requirement.
+          const schemaRejected = /tools?\.[0-9]+\.function.*name.*required|tool schema/i.test(message);
+          send('chat-error', usingOllamaCloud && schemaRejected
+            ? `This Ollama Cloud model rejected Axon Terminal's tool schema. Try another Cloud coding model or use Chat for this task; your 8 GB GPU is not the problem. (${message})`
+            : message);
+        }
       }
     });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
@@ -793,9 +814,6 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null, productMode, provider, mode }); return { ok: true }; }
   const permission = normalizeMode(mode);
   const selectedMode = ['chat', 'code', 'agent'].includes(productMode) ? productMode : 'chat';
-  if (selectedMode !== 'chat' && (!provider?.kind || provider.kind === 'ollama') && /(?:^|[:._-])cloud$/i.test(String(model || ''))) {
-    return { ok: false, error: 'Ollama Cloud models are Chat-only in Axon for now. Their tool schema is not compatible with Axon Terminal yet; choose a local model for Code or Agent.' };
-  }
   const bound = await capabilityBoundPrompt(systemPrompt, model, selectedMode, provider);
   let usableImages = safe;
   if (selectedMode === 'chat' && safe.length && !bound.report.vision) {
@@ -1123,11 +1141,6 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
         (async () => {
           const images = safeImages(msg.images);
           const selectedMode = ['chat', 'code', 'agent'].includes(msg.productMode) ? msg.productMode : 'chat';
-          if (selectedMode !== 'chat' && (!msg.provider?.kind || msg.provider.kind === 'ollama') && /(?:^|[:._-])cloud$/i.test(String(msg.model || ''))) {
-            send('chat-error', 'Ollama Cloud models are Chat-only in Axon for now. Choose a local model for Code or Agent.');
-            send('chat-done', { sessionId: msg.sessionId || null, ok: false });
-            return;
-          }
           const bound = await capabilityBoundPrompt(msg.systemPrompt, msg.model, selectedMode, msg.provider);
           const usableImages = images.length && !bound.report.vision ? [] : images;
           if (images.length && !usableImages.length) send('chat-step', { type: 'tool_result', result: `Images were not sent: ${msg.model} does not advertise vision support.` });
