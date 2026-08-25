@@ -10,6 +10,7 @@ const { spawn, spawnSync, execSync } = require('child_process');
 const lan = require('./lan');
 const { createConfigStore } = require('./config');
 const llamacppRuntime = require('./llamacpp-runtime');
+const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('io.axon.workspace'); } catch {}
@@ -277,6 +278,15 @@ async function modelSupportsVision(model) {
     const supported = Array.isArray(result.capabilities) ? result.capabilities.includes('vision') : null;
     visionCapability.set(model, supported); return supported;
   } catch { return null; } // unknown: let the one-shot recovery handle nonstandard servers
+}
+async function resolveModelCapabilities(model, productMode, provider) {
+  const isOllama = !provider?.kind || provider.kind === 'ollama';
+  const advertisedVision = isOllama ? await modelSupportsVision(model) : null;
+  return modelCapabilityReport({ model, productMode, providerKind: provider?.kind || 'ollama', advertisedVision });
+}
+async function capabilityBoundPrompt(systemPrompt, model, productMode, provider) {
+  const report = await resolveModelCapabilities(model, productMode, provider);
+  return { report, systemPrompt: [systemPrompt?.trim(), capabilityInstruction(report)].filter(Boolean).join('\n\n') };
 }
 
 // ---- Tray + window --------------------------------------------------------
@@ -617,7 +627,7 @@ function runDirectChat(model, prompt, sessionId, send, systemPrompt, holder, ima
   });
 }
 
-function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], permissionMode = 'auto', productMode = 'code', provider = null) {
+function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], permissionMode = 'auto', productMode = 'code', provider = null, capabilities = null) {
   holder = holder || {};
   return new Promise((resolve) => {
     const launch = findAxonTerminal();
@@ -630,7 +640,7 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
     const sandbox = { approve: 'read-only', auto: 'workspace-write', full: 'danger-full-access' }[normalizeMode(permissionMode)];
     const instruction = [
       systemPrompt?.trim(),
-      productMode === 'agent' ? 'You are Axon Agent. Delegate only concrete, independent workstreams when they materially help; keep all workers within the parent workspace and permission boundary.' : 'You are Axon Code. Work directly in the current workspace, verify your changes, and keep the user informed.',
+      productMode === 'agent' ? 'You are Axon Work. Execute the requested multi-step task toward a finished outcome. Use the browser when research or website interaction is needed; delegate only concrete, independent workstreams when they materially help; keep all workers within the parent workspace and permission boundary.' : 'You are Axon Code. Work directly in the current repository, use the browser only for focused implementation research, verify your changes, and keep the user informed. Do not delegate or turn the task into an autonomous workstream.',
       prompt,
     ].filter(Boolean).join('\n\n');
     const providerKind = provider?.kind || 'ollama';
@@ -640,7 +650,9 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
       return resolve();
     }
     const axonHome = ensureAxonBrowserMcpConfig(provider);
-    const common = ['--json', '--color', 'never', '--skip-git-repo-check', '--profile', 'browser', '--sandbox', sandbox, '-C', root];
+    // Earlier Axon Terminal preview builds rejected --color. Keep to the
+    // conservative flag subset so Code sessions start on both builds.
+    const common = ['--json', '--skip-git-repo-check', '--profile', 'browser', '--sandbox', sandbox, '-C', root];
     if (providerKind === 'ollama') common.push('--oss', '--local-provider', 'ollama');
     if (model) common.push('--model', model);
     if (productMode === 'agent') common.push('--enable', 'multi_agent_v2');
@@ -653,7 +665,7 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
       AXON_PROVIDER_API_KEY: providerKind === 'responses' ? (readProviderSecret(provider?.credentialId) || '') : '',
       // A screenshot is an image tool result. Do not feed one to an obviously
       // text-only worker; structured browser_read remains available to all.
-      AXON_BROWSER_ALLOW_SCREENSHOT: /(?:vision|(?:^|[:._-])vl(?:[:._-]|$)|llava)/i.test(String(model || '')) ? '1' : '0',
+      AXON_BROWSER_ALLOW_SCREENSHOT: capabilities?.browserScreenshot ? '1' : '0',
     };
     delete env.CODEX_HOME;
     const child = spawn(launch.command, [...launch.prefix, ...args], { cwd: root, env, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -684,6 +696,7 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
 
 // ---- IPC ------------------------------------------------------------------
 ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await listActiveModels()));
+ipcMain.handle('model-capabilities', async (_e, { model, productMode, provider }) => resolveModelCapabilities(model, productMode, provider));
 ipcMain.handle('check-exo', async (_e, url) => checkExo(url));
 ipcMain.handle('set-runtime', async (_e, runtime) => {
   try {
@@ -780,15 +793,19 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null, productMode, provider, mode }); return { ok: true }; }
   const permission = normalizeMode(mode);
   const selectedMode = ['chat', 'code', 'agent'].includes(productMode) ? productMode : 'chat';
+  if (selectedMode !== 'chat' && (!provider?.kind || provider.kind === 'ollama') && /(?:^|[:._-])cloud$/i.test(String(model || ''))) {
+    return { ok: false, error: 'Ollama Cloud models are Chat-only in Axon for now. Their tool schema is not compatible with Axon Terminal yet; choose a local model for Code or Agent.' };
+  }
+  const bound = await capabilityBoundPrompt(systemPrompt, model, selectedMode, provider);
   let usableImages = safe;
-  if (selectedMode === 'chat' && safe.length && await modelSupportsVision(model) === false) {
+  if (selectedMode === 'chat' && safe.length && !bound.report.vision) {
     usableImages = [];
-    send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not advertise vision support.` });
+    send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not have verified vision support.` });
   }
   const holder = {}; localHolders.set(requestId, holder);
   const run = selectedMode === 'chat'
-    ? runDirectChat(model, expanded, sessionId, send, systemPrompt, holder, usableImages, provider)
-    : runAxonTerminal(model, expanded, sessionId, send, systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider);
+    ? runDirectChat(model, expanded, sessionId, send, bound.systemPrompt, holder, usableImages, provider)
+    : runAxonTerminal(model, expanded, sessionId, send, bound.systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider, bound.report);
   run
     .catch((e) => send('chat-error', e.message))
     .finally(() => localHolders.delete(requestId));
@@ -1105,12 +1122,18 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
         // server uses its own cwd; the client's project path doesn't map across devices.
         (async () => {
           const images = safeImages(msg.images);
-          const usableImages = images.length && await modelSupportsVision(msg.model) === false ? [] : images;
-          if (images.length && !usableImages.length) send('chat-step', { type: 'tool_result', result: `Images were not sent: ${msg.model} does not advertise vision support.` });
           const selectedMode = ['chat', 'code', 'agent'].includes(msg.productMode) ? msg.productMode : 'chat';
+          if (selectedMode !== 'chat' && (!msg.provider?.kind || msg.provider.kind === 'ollama') && /(?:^|[:._-])cloud$/i.test(String(msg.model || ''))) {
+            send('chat-error', 'Ollama Cloud models are Chat-only in Axon for now. Choose a local model for Code or Agent.');
+            send('chat-done', { sessionId: msg.sessionId || null, ok: false });
+            return;
+          }
+          const bound = await capabilityBoundPrompt(msg.systemPrompt, msg.model, selectedMode, msg.provider);
+          const usableImages = images.length && !bound.report.vision ? [] : images;
+          if (images.length && !usableImages.length) send('chat-step', { type: 'tool_result', result: `Images were not sent: ${msg.model} does not advertise vision support.` });
           return selectedMode === 'chat'
-            ? runDirectChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, holder, usableImages, msg.provider)
-            : runAxonTerminal(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, holder, usableImages, normalizeMode(msg.mode), selectedMode, msg.provider);
+            ? runDirectChat(msg.model, msg.prompt, msg.sessionId, send, bound.systemPrompt, holder, usableImages, msg.provider)
+            : runAxonTerminal(msg.model, msg.prompt, msg.sessionId, send, bound.systemPrompt, null, holder, usableImages, normalizeMode(msg.mode), selectedMode, msg.provider, bound.report);
         })().catch(() => {}).finally(() => st.holders.delete(msg.requestId));
       },
       onStatus: (state, info) => lanStatus({ server: state, ...info }),

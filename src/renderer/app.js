@@ -41,6 +41,25 @@ function switchView(viewName) {
   if (viewName === 'models') renderModelsPage();
   saveState('oactiveView', viewName);
 }
+function workspaceGroup(mode = settings?.productMode) { return mode === 'agent' ? 'work' : mode === 'code' ? 'code' : 'chat'; }
+function syncWorkspaceShell() {
+  const workspace = workspaceGroup();
+  const tabs = { chat: $('chatWorkspace'), code: $('codeWorkspace'), work: $('workWorkspace') };
+  if (!tabs.chat || !tabs.code || !tabs.work) return;
+  for (const [name, tab] of Object.entries(tabs)) { const active = name === workspace; tab.classList.toggle('active', active); tab.setAttribute('aria-selected', String(active)); }
+  $('side')?.classList.toggle('workspace-work', workspace === 'work');
+  $('workspaceNote').textContent = workspace === 'work'
+    ? 'Autonomous tasks · browser and delegation'
+    : workspace === 'code' ? 'Repository work · Axon Terminal tools' : 'Direct conversation · no tools';
+  $('newChatLabel').textContent = workspace === 'work' ? 'New task' : workspace === 'code' ? 'New code session' : 'New chat';
+  $('workspaceProjectsLabel').textContent = workspace === 'work' ? 'Workspaces' : 'Projects';
+  $('recents-label').textContent = workspace === 'work' ? 'Recent work' : workspace === 'code' ? 'Recent code' : 'Recent chats';
+}
+function setWorkspace(group) {
+  settings.productMode = group === 'work' ? 'agent' : group === 'code' ? 'code' : 'chat';
+  syncProductMode(); saveSettings(); renderRecents();
+  if (activeView !== 'chat') switchView('chat');
+}
 
 // ---- settings / appearance --------------------------------------------------
 const THEME_PALETTES = {
@@ -58,7 +77,6 @@ const FONT_STACKS = {
 const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', kind: 'ollama', endpoint: '', model: '', credentialId: '' };
 const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local' };
 let settings = { ...DEFAULT_SETTINGS };
-const ACCENTS = ['#2a4bd6', '#007d5a', '#b03060', '#8a3df0', '#c2410c', '#111827'];
 const persisted = {};
 function loadSettings() {
   try {
@@ -83,7 +101,7 @@ function applyAppearance() {
   r.style.setProperty('--color-surface-2', `color-mix(in srgb, ${colors.surface} 72%, ${colors.background})`);
   r.style.setProperty('--color-text', colors.text);
   r.style.setProperty('--color-divider', `color-mix(in srgb, ${colors.text} 14%, ${colors.background})`);
-  r.style.setProperty('--color-neutral', `color-mix(in srgb, ${colors.text} 58%, ${colors.background})`);
+  r.style.setProperty('--color-neutral', `color-mix(in srgb, ${colors.text} 70%, ${colors.background})`);
   r.style.setProperty('--font-body', FONT_STACKS[settings.font] || FONT_STACKS.system);
   r.dataset.theme = settings.theme;
   r.classList.remove('density-compact', 'density-comfortable', 'motion-calm');
@@ -92,25 +110,17 @@ function applyAppearance() {
   if (settings.motion === 'calm') r.classList.add('motion-calm');
   refreshGridColor();
 }
-function renderSwatches() {
-  const box = $('swatches'); box.innerHTML = '';
-  for (const c of ACCENTS) {
-    const s = document.createElement('span');
-    s.className = 'sw' + (c.toLowerCase() === settings.colors.accent.toLowerCase() ? ' sel' : '');
-    s.style.background = c; s.title = c;
-    s.onclick = () => { settings.colors.accent = c; settings.accent = c; saveSettings(); applyAppearance(); renderSwatches(); syncPaletteInputs(); };
-    box.appendChild(s);
-  }
-  const ci = document.createElement('input');
-  ci.type = 'color'; ci.value = settings.colors.accent;
-  ci.title = 'Custom color';
-  ci.oninput = () => { settings.colors.accent = ci.value; settings.accent = ci.value; saveSettings(); applyAppearance(); renderSwatches(); syncPaletteInputs(); };
-  box.appendChild(ci);
-}
+function normalHex(value) { const hex = String(value || '').trim().replace(/^#/, ''); return /^[0-9a-f]{6}$/i.test(hex) ? '#' + hex.toUpperCase() : null; }
+function rgbFromHex(hex) { const value = normalHex(hex); return value ? [1, 3, 5].map((index) => parseInt(value.slice(index, index + 2), 16) / 255) : [0, 0, 0]; }
+function luminance(hex) { return rgbFromHex(hex).map((value) => value <= .03928 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((total, value, index) => total + value * [.2126, .7152, .0722][index], 0); }
+function contrastRatio(one, two) { const a = luminance(one); const b = luminance(two); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); }
+function updateAccentContrast() { const chip = $('accentContrast'); if (!chip) return; const ratio = contrastRatio(settings.colors.accent, settings.colors.background); chip.textContent = ratio.toFixed(1) + ':1 against background'; chip.classList.toggle('warning', ratio < 3); }
+function setThemeColor(colorKey, value) { const hex = normalHex(value); if (!hex) return false; settings.colors[colorKey] = hex; if (colorKey === 'accent') settings.accent = hex; saveSettings(); applyAppearance(); syncPaletteInputs(); return true; }
 function syncPaletteInputs() {
   const colors = settings.colors;
-  $('accentColor').value = colors.accent; $('backgroundColor').value = colors.background;
-  $('surfaceColor').value = colors.surface; $('textColor').value = colors.text;
+  const fields = [['accent', 'accentColor', 'accentHex'], ['background', 'backgroundColor', 'backgroundHex'], ['surface', 'surfaceColor', 'surfaceHex'], ['text', 'textColor', 'textHex']];
+  for (const [key, colorInput, hexInput] of fields) { if ($(colorInput)) $(colorInput).value = colors[key]; if ($(hexInput)) $(hexInput).value = colors[key].replace('#', '').toUpperCase(); }
+  updateAccentContrast();
 }
 function openSettings() {
   $('sysPrompt').value = settings.systemPrompt;
@@ -126,7 +136,7 @@ function openSettings() {
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncProductMode();
   syncModes();
-  syncPaletteInputs(); renderSwatches(); renderProjects(); renderCloudCatalogueInfo();
+  syncPaletteInputs(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
 }
 function closeSettings() { $('settings').classList.remove('show'); }
@@ -767,6 +777,19 @@ function syncModelButton() {
   const mark = $('modelBtnMark');
   if (name) { const m = familyMarkup(familyOf(name)); mark.style.color = m.color; mark.innerHTML = m.svg; }
   else mark.innerHTML = '';
+  refreshModelCapabilityBadge();
+}
+async function refreshModelCapabilityBadge() {
+  const badge = $('modelCapabilityBadge'); const model = $('model').value;
+  if (!badge || !model) { if (badge) badge.hidden = true; return; }
+  try {
+    const report = await window.ollama.modelCapabilities(model, settings.productMode, currentProviderProfile());
+    if ($('model').value !== model) return;
+    badge.hidden = false;
+    badge.textContent = report.vision ? 'Vision checked' : 'Text-only';
+    badge.className = 'model-capability ' + (report.vision ? 'vision' : 'text-only');
+    $('modelBtn').title = model + ' · ' + (report.vision ? 'vision checked' : 'text-only; screenshots disabled');
+  } catch { badge.hidden = true; }
 }
 function pickerRows() {
   const query = $('modelSearch').value.trim().toLowerCase();
@@ -949,9 +972,12 @@ function toggleConversationPin(id) {
 }
 function renderRecentPopup() {
   const box = $('recentPopup'); if (!box) return;
-  box.innerHTML = '<div class="recent-popover-head"><span>Recent chats</span><span>' + conversations.length + '</span></div>';
-  const recent = conversationOrder(conversations).slice(0, 18);
-  if (!recent.length) { box.innerHTML += '<div class="sidebar-empty">No chats yet.</div>'; return; }
+  const workspace = workspaceGroup();
+  const scoped = conversations.filter((chat) => workspaceGroup(chat.productMode || 'chat') === workspace);
+  const workspaceLabel = workspace === 'work' ? 'Recent work' : workspace === 'code' ? 'Recent code' : 'Recent chats';
+  box.innerHTML = '<div class="recent-popover-head"><span>' + workspaceLabel + '</span><span>' + scoped.length + '</span></div>';
+  const recent = conversationOrder(scoped).slice(0, 18);
+  if (!recent.length) { box.innerHTML += '<div class="sidebar-empty">' + (workspace === 'work' ? 'No work sessions yet.' : workspace === 'code' ? 'No code sessions yet.' : 'No chats yet.') + '</div>'; return; }
   for (const chat of recent) {
     const row = document.createElement('div'); row.className = 'recent-popover-item' + (chat.id === activeId ? ' active' : '');
     row.tabIndex = 0; row.setAttribute('role', 'button');
@@ -971,10 +997,12 @@ function toggleRecentPopup() { const box = $('recentPopup'); const open = box.cl
 function renderRecents() {
   renderSidebarProjects();
   const box = $('recents'); box.innerHTML = '';
-  const visible = (lanServerOn || lanClientConnected || !activeProjectId) ? conversations : conversations.filter((c) => c.projectId === activeProjectId);
+  const workspace = workspaceGroup();
+  const workspaceConversations = conversations.filter((chat) => workspaceGroup(chat.productMode || 'chat') === workspace);
+  const visible = (lanServerOn || lanClientConnected || !activeProjectId) ? workspaceConversations : workspaceConversations.filter((c) => c.projectId === activeProjectId);
   if (!visible.length) {
     const e = document.createElement('div'); e.style.cssText = 'font-size:12px;opacity:.4;padding:7px 8px';
-    e.textContent = activeProjectId ? 'No chats in this project yet.' : 'No chats yet.'; box.appendChild(e);
+    e.textContent = activeProjectId ? (workspace === 'work' ? 'No work sessions in this workspace yet.' : workspace === 'code' ? 'No code sessions in this project yet.' : 'No chats in this project yet.') : (workspace === 'work' ? 'No work sessions yet.' : workspace === 'code' ? 'No code sessions yet.' : 'No chats yet.'); box.appendChild(e);
   }
   for (const c of conversationOrder(visible)) {
     const d = document.createElement('div');
@@ -994,6 +1022,8 @@ function openConv(id) {
   const conv = conversations.find((c) => c.id === id);
   if (!conv) return;
   activeId = id;
+  const convMode = ['chat', 'code', 'agent'].includes(conv.productMode) ? conv.productMode : 'chat';
+  if (settings.productMode !== convMode) { settings.productMode = convMode; syncProductMode(); saveSettings(); }
   if (conv.model && [...$('model').options].some((o) => o.value === conv.model)) $('model').value = conv.model;
   showChatView();
   $('log').innerHTML = '';
@@ -1603,7 +1633,7 @@ $('steer').onclick = () => {
   queueMessage(activeId, entry, true); steering.add(requestId); window.ollama.steer(requestId);
 };
 $('newchat').onclick = () => newChat();
-$('model').onchange = () => saveState('omodel', $('model').value);
+$('model').onchange = () => { saveState('omodel', $('model').value); syncModelButton(); };
 $('prompt').addEventListener('keydown', (e) => {
   if (cmdOpen) {
     if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(1); return; }
@@ -1669,23 +1699,25 @@ $('projectsPageAdd').onclick = () => { openSettings(); setTimeout(() => $('projN
 $('settingsClose').onclick = closeSettings;
 $('settings').addEventListener('click', (e) => { if (e.target.id === 'settings') closeSettings(); });
 $('sysPrompt').addEventListener('input', () => { settings.systemPrompt = $('sysPrompt').value; saveSettings(); });
-$('themeSel').onchange = () => { settings.theme = $('themeSel').value; settings.colors = { ...THEME_PALETTES[settings.theme] }; settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); renderSwatches(); syncPaletteInputs(); };
+$('themeSel').onchange = () => { settings.theme = $('themeSel').value; settings.colors = { ...THEME_PALETTES[settings.theme] }; settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); syncPaletteInputs(); };
 $('densitySel').onchange = () => { settings.density = $('densitySel').value; saveSettings(); applyAppearance(); };
 $('motionSel').onchange = () => { settings.motion = $('motionSel').value; saveSettings(); applyAppearance(); };
 $('fontSel').onchange = () => { settings.font = $('fontSel').value; saveSettings(); applyAppearance(); };
 function syncProductMode() {
   const mode = ['chat', 'code', 'agent'].includes(settings.productMode) ? settings.productMode : 'chat';
   settings.productMode = mode;
-  const labels = { chat: 'Chat', code: 'Code', agent: 'Agent' };
+  const labels = { chat: 'Chat', code: 'Code', agent: 'Work' };
   const descriptions = {
     chat: 'Chat sends a direct conversation to the selected provider. No workspace tools are exposed.',
-    code: 'Code runs through Axon Terminal in the selected workspace, with your permission policy.',
-    agent: 'Agent runs through Axon Terminal and may delegate well-scoped work to configured subagents.',
+    code: 'Code works directly in the selected repository through Axon Terminal. It can use the browser for focused research, but does not delegate.',
+    agent: 'Work executes multi-step tasks toward an outcome. It can browse, use the selected workspace, and delegate concrete independent work.',
   };
   $('productModeSel').value = mode;
-  $('productModeButton').textContent = labels[mode];
-  $('productModeButton').title = descriptions[mode];
+  const modeButton = $('productModeButton');
+  if (modeButton) { modeButton.textContent = labels[mode]; modeButton.title = descriptions[mode]; }
   $('productModeInfo').textContent = descriptions[mode];
+  syncWorkspaceShell();
+  refreshModelCapabilityBadge();
 }
 // Permission mode: a segmented control rather than a <select>, because the
 // difference between the three is the description, not the label.
@@ -1715,7 +1747,7 @@ $('permissionModeButton').onclick = () => {
   syncModes(); saveSettings();
 };
 $('productModeSel').onchange = () => { settings.productMode = $('productModeSel').value; syncProductMode(); saveSettings(); };
-$('productModeButton').onclick = () => { const modes = ['chat', 'code', 'agent']; settings.productMode = modes[(modes.indexOf(settings.productMode) + 1) % modes.length]; syncProductMode(); saveSettings(); };
+if ($('productModeButton')) $('productModeButton').onclick = () => { const modes = ['chat', 'code', 'agent']; settings.productMode = modes[(modes.indexOf(settings.productMode) + 1) % modes.length]; syncProductMode(); saveSettings(); };
 $('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); };
 $('providerNew').onclick = () => { const profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'New provider', kind: 'openai-compatible', endpoint: '', model: '', credentialId: '' }; settings.providerProfiles.push(profile); settings.activeProviderProfileId = profile.id; renderProviderProfiles(); };
 $('providerSave').onclick = saveProviderProfile;
@@ -1743,10 +1775,15 @@ window.ollama.on('llamacpp-status-change', (update) => {
   $('llamaCppStatus').textContent = `${update.role === 'worker' ? 'Worker' : 'Host'} stopped${update.code ? ' (exit ' + update.code + ')' : ''}.${update.tail ? ' ' + update.tail.trim().slice(-300) : ''}`;
   if ($('settings').classList.contains('show')) refreshLlamaCppStatus();
 });
-for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor', 'background'], ['surfaceColor', 'surface'], ['textColor', 'text']]) {
-  $(inputId).oninput = () => { settings.colors[colorKey] = $(inputId).value; if (colorKey === 'accent') settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); if (colorKey === 'accent') renderSwatches(); };
+for (const [colorKey, colorInput, hexInput] of [['accent', 'accentColor', 'accentHex'], ['background', 'backgroundColor', 'backgroundHex'], ['surface', 'surfaceColor', 'surfaceHex'], ['text', 'textColor', 'textHex']]) {
+  $(colorInput).oninput = () => setThemeColor(colorKey, $(colorInput).value);
+  $(hexInput).onchange = () => { if (!setThemeColor(colorKey, $(hexInput).value)) syncPaletteInputs(); };
+  $(hexInput).onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); $(hexInput).blur(); } };
 }
-$('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settings.theme] || THEME_PALETTES.midnight }; settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); renderSwatches(); syncPaletteInputs(); };
+$('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settings.theme] || THEME_PALETTES.midnight }; settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); syncPaletteInputs(); };
+$('chatWorkspace').onclick = () => setWorkspace('chat');
+$('codeWorkspace').onclick = () => setWorkspace('code');
+$('workWorkspace').onclick = () => setWorkspace('work');
 $('recents-label').onclick = openSettings;
 $('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
 document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });

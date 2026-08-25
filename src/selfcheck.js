@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const { browserInvocation } = require('./browser-events');
 const { createConfigStore } = require('./config');
+const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
 
 let passed = 0, failed = 0;
 const ok = (name, condition) => {
@@ -16,6 +17,13 @@ ok('browser open normalizes a URL', browserInvocation('browser_open', { url: 'ht
 ok('browser navigation aliases normalize', browserInvocation('browser_navigate', { href: 'https://example.com/next' })?.url === 'https://example.com/next');
 ok('browser search opens a query', browserInvocation('web_search', { query: 'Axon agent browser' })?.url === 'https://www.google.com/search?q=Axon%20agent%20browser');
 ok('non-browser tools leave the browser alone', browserInvocation('Read', { file_path: 'notes.md' }) === null);
+{
+  const textOnly = modelCapabilityReport({ model: 'qwen3:4b', productMode: 'agent', advertisedVision: false });
+  const vision = modelCapabilityReport({ model: 'llava', productMode: 'code', advertisedVision: true });
+  ok('text-only models cannot receive screenshots', !textOnly.vision && !textOnly.browserScreenshot);
+  ok('vision models can inspect agent browser screenshots', vision.vision && vision.browserScreenshot);
+  ok('capability prompt prevents borrowed product identity', /not Claude, ChatGPT, Codex/.test(capabilityInstruction(textOnly)) && /screenshots are unavailable/.test(capabilityInstruction(textOnly)));
+}
 
 (function () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-config-'));

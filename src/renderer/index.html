@@ -518,6 +518,9 @@
     transition:background .16s ease, border-color .16s ease; }
   .model-btn:hover { background:var(--elev-2); border-color:color-mix(in srgb, var(--color-accent) 40%, var(--elev-line)); }
   .model-btn #modelBtnName { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .model-capability { flex:none; padding:2px 5px; border:1px solid var(--elev-line); border-radius:4px; color:var(--color-neutral); font:700 9px/1 var(--font-body); letter-spacing:.04em; text-transform:uppercase; }
+  .model-capability.vision { color:var(--color-success); border-color:color-mix(in srgb, var(--color-success) 45%, var(--elev-line)); }
+  .model-capability.text-only { color:var(--color-neutral); }
   .model-btn svg { flex:none; opacity:.6; }
   .model-mark { width:15px; height:15px; flex:none; display:grid; place-items:center; }
   .model-mark svg { width:15px; height:15px; }
@@ -698,6 +701,56 @@
   button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
   .mode:hover, .allow-btn:hover, .deny-btn:hover { transform:none; }
   @media (prefers-reduced-motion: reduce) { #side::before, #home::before { opacity:.07; } }
+  /* Axon workspace split + settings contrast pass. The controls use the same
+     four theme tokens as chat, so no settings text can become an orphaned
+     low-contrast colour when a custom palette is active. */
+  .workspace-switch { display:grid; grid-template-columns:repeat(3,1fr); gap:3px; margin:0 4px; padding:3px; background:var(--color-bg); border:1px solid var(--elev-line); border-radius:8px; }
+  .workspace-tab { min-height:32px; border:0; border-radius:5px; background:transparent; color:var(--color-neutral); font:700 12px/1 var(--font-body); letter-spacing:.015em; cursor:pointer; transition:background .16s ease,color .16s ease,box-shadow .16s ease; }
+  .workspace-tab:hover { color:var(--color-text); background:var(--elev-1); }
+  .workspace-tab.active { color:var(--color-text); background:var(--elev-2); box-shadow:inset 0 -2px 0 var(--color-accent); }
+  .workspace-tab:focus-visible, .hex-field:focus-within, .appearance-advanced summary:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
+  .workspace-note { min-height:24px; padding:7px 10px 2px; color:var(--color-neutral); font-size:11px; font-weight:600; letter-spacing:.01em; }
+  #side.workspace-work .workspace-note { color:var(--color-accent); }
+  #side.workspace-work .newchat { border-color:color-mix(in srgb, var(--color-accent) 34%, var(--elev-line)); }
+
+  .modal-card { background:var(--color-bg); border-color:var(--elev-line); }
+  .modal-head { background:var(--elev-2); border-bottom-color:var(--elev-line); }
+  .modal-head h3 { color:var(--color-text); font-size:17px; letter-spacing:-.01em; }
+  .modal-body > .fld { border-bottom-color:var(--elev-line); }
+  .fld { color:var(--color-text); gap:8px; }
+  .fld > span { color:var(--color-text); opacity:1; font-weight:760; font-size:13px; }
+  .fld textarea, .fld select, .fld input[type=text], .fld input[type=url], .fld input[type=password], .fld input[type=number] { background:var(--elev-1); border-color:var(--elev-line); color:var(--color-text); min-height:40px; }
+  .fld textarea::placeholder, .fld input::placeholder { color:color-mix(in srgb, var(--color-text) 54%, var(--color-bg)); opacity:1; }
+  .fld textarea:focus, .fld select:focus, .fld input:focus { outline:2px solid color-mix(in srgb, var(--color-accent) 62%, transparent); outline-offset:1px; border-color:var(--color-accent); }
+  .lan-info, .settings-copy { color:var(--color-neutral); opacity:1; font-size:12px; line-height:1.55; }
+  .settings-copy { margin:0; max-width:60ch; }
+  .modes { grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+  .mode { min-height:104px; background:var(--elev-1); border-color:var(--elev-line); }
+  .mode .mode-name { color:var(--color-text); }
+  .mode .mode-desc { color:var(--color-neutral); }
+  .mode.on { background:color-mix(in srgb, var(--color-accent) 13%, var(--elev-1)); box-shadow:inset 0 -2px 0 var(--color-accent); }
+  .mode.on .mode-name { color:var(--color-text); }
+  .color-system { display:grid; gap:10px; padding:13px; border:1px solid var(--elev-line); border-radius:11px; background:var(--elev-1); }
+  .color-system-head { display:flex; align-items:start; justify-content:space-between; gap:12px; }
+  .color-system-head strong { display:block; color:var(--color-text); font-size:13px; }
+  .color-system-head span:not(.contrast-chip) { display:block; margin-top:2px; color:var(--color-neutral); font-size:11px; }
+  .contrast-chip { flex:none; padding:3px 6px; border:1px solid color-mix(in srgb, var(--color-success) 48%, var(--elev-line)); border-radius:999px; color:var(--color-success); font-size:10px; font-weight:800; letter-spacing:.02em; }
+  .contrast-chip.warn { color:var(--color-warning); border-color:color-mix(in srgb, var(--color-warning) 48%, var(--elev-line)); }
+  .color-picker-row { display:flex; align-items:center; gap:8px; }
+  .color-picker-row > input[type=color] { width:42px; height:38px; padding:3px; border:1px solid var(--elev-line); border-radius:8px; background:var(--color-bg); cursor:pointer; }
+  .hex-field { display:flex; align-items:center; flex:1; min-height:38px; padding:0 10px; border:1px solid var(--elev-line); border-radius:8px; background:var(--color-bg); color:var(--color-neutral); font:650 13px var(--font-mono,ui-monospace,monospace); }
+  .hex-field input { width:100%; min-width:0; border:0 !important; outline:0 !important; background:transparent !important; color:var(--color-text) !important; font:inherit !important; padding:0 0 0 3px !important; min-height:0 !important; }
+  .palette-reset { min-height:38px; padding:0 11px; border-color:var(--elev-line); background:var(--color-bg); color:var(--color-text); font-weight:700; }
+  .palette-reset:hover { background:var(--elev-2); color:var(--color-accent); border-color:var(--color-accent); }
+  .appearance-advanced { border-top:1px solid var(--elev-line); padding-top:9px; }
+  .appearance-advanced summary { color:var(--color-neutral); cursor:pointer; font-size:12px; font-weight:750; }
+  .appearance-advanced[open] summary { color:var(--color-text); margin-bottom:8px; }
+  .appearance-advanced p { margin:0 0 10px; color:var(--color-neutral); font-size:11px; line-height:1.45; }
+  .appearance-grid { grid-template-columns:1fr; gap:7px; }
+  .color-field { display:grid; grid-template-columns:1fr 34px 88px; align-items:center; min-height:40px; padding:5px 8px; border-color:var(--elev-line); background:var(--color-bg); color:var(--color-text); }
+  .color-field input[type=color] { width:28px; height:28px; }
+  .color-field input[type=text] { width:100%; min-height:28px !important; padding:0 !important; border:0 !important; border-radius:0 !important; background:transparent !important; font:650 12px var(--font-mono,ui-monospace,monospace) !important; }
+  @media (max-width:680px) { .modes { grid-template-columns:1fr; }.appearance-grid { grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -712,7 +765,13 @@
 <div id="app">
   <div id="side">
     <div class="brand"><img class="logo" src="../assets/icon.png" alt="Axon" /><span style="flex:1">Axon</span></div>
-    <div class="newchat" id="newchat"><span style="opacity:.6">+</span><span>New chat</span></div>
+    <div class="workspace-switch" role="tablist" aria-label="Axon workspace">
+      <button id="chatWorkspace" class="workspace-tab active" type="button" role="tab" aria-selected="true">Chat</button>
+      <button id="codeWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">Code</button>
+      <button id="workWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">Work</button>
+    </div>
+    <div class="workspace-note" id="workspaceNote">Direct conversation · no tools</div>
+    <div class="newchat" id="newchat"><span style="opacity:.6">+</span><span id="newChatLabel">New chat</span></div>
     <nav class="nav-bar" id="navBar">
       <button class="nav-item active" data-view="chat" type="button">
         <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -732,9 +791,9 @@
       </button>
     </nav>
     <div id="chatSidebar" class="sidebar-view active">
-      <div class="side-section-head"><span>Projects</span><button id="sidebarProjectsAdd" type="button" title="Add project" aria-label="Add project">+</button></div>
+      <div class="side-section-head"><span id="workspaceProjectsLabel">Projects</span><button id="sidebarProjectsAdd" type="button" title="Add project" aria-label="Add project">+</button></div>
       <div id="sidebarProjects" aria-label="Projects"></div>
-      <div class="recents-label" id="recents-label">Recents</div>
+      <div class="recents-label" id="recents-label">Recent chats</div>
       <div id="recents"></div>
     </div>
     <div id="projectsSidebar" class="sidebar-view">
@@ -770,11 +829,10 @@
               <button class="iconbtn" id="attachBtn" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10.5 19a2 2 0 0 1-3-3l8-8"/></svg></button>
               <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.json,.csv,.yaml,.yml,.toml,.xml,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.css,.html,.ini,.sh,.ps1,.sql" multiple style="display:none" />
               <button type="button" id="modelBtn" class="model-btn" title="Choose a model">
-                <span class="model-mark" id="modelBtnMark"></span><span class="model-dot"></span><span id="modelBtnName">model</span>
+                <span class="model-mark" id="modelBtnMark"></span><span class="model-dot"></span><span id="modelBtnName">model</span><span id="modelCapabilityBadge" class="model-capability" hidden></span>
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <span class="select-tag" hidden><select id="model"></select></span>
-              <button type="button" id="productModeButton" class="composer-mode" title="Axon workspace mode">Chat</button>
               <button type="button" id="permissionModeButton" class="composer-mode mode-auto" title="Execution permissions">Auto</button>
             </span>
             <button id="steer" title="Stop the current run and continue with this message" hidden>Steer</button>
@@ -787,7 +845,7 @@
           <span class="chip">Write docs</span>
           <span class="chip">Brainstorm</span>
         </div>
-        <p class="home-hint">Chat is direct model conversation · Code works in your workspace through Axon Terminal · Agent delegates scoped work when it helps · Browser activity opens here when an agent uses it</p>
+        <p class="home-hint">Chat is direct conversation · Code works directly in a repository · Work drives multi-step tasks with browser and delegation when useful</p>
       </div>
     </div>
 
@@ -853,7 +911,7 @@
         </div>
         <div class="lan-info">Enforced by Axon Terminal, not by instructions a model can talk itself out of. In Approve mode a blocked action appears in the transcript with an Allow button.</div>
       </div>
-      <div class="fld"><span>Axon workspace mode</span><div class="row"><label class="fld"><select id="productModeSel"><option value="chat">Axon Chat — direct conversation</option><option value="code">Axon Code — work in this project</option><option value="agent">Axon Agent — plan and delegate work</option></select></label></div><div class="lan-info" id="productModeInfo">Chat sends a direct conversation to the selected provider. Code and Agent run through Axon Terminal with your workspace and permission policy.</div></div>
+      <div class="fld"><span>Axon workspace mode</span><div class="row"><label class="fld"><select id="productModeSel"><option value="chat">Axon Chat — direct conversation</option><option value="code">Axon Code — direct repository work</option><option value="agent">Axon Work — autonomous multi-step tasks</option></select></label></div><div class="lan-info" id="productModeInfo">Chat talks directly. Code works in one repository. Work runs broader tasks with browser and delegation when useful.</div></div>
       <div class="fld"><span>Provider profiles</span><div class="row"><label class="fld"><select id="providerProfileSel"></select></label><button id="providerNew" type="button">New profile</button></div><div class="row"><label class="fld"><input id="providerName" type="text" placeholder="Profile name" /></label><label class="fld"><select id="providerKind"><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option></select></label></div><div class="row"><label class="fld"><input id="providerEndpoint" type="url" placeholder="https://api.example.com/v1" /></label><label class="fld"><input id="providerModel" type="text" placeholder="Default model (optional)" /></label></div><div class="row"><label class="fld"><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="API key (stored securely; leave blank to keep)" /></label><button id="providerSave" type="button">Save profile</button></div><div id="providerStatus" class="lan-info">Ollama uses the current local or configured runtime. API keys are kept in the OS credential store.</div></div>
       <div class="fld"><span>Inference runtime</span><div class="row"><label class="fld"><select id="runtimeSel"><option value="ollama">Local Ollama</option><option value="exo">Exo cluster</option><option value="llamacpp">llama.cpp RPC (2-PC VRAM pool)</option></select></label><label class="fld"><input id="exoUrl" type="url" placeholder="http://192.168.50.1:52415" /></label><button id="exoCheck" type="button">Test Exo</button></div><div id="exoStatus" class="lan-info">Local Ollama runs on this device. Exo connects to a separately running cluster coordinator.</div>
         <div id="llamaCppFields" style="display:none">
@@ -868,7 +926,7 @@
         </div>
       </div>
       <div class="fld"><span>Ollama local model library</span><div class="proj-row"><button id="cloudModelsRefresh" type="button">Refresh download list</button><span id="cloudModelsInfo" class="lan-info"></span></div><div class="lan-info">Shows locally downloadable Ollama models. Models already installed on this device stay out of the list.</div></div>
-      <div class="fld"><span>Appearance</span><div class="swatches" id="swatches"></div></div>
+      <div class="fld appearance-section"><span>Appearance</span><p class="settings-copy">Choose a base theme, then set one identity colour. Every surface and label follows the same theme tokens.</p>
       <div class="row">
         <label class="fld"><span>Theme</span>
           <select id="themeSel"><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="paper">Paper</option></select>
@@ -883,7 +941,11 @@
           <select id="fontSel"><option value="system">System Sans</option><option value="humanist">Segoe UI</option><option value="mono">Cascadia Mono</option><option value="serif">Georgia</option></select>
         </label>
       </div>
-      <div class="fld"><span>Palette</span><div class="appearance-grid"><label class="color-field">Accent <input id="accentColor" type="color" /></label><label class="color-field">Background <input id="backgroundColor" type="color" /></label><label class="color-field">Surface <input id="surfaceColor" type="color" /></label><label class="color-field">Text <input id="textColor" type="color" /></label></div><button class="palette-reset" id="paletteReset" type="button">Restore theme palette</button></div>
+      <div class="color-system" aria-label="Color system">
+        <div class="color-system-head"><div><strong>Accent colour</strong><span>Used for selection, focus, and primary actions.</span></div><span id="accentContrast" class="contrast-chip">Checking contrast…</span></div>
+        <div class="color-picker-row"><input id="accentColor" type="color" aria-label="Accent colour" /><label class="hex-field"><span>#</span><input id="accentHex" type="text" inputmode="text" maxlength="7" autocomplete="off" spellcheck="false" aria-label="Accent colour hex code" /></label><button class="palette-reset" id="paletteReset" type="button">Reset</button></div>
+        <details class="appearance-advanced"><summary>Advanced surface tuning</summary><p>Only change these when you want a custom theme. Axon keeps text, borders, and controls tied to them.</p><div class="appearance-grid"><label class="color-field"><span>Background</span><input id="backgroundColor" type="color" /><input id="backgroundHex" type="text" maxlength="7" aria-label="Background hex code" /></label><label class="color-field"><span>Surface</span><input id="surfaceColor" type="color" /><input id="surfaceHex" type="text" maxlength="7" aria-label="Surface hex code" /></label><label class="color-field"><span>Text</span><input id="textColor" type="color" /><input id="textHex" type="text" maxlength="7" aria-label="Text hex code" /></label></div></details>
+      </div></div>
       <div class="fld"><span>Default workspace</span>
         <div class="proj-row">
           <input id="workspacePath" type="text" readonly aria-label="Default workspace path" />
