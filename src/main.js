@@ -323,6 +323,16 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // Frameless Electron windows do not reliably inherit Chromium's browser
+  // zoom shortcuts. Keep this scoped to Axon's shell (not the agent browser).
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || !(input.control || input.meta)) return;
+    const key = String(input.key || '').toLowerCase();
+    const level = win.webContents.getZoomLevel();
+    if (key === '+' || key === '=' || key === 'add') { event.preventDefault(); win.webContents.setZoomLevel(Math.min(5, level + 0.5)); }
+    else if (key === '-' || key === '_' || key === 'subtract') { event.preventDefault(); win.webContents.setZoomLevel(Math.max(-5, level - 0.5)); }
+    else if (key === '0' || key === 'num0') { event.preventDefault(); win.webContents.setZoomLevel(0); }
+  });
   if (!app.isPackaged) {
     win.webContents.on('console-message', (_event, details) => {
       console.error(`[renderer:${details.level}] ${details.sourceId}:${details.lineNumber} ${details.message}`);
