@@ -1570,7 +1570,8 @@ async function startMessage(entry) {
   activeTurns.set(requestId, turn);
   renderRecents(); syncComposerState();
   const provider = settings.providerProfiles.find((profile) => profile.id === (conv.providerProfileId || entry.providerProfileId)) || currentProviderProfile();
-  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, productMode: conv.productMode || entry.productMode, provider, mode: settings.permissionMode, grants: conv.grants || [] });
+  const history = (conv.turns || []).filter((turn) => turn && (turn.role === 'user' || turn.role === 'assistant') && typeof turn.content === 'string').slice(-40).map((turn) => ({ role: turn.role, content: turn.content }));
+  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, productMode: conv.productMode || entry.productMode, provider, mode: settings.permissionMode, grants: conv.grants || [], history });
   if (!result?.ok) {
     const failed = activeTurns.get(requestId);
     if (failed) { failed.turnEl.classList.add('error'); failed.streamEl.innerHTML = '<div class="block text">[error] ' + esc(result?.error || 'Could not start this chat.') + '</div>'; activeTurns.delete(requestId); renderRecents(); syncComposerState(); }

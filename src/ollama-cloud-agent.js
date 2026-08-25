@@ -40,10 +40,11 @@ function command(command, cwd) {
   });
 }
 
-async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, systemPrompt, cwd, permissionMode, productMode, send, holder, browser, allowDelegation = productMode === 'agent', onSubagent }) {
+async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history = [], systemPrompt, cwd, permissionMode, productMode, send, holder, browser, allowDelegation = productMode === 'agent', onSubagent }) {
   const sid = sessionId || crypto.randomUUID();
   const previous = sessions.get(sid);
-  const messages = previous ? [...previous, { role: 'user', content: prompt }] : [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, { role: 'user', content: prompt }];
+  const recovered = Array.isArray(history) ? history.filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string').slice(-40) : [];
+  const messages = previous ? [...previous, { role: 'user', content: prompt }] : [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, ...recovered, { role: 'user', content: prompt }];
   for (let turn = 0; turn < 12; turn++) {
     const response = await request(endpoint, { model, messages, tools: allowDelegation ? [...tools, delegateTool] : tools, stream: false }, holder);
     const message = response.message || {};

@@ -819,7 +819,7 @@ function safeImages(value) {
   }
   return images;
 }
-ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, productMode, provider, mode, grants }) => {
+ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, productMode, provider, mode, grants, history }) => {
   if (!requestId || typeof requestId !== 'string') return { ok: false, error: 'Missing chat request ID.' };
   const expanded = String(prompt || '').trim();
   if (!expanded) return { ok: false, error: 'Enter a message first.' };
@@ -840,7 +840,7 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   const run = selectedMode === 'chat'
     ? runDirectChat(model, expanded, sessionId, send, bound.systemPrompt, holder, usableImages, provider)
     : isOllamaCloudModel(model, provider)
-      ? runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model, prompt: expanded, sessionId, systemPrompt: bound.systemPrompt, cwd: cwd || ensureDefaultWorkspace(), permissionMode: permission, productMode: selectedMode, send, holder, browser: { open: revealBrowser, read: readBrowser }, onSubagent: (agent) => win?.webContents.send('subagent-update', agent) })
+      ? runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model, prompt: expanded, sessionId, history, systemPrompt: bound.systemPrompt, cwd: cwd || ensureDefaultWorkspace(), permissionMode: permission, productMode: selectedMode, send, holder, browser: { open: revealBrowser, read: readBrowser }, onSubagent: (agent) => win?.webContents.send('subagent-update', agent) })
         .then((cloudSessionId) => send('chat-done', { sessionId: cloudSessionId, ok: true }), (error) => { send('chat-error', error.message); send('chat-done', { sessionId: sessionId || null, ok: false }); })
     : runAxonTerminal(model, expanded, sessionId, send, bound.systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider, bound.report);
   run
