@@ -1,5 +1,5 @@
 // Electron main: tray + window + Ollama lifecycle + native Axon chat and terminal modes.
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView, safeStorage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView, safeStorage, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -63,6 +63,7 @@ async function listActiveModels() {
 const UPDATE_REPOSITORY = process.env.AXON_UPDATE_REPOSITORY || 'Iyadobo/Axon';
 
 let tray = null, win = null, ollamaProc = null, browserPanel = null, browserBridge = null, browserBridgeEndpoint = '', browserBridgeToken = '', isQuitting = false;
+let updateCheckTimer = null, announcedUpdateVersion = null;
 let trayLabel = 'Axon: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
@@ -323,6 +324,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  win.webContents.once('did-finish-load', () => startBackgroundUpdateChecks());
   // Frameless Electron windows do not reliably inherit Chromium's browser
   // zoom shortcuts. Keep this scoped to Axon's shell (not the agent browser).
   win.webContents.on('before-input-event', (event, input) => {
@@ -989,6 +991,28 @@ async function checkForAppUpdate() {
   availableRelease = available ? { version, installer: installer.browser_download_url, checksum: checksum.browser_download_url, name: installer.name, bytes: Number(installer.size) || 0 } : null;
   return { current, version, available, bytes: Number(installer.size) || 0 };
 }
+async function runBackgroundUpdateCheck() {
+  try {
+    const update = await checkForAppUpdate();
+    win?.webContents.send('app-update-status', update);
+    if (!update.available) return;
+    win?.webContents.send('app-update-available', update);
+    if (announcedUpdateVersion === update.version) return;
+    announcedUpdateVersion = update.version;
+    if (Notification.isSupported()) {
+      const notice = new Notification({ title: 'Axon update ready', body: `Axon ${update.version} is ready to download.` });
+      notice.on('click', () => { if (win) { win.show(); win.focus(); } });
+      notice.show();
+    }
+  } catch {
+    // Background checks should never interrupt work. Manual checks still show the error.
+  }
+}
+function startBackgroundUpdateChecks() {
+  if (updateCheckTimer) return;
+  setTimeout(() => runBackgroundUpdateCheck(), 6000);
+  updateCheckTimer = setInterval(runBackgroundUpdateCheck, 6 * 60 * 60 * 1000);
+}
 async function downloadAppUpdate() {
   const release = availableRelease || (await checkForAppUpdate(), availableRelease);
   if (!release) throw new Error('Axon is already up to date.');
@@ -1340,6 +1364,7 @@ app.whenReady().then(async () => {
 });
 app.on('before-quit', () => {
   isQuitting = true;
+  if (updateCheckTimer) clearInterval(updateCheckTimer);
   if (ollamaProc && !ollamaProc.killed) ollamaProc.kill();
   if (llamaCppHostProc && !llamaCppHostProc.killed) llamaCppHostProc.kill();
   if (llamaCppWorkerProc && !llamaCppWorkerProc.killed) llamaCppWorkerProc.kill();

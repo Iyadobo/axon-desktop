@@ -101,6 +101,29 @@ const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', ki
 const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
+let localProfile = null;
+function normalizeLocalProfile(value) {
+  const name = typeof value?.name === 'string' ? value.name.trim().replace(/\s+/g, ' ').slice(0, 48) : '';
+  return name ? { name } : null;
+}
+function renderLocalProfile() {
+  const name = localProfile?.name || 'Set up local profile';
+  $('localProfileName').textContent = name;
+  $('localProfileInitial').textContent = localProfile ? name.slice(0, 1).toUpperCase() : '?';
+  $('localProfileNote').textContent = localProfile ? 'Local only · click to edit' : 'Stored only on this device';
+  $('localProfile').setAttribute('aria-label', localProfile ? 'Edit local profile' : 'Set up local profile');
+}
+function openLocalProfile() {
+  $('localProfileInput').value = localProfile?.name || '';
+  $('localProfileModal').classList.add('show');
+  setTimeout(() => $('localProfileInput').focus(), 0);
+}
+function closeLocalProfile() { $('localProfileModal').classList.remove('show'); }
+function saveLocalProfile() {
+  const name = String($('localProfileInput').value || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+  if (!name) { $('localProfileInput').focus(); return; }
+  localProfile = { name }; saveState('ouserProfile', localProfile); renderLocalProfile(); closeLocalProfile();
+}
 function loadSettings() {
   try {
     const saved = persisted.osettings || {};
@@ -512,8 +535,10 @@ function clearAttachments() { attachments = []; renderAttach(); }
 
 // ---- status ----------------------------------------------------------------
 function setStatus(ok, text) {
-  $('dot').className = 'dot' + (ok ? ' on' : text ? ' bad' : '');
-  $('statustext').textContent = text;
+  const dot = $('dot');
+  const statusText = $('statustext');
+  if (dot) dot.className = 'dot' + (ok ? ' on' : text ? ' bad' : '');
+  if (statusText) statusText.textContent = text;
 }
 function setLoading(text, done = false) {
   const splash = $('loading'); if (!splash) return;
@@ -1806,7 +1831,11 @@ $('workWorkspace').onclick = () => setWorkspace('work');
 $('recents-label').onclick = openSettings;
 $('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
 document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
-$('sidebarUpdate').onclick = () => { openSettings(); $('appUpdateBtn').click(); };
+$('localProfile').onclick = openLocalProfile;
+$('localProfileClose').onclick = closeLocalProfile;
+$('localProfileModal').onclick = (event) => { if (event.target === $('localProfileModal')) closeLocalProfile(); };
+$('localProfileSave').onclick = saveLocalProfile;
+$('localProfileInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); saveLocalProfile(); } });
 $('modelsBrowse').onclick = openModelDownloads;
 $('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
@@ -1854,20 +1883,37 @@ async function refreshAppInfo() {
   const info = await window.ollama.appInfo();
   $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Axon Terminal', info.dependencies.axon), describeDependency('Node', info.dependencies.node)].join(' · ');
 }
-$('appUpdateBtn').onclick = async () => {
-  const button = $('appUpdateBtn'); button.disabled = true; $('maintenanceInfo').textContent = 'Checking for an Axon update…';
+let availableAppUpdate = null;
+function showUpdateToast(update) {
+  availableAppUpdate = update;
+  $('profileUpdateBadge').hidden = false;
+  $('updateToastTitle').textContent = 'Axon ' + update.version + ' is ready';
+  $('updateToastBody').textContent = 'A verified update is ready to download.';
+  $('updateToast').classList.add('show');
+}
+function showAvailableUpdate(update) {
+  availableAppUpdate = update;
+  $('profileUpdateBadge').hidden = false;
+  $('maintenanceInfo').textContent = 'Axon v' + update.version + ' is ready to download.';
+  showUpdateDialog('Axon ' + update.version + ' is ready', 'Download the verified Windows installer now? Axon checks its SHA-256 before it can open.', [
+    { label: 'Later', run: () => {} },
+    { label: 'Download and install', primary: true, onStart: () => { $('updateBody').textContent = 'Downloading Axon ' + update.version + '…\n\nThis can take a minute. The installer is verified before Windows is allowed to open it.'; }, run: async () => { const file = await window.ollama.downloadAppUpdate(); if (file?.error) return file; return window.ollama.openUpdateInstaller(file.path); } },
+  ]);
+}
+async function checkAppUpdate({ manual = false } = {}) {
+  const button = $('appUpdateBtn'); if (manual) { button.disabled = true; $('maintenanceInfo').textContent = 'Checking for an Axon update…'; }
   try {
     const update = await window.ollama.checkAppUpdate();
     if (update?.error) { $('maintenanceInfo').textContent = 'Update check failed: ' + update.error; return; }
     if (!update.available) { $('maintenanceInfo').textContent = 'Axon is up to date (v' + update.current + ').'; return; }
-    $('maintenanceInfo').textContent = 'Axon v' + update.version + ' is ready to download.';
-    showUpdateDialog('Axon ' + update.version + ' is ready', 'Download the verified Windows installer now? Axon checks its SHA-256 before it can open.', [
-      { label: 'Later', run: () => {} },
-      { label: 'Download and install', primary: true, onStart: () => { $('updateBody').textContent = 'Downloading Axon ' + update.version + '…\n\nThis can take a minute. The installer is verified before Windows is allowed to open it.'; }, run: async () => { const file = await window.ollama.downloadAppUpdate(); if (file?.error) return file; return window.ollama.openUpdateInstaller(file.path); } },
-    ]);
+    showUpdateToast(update); if (manual) showAvailableUpdate(update);
   } catch (error) { $('maintenanceInfo').textContent = 'Update check failed: ' + (error?.message || 'Unknown error'); }
-  finally { button.disabled = false; }
-};
+  finally { if (manual) button.disabled = false; }
+}
+$('appUpdateBtn').onclick = () => checkAppUpdate({ manual: true });
+window.ollama.on('app-update-available', (update) => { if (update?.available) showUpdateToast(update); });
+$('updateToastAction').onclick = () => { $('updateToast').classList.remove('show'); if (availableAppUpdate) showAvailableUpdate(availableAppUpdate); };
+$('updateToastDismiss').onclick = () => $('updateToast').classList.remove('show');
 window.ollama.on('app-update-progress', (p) => {
   const status = 'Downloading Axon update: ' + Math.min(100, Math.round(p.received / p.total * 100)) + '%';
   $('maintenanceInfo').textContent = status;
@@ -1888,6 +1934,7 @@ let lanClientConnected = false;
 let lanServerOn = false;
 function setModeBadge() {
   const badge = $('lanModeBadge');
+  if (!badge) return;
   badge.className = 'mode-badge' + (lanServerOn ? ' host' : (lanClientConnected ? ' client' : ''));
   badge.textContent = lanServerOn ? 'Host' : (lanClientConnected ? 'Client' : 'Local');
 }
@@ -2078,7 +2125,7 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.ollama.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels', 'ouserProfile']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;
@@ -2089,6 +2136,7 @@ function refreshGridColor() {
     window.ollama.saveState(persisted).catch(() => {});
   } catch {}
   loadSettings();
+  localProfile = normalizeLocalProfile(persisted.ouserProfile); renderLocalProfile();
   loadProjects();
   defaultWorkspace = await window.ollama.ensureWorkspace();
   if (persisted.oworkspace !== defaultWorkspace) saveState('oworkspace', defaultWorkspace);
@@ -2103,11 +2151,16 @@ function refreshGridColor() {
   renderRecents();
   updateProjectLabel();
   refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
-  try { renderLanDevices(await window.ollama.lanRefresh()); } catch {}
   if ($('lanServerChk').checked) window.ollama.lanServer(true);
-  await loadModels();
   // Restore last active view
   const savedView = persisted.oactiveView || 'chat';
   if (savedView !== 'chat') switchView(savedView);
   setLoading('Ready', true);
+  if (!localProfile) setTimeout(openLocalProfile, 260);
+  // Open the workspace first. LAN discovery and local model inventory can be
+  // slow on first launch, so let them hydrate without blocking the UI.
+  setTimeout(async () => {
+    try { renderLanDevices(await window.ollama.lanRefresh()); } catch {}
+    try { await loadModels(); } catch {}
+  }, 0);
 })();

@@ -85,8 +85,25 @@
     text-overflow:ellipsis; border-radius:8px; cursor:pointer; }
   .recent:hover { background:var(--color-surface); opacity:1; }
   .recent.active { font-weight:800; color:var(--color-accent-700); opacity:1; }
-  .sidefoot { margin-top:auto; padding:10px 8px 4px; display:flex; align-items:center;
-    justify-content:space-between; font-size:12px; opacity:.55; }
+  .sidefoot { margin-top:auto; padding:10px 8px 4px; }
+  .local-profile { width:100%; min-height:48px; display:flex; align-items:center; gap:9px; padding:7px 8px; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--color-text); font:inherit; text-align:left; cursor:pointer; transition:background .16s ease, border-color .16s ease; }
+  .local-profile:hover { background:var(--color-surface); border-color:var(--color-divider); }
+  .local-profile:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
+  .local-avatar { width:28px; height:28px; display:grid; place-items:center; flex:none; border:1px solid color-mix(in srgb, var(--color-accent) 60%, var(--color-divider)); border-radius:50%; background:color-mix(in srgb, var(--color-accent) 14%, var(--color-bg)); color:var(--color-accent); font-size:12px; font-weight:800; text-transform:uppercase; }
+  .local-profile-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:1px; }
+  .local-profile-copy strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:750; }
+  .local-profile-copy small { color:var(--color-neutral); font-size:10px; }
+  .profile-update-badge { width:7px; height:7px; flex:none; border-radius:50%; background:var(--color-accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--color-accent) 14%, transparent); }
+  .profile-update-badge[hidden] { display:none; }
+  .update-toast { position:fixed; z-index:70; right:20px; bottom:20px; width:min(360px,calc(100vw - 40px)); display:none; gap:10px; align-items:center; padding:12px; border:1px solid color-mix(in srgb, var(--color-accent) 46%, var(--color-divider)); border-radius:10px; background:var(--color-surface); box-shadow:var(--shadow-2); }
+  .update-toast.show { display:flex; animation:toast-in .2s ease both; }
+  .update-toast-copy { min-width:0; flex:1; }
+  .update-toast strong, .update-toast span { display:block; }
+  .update-toast strong { font-size:13px; }.update-toast span { margin-top:2px; color:var(--color-neutral); font-size:11px; }
+  .update-toast button { min-height:32px; border:1px solid var(--color-divider); border-radius:7px; background:transparent; color:var(--color-text); font:inherit; font-size:11px; cursor:pointer; }
+  .update-toast .update-toast-action { padding:0 9px; border-color:var(--color-accent); color:var(--color-accent); }
+  .update-toast .update-toast-dismiss { width:30px; padding:0; color:var(--color-neutral); }
+  @keyframes toast-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
   .sidefoot .dot { width:6px; height:6px; border-radius:50%; background:var(--color-neutral);
     display:inline-block; margin-left:5px; }
   .sidefoot .dot.on { background:var(--color-accent); }
@@ -934,9 +951,9 @@
       <div id="modelsSidebarList" class="sidebar-empty">Loading models…</div>
     </div>
     <div class="sidefoot">
-      <span id="backend">Ollama 11434</span>
-      <span style="display:flex;align-items:center;gap:6px"><span id="lanModeBadge" class="mode-badge">Local</span><span id="statustext">starting</span><span class="dot" id="dot"></span></span>
-      <button id="sidebarUpdate" class="sidebar-update" type="button" title="Check for Axon updates" aria-label="Check for Axon updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M4 18v3h16v-3"/></svg></button>
+      <button id="localProfile" class="local-profile" type="button" aria-label="Set up local profile">
+        <span id="localProfileInitial" class="local-avatar">?</span><span class="local-profile-copy"><strong id="localProfileName">Set up local profile</strong><small id="localProfileNote">Stored only on this device</small></span><span id="profileUpdateBadge" class="profile-update-badge" hidden title="Update ready"></span>
+      </button>
     </div>
   </div>
 
@@ -1160,6 +1177,10 @@
 <div class="modal" id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
   <div class="update-dialog"><h3 id="updateTitle">Axon update</h3><p id="updateBody"></p><div class="buttons" id="updateButtons"></div></div>
 </div>
+<div class="modal" id="localProfileModal" role="dialog" aria-modal="true" aria-labelledby="localProfileTitle">
+  <div class="modal-card"><div class="modal-head"><h3 id="localProfileTitle">Local profile</h3><button class="x" id="localProfileClose" aria-label="Close">×</button></div><div class="modal-body"><label class="fld"><span>Name</span><input id="localProfileInput" type="text" maxlength="48" autocomplete="nickname" placeholder="What should Axon call you?" /><div class="lan-info">No password, account, or cloud sync. This name stays on this PC.</div></label><div class="update-actions"><button id="localProfileSave" class="primary" type="button">Save local profile</button></div></div></div>
+</div>
+<aside class="update-toast" id="updateToast" role="status" aria-live="polite"><div class="update-toast-copy"><strong id="updateToastTitle">Axon update ready</strong><span id="updateToastBody"></span></div><button id="updateToastAction" class="update-toast-action" type="button">Review</button><button id="updateToastDismiss" class="update-toast-dismiss" type="button" aria-label="Dismiss update notice">×</button></aside>
 <script src="model-logos.js"></script>
 <script src="app.js"></script>
 </body>
