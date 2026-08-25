@@ -698,9 +698,9 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
           // A few cloud models still reject one of the richer terminal tool
           // schemas. Keep the real cause in the UI, but make it actionable:
           // this is a per-model provider limitation, not a VRAM requirement.
-          const schemaRejected = /tools?\.[0-9]+\.function.*name.*required|tool schema/i.test(message);
+          const schemaRejected = /(?:tools?\.\d+\.function.*name.*required|name.*required.*tools?\.\d+\.function|tool schema)/i.test(message);
           send('chat-error', usingOllamaCloud && schemaRejected
-            ? `This Ollama Cloud model rejected Axon Terminal's tool schema. Try another Cloud coding model or use Chat for this task; your 8 GB GPU is not the problem. (${message})`
+            ? "Ollama Cloud rejected an Axon Terminal custom tool before the model could run. This is a protocol mismatch, not a VRAM or API-key issue. Chat works; Cloud Code and Work need Axon's native-function compatibility bridge."
             : message);
         }
       }
