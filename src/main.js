@@ -831,6 +831,7 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
     ? runDirectChat(model, expanded, sessionId, send, bound.systemPrompt, holder, usableImages, provider)
     : isOllamaCloudModel(model, provider)
       ? runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model, prompt: expanded, systemPrompt: bound.systemPrompt, cwd: cwd || ensureDefaultWorkspace(), permissionMode: permission, productMode: selectedMode, send, holder, browser: { open: revealBrowser, read: readBrowser } })
+        .then(() => send('chat-done', { sessionId: sessionId || null, ok: true }), (error) => { send('chat-error', error.message); send('chat-done', { sessionId: sessionId || null, ok: false }); })
     : runAxonTerminal(model, expanded, sessionId, send, bound.systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider, bound.report);
   run
     .catch((e) => send('chat-error', e.message))

@@ -77,8 +77,12 @@ function syncWorkspaceShell() {
 }
 function setWorkspace(group) {
   settings.productMode = group === 'work' ? 'agent' : group === 'code' ? 'code' : 'chat';
-  syncProductMode(); saveSettings(); renderRecents();
+  syncProductMode();
+  const remembered = settings.activeConversationIds?.[group];
+  activeId = conversations.some((chat) => chat.id === remembered && workspaceGroup(chat.productMode || 'chat') === group) ? remembered : null;
+  saveSettings(); renderRecents();
   if (activeView !== 'chat') switchView('chat');
+  if (activeId) openConv(activeId); else newChat();
 }
 
 // ---- settings / appearance --------------------------------------------------
@@ -95,7 +99,7 @@ const FONT_STACKS = {
   serif: 'Georgia, "Times New Roman", serif',
 };
 const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', kind: 'ollama', endpoint: '', model: '', credentialId: '' };
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local' };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
 function loadSettings() {
@@ -107,6 +111,7 @@ function loadSettings() {
     else if (!saved.colors && saved.accent) settings.colors.accent = saved.accent;
     settings.accent = settings.colors.accent;
     settings.providerProfiles = Array.isArray(saved.providerProfiles) && saved.providerProfiles.length ? saved.providerProfiles.map((profile) => ({ ...DEFAULT_PROVIDER, ...profile, credentialId: profile.credentialId || '' })) : [{ ...DEFAULT_PROVIDER }];
+    settings.activeConversationIds = saved.activeConversationIds && typeof saved.activeConversationIds === 'object' ? saved.activeConversationIds : {};
     if (!settings.providerProfiles.some((profile) => profile.id === settings.activeProviderProfileId)) settings.activeProviderProfileId = settings.providerProfiles[0].id;
   } catch {}
 }
@@ -1027,6 +1032,7 @@ function openConv(id) {
   const conv = conversations.find((c) => c.id === id);
   if (!conv) return;
   activeId = id;
+  settings.activeConversationIds[workspaceGroup(conv.productMode || 'chat')] = id; saveSettings();
   const convMode = ['chat', 'code', 'agent'].includes(conv.productMode) ? conv.productMode : 'chat';
   if (settings.productMode !== convMode) { settings.productMode = convMode; syncProductMode(); saveSettings(); }
   if (conv.model && [...$('model').options].some((o) => o.value === conv.model)) $('model').value = conv.model;
@@ -1063,7 +1069,7 @@ function showChatView() {
   $('chat').classList.add('show');
   $('composerSlot').appendChild($('composerCard'));
 }
-function newChat() { activeId = null; $('log').innerHTML = ''; showHomeView(); renderRecents(); syncComposerState(); switchView('chat'); }
+function newChat() { activeId = null; settings.activeConversationIds[workspaceGroup()] = null; saveSettings(); $('log').innerHTML = ''; showHomeView(); renderRecents(); syncComposerState(); switchView('chat'); }
 
 // ---- log helpers -----------------------------------------------------------
 function addUserTurn(text, images = [], persist = true) {
@@ -1548,7 +1554,7 @@ async function startMessage(entry) {
   if (conv && (conv.productMode || 'chat') !== entry.productMode) conv = null;
   if (!conv) {
     conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, productMode: entry.productMode, providerProfileId: entry.providerProfileId, ts: Date.now(), updatedAt: Date.now(), projectId: activeProjectId, turns: [] };
-    conversations.unshift(conv); activeId = conv.id; renderRecents();
+    conversations.unshift(conv); activeId = conv.id; settings.activeConversationIds[workspaceGroup(conv.productMode)] = conv.id; saveSettings(); renderRecents();
   }
   conv.updatedAt = Date.now(); saveConvs();
   const systemPrompt = projectSystemPrompt();
