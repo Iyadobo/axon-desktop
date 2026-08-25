@@ -840,7 +840,7 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   const run = selectedMode === 'chat'
     ? runDirectChat(model, expanded, sessionId, send, bound.systemPrompt, holder, usableImages, provider)
     : isOllamaCloudModel(model, provider)
-      ? runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model, prompt: expanded, sessionId, systemPrompt: bound.systemPrompt, cwd: cwd || ensureDefaultWorkspace(), permissionMode: permission, productMode: selectedMode, send, holder, browser: { open: revealBrowser, read: readBrowser } })
+      ? runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model, prompt: expanded, sessionId, systemPrompt: bound.systemPrompt, cwd: cwd || ensureDefaultWorkspace(), permissionMode: permission, productMode: selectedMode, send, holder, browser: { open: revealBrowser, read: readBrowser }, onSubagent: (agent) => win?.webContents.send('subagent-update', agent) })
         .then((cloudSessionId) => send('chat-done', { sessionId: cloudSessionId, ok: true }), (error) => { send('chat-error', error.message); send('chat-done', { sessionId: sessionId || null, ok: false }); })
     : runAxonTerminal(model, expanded, sessionId, send, bound.systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider, bound.report);
   run

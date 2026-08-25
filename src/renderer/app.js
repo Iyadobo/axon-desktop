@@ -1662,6 +1662,9 @@ $('chips').addEventListener('click', (e) => {
 
 // ---- native agent browser --------------------------------------------------
 let browserOpen = false;
+let subagentsOpen = false; const subagents = new Map();
+function renderSubagents() { const list = $('subagentsList'); list.innerHTML = ''; if (!subagents.size) { list.textContent = 'No delegated tasks yet.'; return; } for (const a of subagents.values()) { const card = document.createElement('div'); card.className = 'subagent-card'; card.innerHTML = '<strong>' + esc(a.task || 'Subagent task') + '</strong><div class="subagent-meta">' + esc(a.model || 'selected model') + ' · ' + esc(a.status || 'working') + '</div>' + (a.result ? '<div class="subagent-result">' + esc(a.result) + '</div>' : ''); list.appendChild(card); } }
+function setSubagentsOpen(open) { subagentsOpen = open; $('subagentsPanel').classList.toggle('show', open); $('subagentsToggle').classList.toggle('active', open); $('subagentsToggle').setAttribute('aria-expanded', String(open)); if (open) renderSubagents(); }
 function syncBrowserBounds() {
   if (!browserOpen) return;
   const r = $('browserSlot').getBoundingClientRect();
@@ -1678,6 +1681,7 @@ function openBrowserAt(url) {
   setBrowserOpen(true); $('browserUrl').value = url; window.ollama.browserNavigate(url);
 }
 $('browserToggle').onclick = () => setBrowserOpen(!browserOpen);
+$('subagentsToggle').onclick = () => setSubagentsOpen(!subagentsOpen); $('subagentsClose').onclick = () => setSubagentsOpen(false);
 $('windowMinimize').onclick = () => window.ollama.windowControl('minimize');
 $('windowMaximize').onclick = () => window.ollama.windowControl('maximize');
 $('windowClose').onclick = () => window.ollama.windowControl('close');
@@ -1689,6 +1693,7 @@ $('browserUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') open
 window.addEventListener('resize', () => requestAnimationFrame(syncBrowserBounds));
 window.ollama.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; });
 window.ollama.on('browser-invoked', (s) => { setBrowserOpen(true); if (s?.url) $('browserUrl').value = s.url; });
+window.ollama.on('subagent-update', (agent) => { const prior = subagents.get(agent.id) || {}; subagents.set(agent.id, { ...prior, ...agent }); setSubagentsOpen(true); renderSubagents(); });
 
 // attachments
 $('attachBtn').onclick = () => $('fileInput').click();

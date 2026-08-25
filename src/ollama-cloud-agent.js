@@ -40,7 +40,7 @@ function command(command, cwd) {
   });
 }
 
-async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, systemPrompt, cwd, permissionMode, productMode, send, holder, browser, allowDelegation = productMode === 'agent' }) {
+async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, systemPrompt, cwd, permissionMode, productMode, send, holder, browser, allowDelegation = productMode === 'agent', onSubagent }) {
   const sid = sessionId || crypto.randomUUID();
   const previous = sessions.get(sid);
   const messages = previous ? [...previous, { role: 'user', content: prompt }] : [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, { role: 'user', content: prompt }];
@@ -61,9 +61,10 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, systemP
         else if (fn === 'browser_read') result = await browser.read();
         else if (fn === 'delegate_task') {
           const childModel = typeof args.model === 'string' && args.model.trim() ? args.model.trim().slice(0, 160) : model;
+          const childId = crypto.randomUUID(); onSubagent?.({ id: childId, status: 'working', task: String(args.task || '').slice(0, 240), model: childModel, startedAt: Date.now() });
           let response = '';
-          await runOllamaCloudAgent({ endpoint, model: childModel, prompt: String(args.task || '').slice(0, 12000), systemPrompt: `${systemPrompt || ''}\n\nYou are a focused Axon subagent. Return concise findings to your parent.`, cwd, permissionMode, productMode: 'code', send: (kind, value) => { if (kind === 'chat-delta') response += value; }, holder: {}, browser, allowDelegation: false });
-          result = { model: childModel, response: response.slice(0, 16000) || '(subagent completed without a text summary)' };
+          try { await runOllamaCloudAgent({ endpoint, model: childModel, prompt: String(args.task || '').slice(0, 12000), systemPrompt: `${systemPrompt || ''}\n\nYou are a focused Axon subagent. Return concise findings to your parent.`, cwd, permissionMode, productMode: 'code', send: (kind, value) => { if (kind === 'chat-delta') response += value; }, holder: {}, browser, allowDelegation: false }); result = { model: childModel, response: response.slice(0, 16000) || '(subagent completed without a text summary)' }; onSubagent?.({ id: childId, status: 'completed', result: result.response, finishedAt: Date.now() }); }
+          catch (error) { onSubagent?.({ id: childId, status: 'failed', result: error.message, finishedAt: Date.now() }); throw error; }
         }
         else result = { error: `Unknown tool: ${fn}` };
       } catch (error) { result = { error: error.message }; }

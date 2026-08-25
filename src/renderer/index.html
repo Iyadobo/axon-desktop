@@ -826,6 +826,10 @@
   .turn.ai .stream { border-left-color:var(--color-accent); }
   .turn.user .bubble { border-radius:7px; background:color-mix(in srgb, var(--color-accent) 12%, var(--color-bg)); border-color:color-mix(in srgb, var(--color-accent) 38%, var(--axon-rule)); }
   #browserPanel { border-left:1px solid var(--axon-rule); background:color-mix(in srgb, var(--color-bg) 98%, var(--color-text)); }
+  #subagentsToggle { -webkit-app-region:no-drag; min-height:34px; padding:0 10px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font:750 12px inherit; cursor:pointer; }
+  #subagentsToggle.active { border-color:var(--color-accent); color:var(--color-accent); }
+  #subagentsPanel { position:absolute; z-index:11; top:0; right:0; bottom:0; width:min(390px,44vw); display:none; flex-direction:column; background:var(--color-bg); border-left:1px solid var(--axon-rule); }
+  #subagentsPanel.show { display:flex; } #subagentsList { padding:16px; overflow:auto; } .subagent-card { padding:12px; margin-bottom:10px; border:1px solid var(--axon-rule); border-radius:8px; } .subagent-card strong { display:block; margin-bottom:6px; } .subagent-meta { color:var(--color-neutral); font-size:12px; } .subagent-result { margin-top:8px; font-size:13px; white-space:pre-wrap; }
   .browserbar { min-height:54px; padding:9px; border-bottom:1px solid var(--axon-rule); }
 
   .ops-page-header { display:flex; align-items:end; justify-content:space-between; gap:22px; margin-bottom:30px; padding-bottom:18px; border-bottom:1px solid var(--axon-rule); }
@@ -869,7 +873,7 @@
   <div class="window-brand"><svg class="window-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="currentColor"/><circle cx="9" cy="12" r="2.3" fill="var(--color-bg)"/><path d="M10.8 10.8 16.5 5.5M11.2 12h7M10.8 13.2l5.7 5.3" stroke="var(--color-bg)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="window-title">Axon</span></div>
   <div class="window-spacer"></div>
   <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
-  <div class="title-actions"><button id="browserToggle" title="Open agent browser" aria-expanded="false"><span class="browser-toggle-kicker">Web</span><span class="browser-toggle-label">Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
+  <div class="title-actions"><button id="subagentsToggle" title="Open active subagents" aria-expanded="false">Agents</button><button id="browserToggle" title="Open agent browser" aria-expanded="false"><span class="browser-toggle-kicker">Web</span><span class="browser-toggle-label">Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
 </header>
 <div id="app">
   <div id="side">
@@ -968,6 +972,7 @@
       <div class="browserbar"><button id="browserBack" title="Back">←</button><button id="browserForward" title="Forward">→</button><button id="browserReload" title="Reload">↻</button><input id="browserUrl" aria-label="Browser address" placeholder="https://…" /><button id="browserClose" title="Close browser">×</button></div>
       <div id="browserSlot"></div>
     </aside>
+    <aside id="subagentsPanel" aria-label="Active subagents"><div class="browserbar"><strong>Subagents</strong><button id="subagentsClose" title="Close subagents">×</button></div><div id="subagentsList"></div></aside>
     </div><!-- /view-chat -->
     <div id="view-projects" class="view">
       <div class="view-scroll">
