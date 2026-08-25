@@ -343,6 +343,7 @@
   .sw input[type=color] { width:24px; height:24px; padding:0; border:none; background:none; cursor:pointer; border-radius:50%; }
   .proj-row { display:flex; align-items:center; gap:8px; }
   .proj-row input { flex:1; }
+  .modal-body button { color:var(--color-text); }
   .proj-row button { padding:7px 10px; border:1px solid var(--color-divider); background:var(--color-surface);
     border-radius:8px; cursor:pointer; font:inherit; font-size:12px; }
   .proj-row button:hover { border-color:var(--color-accent); color:var(--color-accent); }
@@ -805,6 +806,14 @@
   .workspace-tab.active::after { content:''; position:absolute; top:10px; left:13px; width:4px; height:4px; border-radius:50%; background:var(--color-accent); }
   .workspace-note { min-height:32px; padding:0 8px 10px; color:var(--axon-muted); font-size:11px; font-weight:650; letter-spacing:.05em; text-transform:uppercase; }
   #side.workspace-work .workspace-note { color:var(--color-accent); }
+  .swarm-launch { width:100%; min-height:42px; display:flex; align-items:center; gap:9px; margin:0 0 10px; padding:6px 9px; border:1px solid var(--axon-rule); border-radius:5px; background:var(--axon-soft); color:var(--color-text); font:inherit; text-align:left; cursor:pointer; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
+  .swarm-launch:hover { background:var(--axon-raised); border-color:color-mix(in srgb, var(--color-accent) 58%, var(--axon-rule)); transform:translateY(-1px); }
+  .swarm-launch:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
+  .swarm-launch img { width:27px; height:27px; flex:none; object-fit:contain; }
+  .swarm-launch-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:1px; }
+  .swarm-launch strong { font-size:13px; font-weight:780; letter-spacing:.01em; }
+  .swarm-launch small { color:var(--axon-muted); font-size:10px; font-weight:620; letter-spacing:.02em; }
+  .swarm-launch .swarm-arrow { color:var(--color-accent); font-size:17px; line-height:1; }
   .newchat { min-height:44px; margin:0 0 10px; padding:0 13px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font-size:14px; font-weight:700; }
   .newchat:hover { background:var(--axon-raised); border-color:color-mix(in srgb, var(--color-accent) 56%, var(--axon-rule)); color:var(--color-text); }
   .nav-bar { margin:0; padding:2px 0 12px; border-bottom:1px solid var(--axon-rule); }
@@ -828,6 +837,29 @@
   .hero-emblem { width:33px; height:39px; margin:0 0 18px; }
   #greet { max-width:720px; margin:0; font-size:clamp(30px, 3vw, 45px); letter-spacing:-.048em; line-height:1.08; text-wrap:balance; }
   #home .sub { margin:11px 0 28px; color:var(--axon-muted); font-size:16px; }
+  .swarm-controls { max-width:1080px; margin:0 0 16px; padding:14px; border:1px solid color-mix(in srgb, var(--color-accent) 38%, var(--axon-rule)); border-radius:9px; background:linear-gradient(105deg, color-mix(in srgb, var(--color-accent) 9%, var(--axon-soft)), var(--axon-soft) 38%); }
+  .swarm-controls[hidden] { display:none; }
+  .swarm-controls-head { display:flex; align-items:center; gap:11px; margin-bottom:12px; }
+  .swarm-controls-mark { width:32px; height:32px; object-fit:contain; }
+  .swarm-controls-copy { min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .swarm-controls-copy strong { font-size:14px; letter-spacing:.02em; }
+  .swarm-controls-copy small, .swarm-limit, .swarm-role-notice { color:var(--axon-muted); font-size:11px; line-height:1.45; }
+  .swarm-roles { display:grid; grid-template-columns:minmax(230px,1fr) minmax(230px,1fr) 126px; gap:9px; }
+  .swarm-role, .swarm-worker-field { min-height:130px; display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:12px; border:1px solid var(--axon-rule); border-radius:7px; background:color-mix(in srgb, var(--color-bg) 66%, transparent); }
+  .swarm-sentry-role { border-color:color-mix(in srgb, var(--color-accent) 55%, var(--axon-rule)); box-shadow:inset 2px 0 0 var(--color-accent); }
+  .swarm-role-kicker { color:var(--color-accent); font-size:10px; font-weight:820; letter-spacing:.09em; text-transform:uppercase; }
+  .swarm-role strong { font-size:13px; letter-spacing:.01em; }
+  .swarm-role small { min-height:31px; color:var(--axon-muted); font-size:11px; line-height:1.4; }
+  .swarm-role select { width:100%; min-height:34px; margin-top:auto; padding:0 8px; border:1px solid var(--axon-rule); border-radius:5px; background:var(--axon-raised); color:var(--color-text); font:inherit; font-size:12px; }
+  .swarm-role select:focus { border-color:var(--color-accent); outline:2px solid color-mix(in srgb, var(--color-accent) 20%, transparent); outline-offset:1px; }
+  .swarm-role select:disabled { cursor:not-allowed; color:var(--axon-muted); opacity:.8; }
+  .swarm-worker-field { justify-content:center; color:var(--color-text); font-size:12px; font-weight:740; }
+  .swarm-worker-field span { color:var(--axon-muted); font-size:10px; font-weight:820; letter-spacing:.08em; text-transform:uppercase; }
+  .swarm-worker-field input { width:100%; min-height:40px; padding:4px 8px; border:1px solid var(--axon-rule); border-radius:5px; background:var(--axon-raised); color:var(--color-text); font-size:18px; font-weight:700; text-align:center; }
+  .swarm-role-notice { margin-top:10px; padding-left:2px; }
+  #main[data-swarm="true"] #home .wrap { max-width:1080px; }
+  #main[data-swarm="true"] #greet { font-size:clamp(32px, 3.2vw, 48px); }
+  #main[data-swarm="true"] #composerCard { border-left:2px solid var(--color-accent); }
   #composerCard { max-width:none; border:1px solid var(--axon-rule); border-radius:9px; background:var(--axon-soft); box-shadow:none; }
   #composerCard:focus-within { border-color:color-mix(in srgb, var(--color-accent) 62%, var(--axon-rule)); box-shadow:0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent); }
   #prompt { min-height:70px; padding:19px 20px 12px; font-size:15px; }
@@ -886,7 +918,7 @@
   .empty-state { padding:22px; border:1px dashed var(--axon-rule); border-radius:7px; color:var(--axon-muted); font-size:14px; }
   .modal-card { border-radius:9px; box-shadow:0 28px 80px color-mix(in srgb, #000 48%, transparent); }
   @media (max-width:1050px) { #side { width:294px; } .window-brand { min-width:248px; } .view-scroll { padding:38px 34px; } #home .wrap { width:min(850px, calc(100% - 64px)); } }
-  @media (max-width:760px) { .title-recent { display:none; } #side { width:244px; padding:13px 10px; } .window-brand { min-width:auto; } .window-title { display:none; } #home .wrap { width:calc(100% - 40px); padding-top:48px; } .model-row { grid-template-columns:1fr auto; } .model-row .model-meta { display:none; } }
+  @media (max-width:760px) { .title-recent { display:none; } #side { width:244px; padding:13px 10px; } .window-brand { min-width:auto; } .window-title { display:none; } #home .wrap { width:calc(100% - 40px); padding-top:48px; } .swarm-roles { grid-template-columns:1fr; } .swarm-role, .swarm-worker-field { min-height:auto; } .model-row { grid-template-columns:1fr auto; } .model-row .model-meta { display:none; } }
 </style>
 </head>
 <body>
@@ -903,7 +935,7 @@
     <div class="brand"><img class="logo" src="../assets/icon.png" alt="Axon" /><span style="flex:1">Axon</span></div>
     <div class="workspace-switch" role="tablist" aria-label="Axon workspace">
       <button id="chatWorkspace" class="workspace-tab active" type="button" role="tab" aria-selected="true">
-        <img class="workspace-mark dendrite" src="../assets/axon-workspace-dendrite.png" alt="" />
+        <img class="workspace-mark dendrite" src="../assets/axon-workspace-dendrite-v2.png" alt="" />
         <span>Chat</span>
       </button>
       <button id="workWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">
@@ -915,6 +947,9 @@
         <span>Code</span>
       </button>
     </div>
+    <button id="swarmLaunch" class="swarm-launch" type="button">
+      <img src="../assets/axon-swarm-terminal.png" alt="" /><span class="swarm-launch-copy"><strong>Axon Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
+    </button>
     <div class="workspace-note" id="workspaceNote">Direct conversation · no tools</div>
     <div class="newchat" id="newchat"><span style="opacity:.6">+</span><span id="newChatLabel">New chat</span></div>
     <nav class="nav-bar" id="navBar">
@@ -965,6 +1000,20 @@
         <div class="hero-emblem"><img src="../assets/axon-nervous-system.png" alt="Axon nervous-system mark" /></div>
         <h1 id="greet">Good afternoon.</h1>
         <p class="sub">What are we working on?</p>
+        <section id="swarmControls" class="swarm-controls" hidden aria-label="Axon Swarm roles">
+          <div class="swarm-controls-head">
+            <img class="swarm-controls-mark" src="../assets/axon-swarm-terminal.png" alt="" />
+            <div class="swarm-controls-copy"><strong>Axon Swarm</strong><small>Independent workers report to one Sentry, which turns their findings into a single answer.</small></div>
+          </div>
+          <div class="swarm-roles">
+            <label class="swarm-role swarm-sentry-role"><span class="swarm-role-kicker">Sentry</span><strong>Manager + synthesis</strong><small>Receives every report, resolves conflicts, and returns the decision-ready answer.</small><select id="swarmSentryModel" aria-label="Sentry model"></select></label>
+            <label class="swarm-role"><span class="swarm-role-kicker">Workers</span><strong>Scout · Builder · Skeptic</strong><small>Parallel, read-only investigation lanes. All workers use this selected model.</small><select id="swarmWorkerModel" aria-label="Worker model"></select></label>
+            <label class="swarm-worker-field"><span>Parallel workers</span><input id="swarmCount" type="number" min="1" value="3" inputmode="numeric" /></label>
+          </div>
+          <div id="swarmRoleNotice" class="swarm-role-notice"></div>
+        </section>
+        <div id="swarmLimitInfo" class="swarm-limit" hidden></div>
+        <div id="swarmStatus" class="swarm-limit" hidden aria-live="polite"></div>
         <div id="composerCard" class="card">
           <div id="cmdlist"></div>
           <div id="attachRow"></div>

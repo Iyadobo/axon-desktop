@@ -733,6 +733,65 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
   });
 }
 
+// Swarm is deliberately a fan-out of independent, read-only workers. Parallel
+// writes in one checkout would be a race, so each worker investigates, plans,
+// or reviews and reports back through the existing live Agents panel.
+const activeSwarms = new Map();
+function swarmLimit(provider) { return (provider?.kind || 'ollama') === 'ollama' ? 3 : Infinity; }
+const SWARM_WORKER_LANES = [
+  'Scout: map the problem, unknowns, relevant evidence, and constraints.',
+  'Builder: develop a concrete implementation or execution approach.',
+  'Skeptic: look for risks, counterexamples, and verification steps.',
+];
+async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = [], workers, systemPrompt, cwd, provider }) {
+  const cap = swarmLimit(provider);
+  const count = Math.min(workers, cap);
+  const root = cwd || ensureDefaultWorkspace();
+  const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'agent', provider);
+  const group = { holders: new Map() }; activeSwarms.set(swarmId, group);
+  const emit = (update) => win?.webContents.send('subagent-update', { swarmId, ...update });
+  const runWorker = async (index) => {
+    const id = crypto.randomUUID(); const holder = {}; group.holders.set(id, holder);
+    const lane = SWARM_WORKER_LANES[index % SWARM_WORKER_LANES.length];
+    const task = `Axon Swarm worker ${index + 1} of ${count}. ${lane} Independently investigate this outcome. You are read-only: inspect, research, plan, review, and return concise actionable findings for the Sentry. Do not delegate and do not modify files.\n\nOutcome:\n${prompt}`;
+    let result = '', failure = '';
+    emit({ id, status: 'working', task: `Worker ${index + 1} · ${lane.split(':')[0]}`, model: workerModel, startedAt: Date.now() });
+    const send = (channel, value) => {
+      if (channel === 'chat-delta') result = (result + String(value || '')).slice(-16000);
+      if (channel === 'chat-error') failure = String(value || 'Worker failed.');
+    };
+    try {
+      if (isOllamaCloudModel(workerModel, provider)) {
+        await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: workerModel, prompt: task, systemPrompt: workerBound.systemPrompt, cwd: root, permissionMode: 'approve', productMode: 'code', send, holder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
+      } else {
+        await runAxonTerminal(workerModel, task, null, send, workerBound.systemPrompt, root, holder, images, 'approve', 'code', provider, workerBound.report);
+      }
+      const summary = failure || result || '(worker completed without a text summary)';
+      emit({ id, status: failure ? 'failed' : 'completed', result: summary, finishedAt: Date.now() });
+      return { lane, summary, failed: !!failure };
+    } catch (error) {
+      const summary = error.message; emit({ id, status: 'failed', result: summary, finishedAt: Date.now() }); return { lane, summary, failed: true };
+    } finally { group.holders.delete(id); }
+  };
+  emit({ id: swarmId, status: 'launching', task: `Axon Swarm · Sentry + ${count} workers`, model: sentryModel, startedAt: Date.now() });
+  const reports = await Promise.all(Array.from({ length: count }, (_, index) => runWorker(index)));
+  const sentryId = crypto.randomUUID(); const sentryHolder = {}; group.holders.set(sentryId, sentryHolder);
+  const sentryBound = await capabilityBoundPrompt(systemPrompt, sentryModel, 'agent', provider);
+  const brief = reports.map((report, index) => `Worker ${index + 1} (${report.lane}):\n${report.summary.slice(0, 6000)}`).join('\n\n');
+  const sentryTask = `You are the Axon Swarm Sentry. You manage the worker reports below. Reconcile disagreements, identify the strongest evidence, state remaining uncertainty, and return one concise, decision-ready plan for the original outcome. You are read-only: do not delegate or modify files.\n\nOriginal outcome:\n${prompt}\n\nWorker reports:\n${brief}`;
+  let sentryResult = '', sentryFailure = '';
+  emit({ id: sentryId, status: 'working', task: 'Sentry · synthesize worker reports', model: sentryModel, startedAt: Date.now() });
+  const sentrySend = (channel, value) => { if (channel === 'chat-delta') sentryResult = (sentryResult + String(value || '')).slice(-24000); if (channel === 'chat-error') sentryFailure = String(value || 'Sentry failed.'); };
+  try {
+    if (isOllamaCloudModel(sentryModel, provider)) await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: sentryModel, prompt: sentryTask, systemPrompt: sentryBound.systemPrompt, cwd: root, permissionMode: 'approve', productMode: 'code', send: sentrySend, holder: sentryHolder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
+    else await runAxonTerminal(sentryModel, sentryTask, null, sentrySend, sentryBound.systemPrompt, root, sentryHolder, [], 'approve', 'code', provider, sentryBound.report);
+    emit({ id: sentryId, status: sentryFailure ? 'failed' : 'completed', result: sentryFailure || sentryResult || '(Sentry completed without a text summary)', finishedAt: Date.now() });
+  } catch (error) { emit({ id: sentryId, status: 'failed', result: error.message, finishedAt: Date.now() }); }
+  finally { group.holders.delete(sentryId); }
+  emit({ id: swarmId, status: 'completed', result: `Sentry and ${count} worker${count === 1 ? '' : 's'} finished. Open Agents to review the synthesis.`, finishedAt: Date.now() });
+  activeSwarms.delete(swarmId);
+}
+
 // ---- IPC ------------------------------------------------------------------
 ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await listActiveModels()));
 ipcMain.handle('model-capabilities', async (_e, { model, productMode, provider }) => resolveModelCapabilities(model, productMode, provider));
@@ -849,6 +908,20 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
     .catch((e) => send('chat-error', e.message))
     .finally(() => localHolders.delete(requestId));
   return { ok: true };
+});
+ipcMain.handle('swarm-start', async (_e, { sentryModel, workerModel, prompt, images, workers, systemPrompt, cwd, provider }) => {
+  const outcome = String(prompt || '').trim();
+  const requested = Number(workers);
+  if (!outcome) return { ok: false, error: 'Describe the outcome for the swarm.' };
+  if (!Number.isSafeInteger(requested) || requested < 1) return { ok: false, error: 'Choose at least one worker.' };
+  const kind = provider?.kind || 'ollama';
+  if (!['ollama', 'responses', 'openai-compatible'].includes(kind)) return { ok: false, error: 'Choose a supported provider profile before launching a swarm.' };
+  const count = Math.min(requested, swarmLimit(provider));
+  const swarmId = crypto.randomUUID();
+  const fallbackModel = String(workerModel || sentryModel || '').slice(0, 160);
+  runSwarm({ swarmId, sentryModel: String(sentryModel || fallbackModel).slice(0, 160), workerModel: fallbackModel, prompt: outcome.slice(0, 12000), images: safeImages(images), workers: count, systemPrompt, cwd, provider })
+    .catch((error) => win?.webContents.send('subagent-update', { id: swarmId, swarmId, status: 'failed', task: 'Axon Swarm', result: error.message, finishedAt: Date.now() }));
+  return { ok: true, swarmId, requested, count, capped: count !== requested, cap: Number.isFinite(swarmLimit(provider)) ? swarmLimit(provider) : null };
 });
 ipcMain.handle('chat-stop', (_e, requestId) => {
   if (!requestId) return false;
@@ -1075,7 +1148,7 @@ function safeInstallerName(name) { return path.basename(String(name || '')).repl
 function installerExtensions() { return process.platform === 'win32' ? ['exe'] : process.platform === 'linux' ? ['AppImage', 'deb'] : []; }
 function releaseInstallerNames(version) {
   if (process.platform === 'win32') return [`Axon-Setup-${version}.exe`];
-  if (process.platform === 'linux') return [`Axon-${version}.AppImage`, `Axon_${version}_amd64.deb`];
+  if (process.platform === 'linux') return [`Axon_${version}_amd64.deb`, `Axon-${version}.AppImage`];
   return [];
 }
 async function hashFile(file) {

@@ -25,6 +25,7 @@ function currentTurn() { return activeId ? [...activeTurns.values()].find((turn)
 
 // ---- view switching --------------------------------------------------------
 let activeView = 'chat';
+let swarmMode = false, swarmLaunching = false;
 function switchView(viewName) {
   if (viewName === 'settings') { openSettings(); return; }
   activeView = viewName;
@@ -75,6 +76,7 @@ function syncWorkspaceShell() {
   chips.forEach((chip, index) => { chip.textContent = labels[index] || chip.textContent; });
 }
 function setWorkspace(group) {
+  swarmMode = false; $('main')?.removeAttribute('data-swarm'); $('swarmControls').hidden = true; $('swarmLimitInfo').hidden = true; $('swarmStatus').hidden = true; $('swarmLaunch')?.classList.remove('active');
   settings.productMode = group === 'work' ? 'agent' : group === 'code' ? 'code' : 'chat';
   syncProductMode();
   const remembered = settings.activeConversationIds?.[group];
@@ -123,6 +125,59 @@ function saveLocalProfile() {
   const name = String($('localProfileInput').value || '').trim().replace(/\s+/g, ' ').slice(0, 48);
   if (!name) { $('localProfileInput').focus(); return; }
   localProfile = { name }; saveState('ouserProfile', localProfile); renderLocalProfile(); closeLocalProfile();
+}
+function swarmProviderLimit() { return (currentProviderProfile()?.kind || 'ollama') === 'ollama' ? 3 : null; }
+function swarmSelectableModels() {
+  const provider = currentProviderProfile();
+  const configured = String(provider?.model || '').trim();
+  // API profiles expose the configured model as their route. Keeping one choice
+  // here prevents a Sentry/worker pairing the backend cannot actually serve.
+  if (provider && provider.kind !== 'ollama' && configured) return [configured];
+  return [...new Set([configured, $('model')?.value, ...[...($('model')?.options || [])].map((option) => option.value)].filter(Boolean))];
+}
+function fillSwarmModelSelect(select, models, preferred) {
+  if (!select) return;
+  const current = models.includes(preferred) ? preferred : models[0] || '';
+  select.replaceChildren(...models.map((model) => { const option = document.createElement('option'); option.value = model; option.textContent = model; return option; }));
+  select.value = current;
+  select.disabled = models.length <= 1;
+}
+function syncSwarmRoles() {
+  const models = swarmSelectableModels();
+  const sentry = $('swarmSentryModel'); const workers = $('swarmWorkerModel');
+  const oldSentry = sentry?.value || $('model')?.value;
+  const oldWorkers = workers?.value || $('model')?.value;
+  fillSwarmModelSelect(sentry, models, oldSentry);
+  fillSwarmModelSelect(workers, models, oldWorkers);
+  const notice = $('swarmRoleNotice');
+  if (models.length <= 1) notice.textContent = `${models[0] || 'The selected'} model is the only model exposed by this provider, so the Sentry and every worker reuse it.`;
+  else notice.textContent = 'Pick the Sentry that should arbitrate the result; workers share one model so their parallel findings stay comparable.';
+  syncSwarmLimit();
+}
+function syncSwarmLimit() {
+  const limit = swarmProviderLimit(); const input = $('swarmCount');
+  if (limit) { input.max = String(limit); if (Number(input.value) > limit) input.value = String(limit); $('swarmLimitInfo').textContent = 'Ollama routes allow up to 3 concurrent workers.'; }
+  else { input.removeAttribute('max'); $('swarmLimitInfo').textContent = 'This provider has no Axon concurrency cap; its API limits still apply.'; }
+}
+function openSwarm() {
+  swarmMode = true; activeId = null; $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = false; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
+  showHomeView(); $('greet').textContent = 'What should the swarm take on?'; document.querySelector('#home .sub')?.replaceChildren('Give Axon one outcome. Independent workers will investigate it in parallel.'); document.querySelector('.home-hint')?.replaceChildren('Choose a model and attach the relevant files, then launch the swarm with the normal composer. Workers are read-only so they cannot collide in your workspace.');
+  const chips = [...document.querySelectorAll('#chips .chip')]; ['Explore approaches', 'Review a codebase', 'Research a topic', 'Compare options'].forEach((label, index) => { if (chips[index]) chips[index].textContent = label; });
+  syncSwarmRoles(); $('prompt').focus();
+}
+async function launchSwarm(entry) {
+  swarmLaunching = true; syncComposerState(); $('swarmStatus').textContent = 'Launching workers…';
+  try {
+    const provider = currentProviderProfile();
+    const selectable = swarmSelectableModels();
+    const sentryModel = $('swarmSentryModel').value || entry.model;
+    const workerModel = selectable.length <= 1 ? sentryModel : ($('swarmWorkerModel').value || entry.model);
+    const result = await window.ollama.swarmStart({ sentryModel, workerModel, prompt: entry.combined, images: entry.images, workers: Number($('swarmCount').value), systemPrompt: projectSystemPrompt(), cwd: projectCwd(), provider });
+    if (!result?.ok) throw new Error(result?.error || 'Could not launch the swarm.');
+    $('swarmStatus').textContent = result.capped ? `Ollama limited this swarm to ${result.count} workers.` : `${result.count} worker${result.count === 1 ? '' : 's'} launched.`;
+    setSubagentsOpen(true);
+  } catch (error) { $('swarmStatus').textContent = error.message || 'Could not launch the swarm.'; }
+  finally { swarmLaunching = false; syncComposerState(); }
 }
 function loadSettings() {
   try {
@@ -1524,10 +1579,11 @@ function saveDraft() { saveState('odraft', $('prompt').value.slice(0, 20000)); }
 function clearInput() { $('prompt').value = ''; saveDraft(); autosize(); }
 function syncComposerState() {
   const running = currentTurn();
-  const b = !!running;
-  $('send').textContent = b ? '■' : '→';
+  const b = !!running || swarmLaunching;
+  $('send').textContent = running ? '■' : swarmLaunching ? '…' : '→';
   $('send').className = running ? 'stop' : '';
-  $('send').title = running ? 'Stop this chat' : 'Send';
+  $('send').title = running ? 'Stop this chat' : swarmLaunching ? 'Launching swarm' : swarmMode ? 'Launch swarm' : 'Send';
+  $('send').disabled = swarmLaunching;
   $('steer').hidden = !running;
   $('steer').disabled = !running;
 }
@@ -1559,6 +1615,7 @@ async function send() {
   const text = $('prompt').value.trim();
   if (running) { const entry = takeComposerEntry(); if (entry) queueMessage(activeId, entry); return; }
   if (!text && !attachments.length) return;
+  if (swarmMode) { const entry = takeComposerEntry(); if (entry) await launchSwarm(entry); return; }
 
   // built-in REPL commands (handled app-side; they don't exist in headless -p)
   if (text === '/clear' || text === '/new') { clearInput(); clearAttachments(); newChat(); addSysNote('Started a new chat.'); showChatView(); scrollBottom(); return; }
@@ -1669,7 +1726,7 @@ $('steer').onclick = () => {
   queueMessage(activeId, entry, true); steering.add(requestId); window.ollama.steer(requestId);
 };
 $('newchat').onclick = () => newChat();
-$('model').onchange = () => { saveState('omodel', $('model').value); syncModelButton(); };
+$('model').onchange = () => { saveState('omodel', $('model').value); syncModelButton(); if (swarmMode) syncSwarmRoles(); };
 $('prompt').addEventListener('keydown', (e) => {
   if (cmdOpen) {
     if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(1); return; }
@@ -1792,7 +1849,7 @@ $('permissionModeButton').onclick = () => {
 };
 $('productModeSel').onchange = () => { settings.productMode = $('productModeSel').value; syncProductMode(); saveSettings(); };
 if ($('productModeButton')) $('productModeButton').onclick = () => { const modes = ['chat', 'code', 'agent']; settings.productMode = modes[(modes.indexOf(settings.productMode) + 1) % modes.length]; syncProductMode(); saveSettings(); };
-$('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); };
+$('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); if (swarmMode) syncSwarmRoles(); };
 $('providerNew').onclick = () => { const profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'New provider', kind: 'openai-compatible', endpoint: '', model: '', credentialId: '' }; settings.providerProfiles.push(profile); settings.activeProviderProfileId = profile.id; renderProviderProfiles(); };
 $('providerSave').onclick = saveProviderProfile;
 $('runtimeSel').onchange = () => { syncRuntimeFields(); selectRuntime(); };
@@ -1836,6 +1893,10 @@ $('localProfileClose').onclick = closeLocalProfile;
 $('localProfileModal').onclick = (event) => { if (event.target === $('localProfileModal')) closeLocalProfile(); };
 $('localProfileSave').onclick = saveLocalProfile;
 $('localProfileInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); saveLocalProfile(); } });
+$('swarmLaunch').onclick = openSwarm;
+$('swarmCount').oninput = syncSwarmLimit;
+$('swarmSentryModel').onchange = () => { if (swarmSelectableModels().length <= 1) $('swarmWorkerModel').value = $('swarmSentryModel').value; };
+$('swarmWorkerModel').onchange = () => { if (swarmSelectableModels().length <= 1) $('swarmSentryModel').value = $('swarmWorkerModel').value; };
 $('modelsBrowse').onclick = openModelDownloads;
 $('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;

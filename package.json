@@ -8,6 +8,7 @@
     "check": "node src/selfcheck.js",
     "dist:win": "electron-builder --win nsis",
     "dist:linux": "electron-builder --linux AppImage deb",
+    "dist:deb": "electron-builder --linux deb",
     "publish:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1"
   },
   "build": {
@@ -18,11 +19,8 @@
       "src/**",
       "package.json"
     ],
+    "afterPack": "scripts/after-pack.js",
     "extraResources": [
-      {
-        "from": "axon-terminal/codex-rs/target/release/axon.exe",
-        "to": "axon-terminal/axon.exe"
-      },
       {
         "from": "src/axon-browser-mcp.js",
         "to": "axon-browser-mcp.js"
@@ -43,7 +41,10 @@
       "artifactName": "Axon-${version}.${ext}"
     },
     "deb": {
-      "artifactName": "Axon_${version}_amd64.${ext}"
+      "artifactName": "Axon_${version}_amd64.${ext}",
+      "maintainer": "Axon contributors",
+      "synopsis": "Local-first AI workspace",
+      "description": "Axon is a local-first Chat, Code, and Work workspace powered by local models and its bundled Axon Terminal."
     },
     "nsis": {
       "oneClick": false,

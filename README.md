@@ -36,6 +36,26 @@ npm run dist:win
 
 `dist:win` bundles the release `axon.exe` plus the Axon Browser MCP script in the Windows installer.
 
+### Debian / Linux
+
+On Debian or Ubuntu, install the standard Electron build prerequisites, build the
+native Axon Terminal binary, then produce a Debian package:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential libgtk-3-dev libnss3-dev libasound2-dev libxss1 libxtst6 libnotify-dev libatspi2.0-dev libdrm-dev libgbm-dev
+cd axon-terminal/codex-rs
+cargo build --release -p codex-cli --bin axon
+cd ../..
+npm ci
+npm run dist:deb
+```
+
+The package is written to `dist/Axon_<version>_amd64.deb`. The packaging hook copies
+the Linux `axon` binary into the app resources and fails clearly if it has not been
+built, so Code and Work cannot ship as empty shells. `npm run dist:linux` still emits
+both the `.deb` and AppImage variants.
+
 ## Runtime design
 
 ```text
