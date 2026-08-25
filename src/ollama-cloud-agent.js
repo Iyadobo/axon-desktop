@@ -4,6 +4,8 @@
 const http = require('http');
 const https = require('https');
 const { spawn } = require('child_process');
+const crypto = require('crypto');
+const sessions = new Map();
 
 const tools = [
   { type: 'function', function: { name: 'run_command', description: 'Run a command in the current workspace. Inspect before changing files and verify changes.', parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] } } },
@@ -37,14 +39,16 @@ function command(command, cwd) {
   });
 }
 
-async function runOllamaCloudAgent({ endpoint, model, prompt, systemPrompt, cwd, permissionMode, productMode, send, holder, browser }) {
-  const messages = [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, { role: 'user', content: prompt }];
+async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, systemPrompt, cwd, permissionMode, productMode, send, holder, browser }) {
+  const sid = sessionId || crypto.randomUUID();
+  const previous = sessions.get(sid);
+  const messages = previous ? [...previous, { role: 'user', content: prompt }] : [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, { role: 'user', content: prompt }];
   for (let turn = 0; turn < 12; turn++) {
     const response = await request(endpoint, { model, messages, tools, stream: false }, holder);
     const message = response.message || {};
     if (message.content) send('chat-delta', message.content);
     const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    if (!calls.length) return true;
+    if (!calls.length) { sessions.set(sid, messages.concat(message).slice(-80)); return sid; }
     messages.push(message);
     for (const call of calls) {
       const fn = call.function?.name; const args = call.function?.arguments || {};
