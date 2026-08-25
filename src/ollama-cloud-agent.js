@@ -12,6 +12,7 @@ const tools = [
   { type: 'function', function: { name: 'browser_open', description: 'Open an http(s) page in the visible Axon Browser.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
   { type: 'function', function: { name: 'browser_read', description: 'Read visible page text and labelled controls from Axon Browser.', parameters: { type: 'object', properties: {} } } },
 ];
+const delegateTool = { type: 'function', function: { name: 'delegate_task', description: 'Delegate one bounded, independent subtask. It uses the current model unless model is explicitly supplied. Do not delegate tasks that need the parent conversation context.', parameters: { type: 'object', properties: { task: { type: 'string' }, model: { type: 'string', description: 'Optional Ollama model override.' } }, required: ['task'] } } };
 
 function request(url, body, holder) {
   return new Promise((resolve, reject) => {
@@ -39,12 +40,12 @@ function command(command, cwd) {
   });
 }
 
-async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, systemPrompt, cwd, permissionMode, productMode, send, holder, browser }) {
+async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, systemPrompt, cwd, permissionMode, productMode, send, holder, browser, allowDelegation = productMode === 'agent' }) {
   const sid = sessionId || crypto.randomUUID();
   const previous = sessions.get(sid);
   const messages = previous ? [...previous, { role: 'user', content: prompt }] : [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, { role: 'user', content: prompt }];
   for (let turn = 0; turn < 12; turn++) {
-    const response = await request(endpoint, { model, messages, tools, stream: false }, holder);
+    const response = await request(endpoint, { model, messages, tools: allowDelegation ? [...tools, delegateTool] : tools, stream: false }, holder);
     const message = response.message || {};
     if (message.content) send('chat-delta', message.content);
     const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
@@ -58,6 +59,12 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, systemP
         if (fn === 'run_command') result = permissionMode === 'approve' ? { error: 'Command execution needs Auto or Full permission in Axon.' } : await command(String(args.command || ''), cwd);
         else if (fn === 'browser_open') result = browser.open(args.url);
         else if (fn === 'browser_read') result = await browser.read();
+        else if (fn === 'delegate_task') {
+          const childModel = typeof args.model === 'string' && args.model.trim() ? args.model.trim().slice(0, 160) : model;
+          let response = '';
+          await runOllamaCloudAgent({ endpoint, model: childModel, prompt: String(args.task || '').slice(0, 12000), systemPrompt: `${systemPrompt || ''}\n\nYou are a focused Axon subagent. Return concise findings to your parent.`, cwd, permissionMode, productMode: 'code', send: (kind, value) => { if (kind === 'chat-delta') response += value; }, holder: {}, browser, allowDelegation: false });
+          result = { model: childModel, response: response.slice(0, 16000) || '(subagent completed without a text summary)' };
+        }
         else result = { error: `Unknown tool: ${fn}` };
       } catch (error) { result = { error: error.message }; }
       send('chat-step', { type: 'tool_result', result: typeof result === 'string' ? result : JSON.stringify(result).slice(0, 12000) });
