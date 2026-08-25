@@ -1,0 +1,66 @@
+// Native Ollama function-call loop used when Codex Responses freeform tools
+// are not accepted by an Ollama Cloud model.  It deliberately owns only the
+// standard tool protocol; the desktop shell still owns UI, browser and policy.
+const http = require('http');
+const https = require('https');
+const { spawn } = require('child_process');
+
+const tools = [
+  { type: 'function', function: { name: 'run_command', description: 'Run a command in the current workspace. Inspect before changing files and verify changes.', parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] } } },
+  { type: 'function', function: { name: 'browser_open', description: 'Open an http(s) page in the visible Axon Browser.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
+  { type: 'function', function: { name: 'browser_read', description: 'Read visible page text and labelled controls from Axon Browser.', parameters: { type: 'object', properties: {} } } },
+];
+
+function request(url, body, holder) {
+  return new Promise((resolve, reject) => {
+    const target = new URL('/api/chat', url);
+    const client = target.protocol === 'https:' ? https : http;
+    const payload = JSON.stringify(body);
+    const req = client.request(target, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (res) => {
+      let text = ''; res.setEncoding('utf8'); res.on('data', (part) => { text += part; });
+      res.on('end', () => { try { const data = JSON.parse(text); if (res.statusCode !== 200) throw new Error(data.error?.message || text || `Ollama returned ${res.statusCode}`); resolve(data); } catch (error) { reject(error); } });
+    });
+    holder.child = req; req.setTimeout(120000, () => req.destroy(new Error('Ollama Cloud timed out.'))); req.on('error', reject); req.end(payload);
+  });
+}
+
+function command(command, cwd) {
+  return new Promise((resolve) => {
+    const child = process.platform === 'win32'
+      ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', command], { cwd, windowsHide: true })
+      : spawn('/bin/sh', ['-lc', command], { cwd });
+    let output = ''; const add = (chunk) => { output = (output + chunk).slice(-32000); };
+    child.stdout.on('data', add); child.stderr.on('data', add);
+    const timer = setTimeout(() => child.kill(), 60000);
+    child.on('close', (code) => { clearTimeout(timer); resolve({ exitCode: code, output: output || '(no output)' }); });
+    child.on('error', (error) => { clearTimeout(timer); resolve({ error: error.message }); });
+  });
+}
+
+async function runOllamaCloudAgent({ endpoint, model, prompt, systemPrompt, cwd, permissionMode, productMode, send, holder, browser }) {
+  const messages = [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, { role: 'user', content: prompt }];
+  for (let turn = 0; turn < 12; turn++) {
+    const response = await request(endpoint, { model, messages, tools, stream: false }, holder);
+    const message = response.message || {};
+    if (message.content) send('chat-delta', message.content);
+    const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+    if (!calls.length) return true;
+    messages.push(message);
+    for (const call of calls) {
+      const fn = call.function?.name; const args = call.function?.arguments || {};
+      send('chat-step', { type: 'tool_call', fn, args });
+      let result;
+      try {
+        if (fn === 'run_command') result = permissionMode === 'approve' ? { error: 'Command execution needs Auto or Full permission in Axon.' } : await command(String(args.command || ''), cwd);
+        else if (fn === 'browser_open') result = browser.open(args.url);
+        else if (fn === 'browser_read') result = await browser.read();
+        else result = { error: `Unknown tool: ${fn}` };
+      } catch (error) { result = { error: error.message }; }
+      send('chat-step', { type: 'tool_result', result: typeof result === 'string' ? result : JSON.stringify(result).slice(0, 12000) });
+      messages.push({ role: 'tool', content: JSON.stringify(result) });
+    }
+  }
+  throw new Error('Axon Cloud agent stopped after 12 tool rounds. Ask it to continue with a narrower task.');
+}
+
+module.exports = { runOllamaCloudAgent };

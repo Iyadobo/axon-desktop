@@ -11,6 +11,7 @@ const lan = require('./lan');
 const { createConfigStore } = require('./config');
 const llamacppRuntime = require('./llamacpp-runtime');
 const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
+const { runOllamaCloudAgent } = require('./ollama-cloud-agent');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('io.axon.workspace'); } catch {}
@@ -828,6 +829,8 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   const holder = {}; localHolders.set(requestId, holder);
   const run = selectedMode === 'chat'
     ? runDirectChat(model, expanded, sessionId, send, bound.systemPrompt, holder, usableImages, provider)
+    : isOllamaCloudModel(model, provider)
+      ? runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model, prompt: expanded, systemPrompt: bound.systemPrompt, cwd: cwd || ensureDefaultWorkspace(), permissionMode: permission, productMode: selectedMode, send, holder, browser: { open: revealBrowser, read: readBrowser } })
     : runAxonTerminal(model, expanded, sessionId, send, bound.systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider, bound.report);
   run
     .catch((e) => send('chat-error', e.message))
