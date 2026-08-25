@@ -750,6 +750,15 @@
   .fld textarea:focus, .fld select:focus, .fld input:focus { outline:2px solid color-mix(in srgb, var(--color-accent) 62%, transparent); outline-offset:1px; border-color:var(--color-accent); }
   .lan-info, .settings-copy { color:var(--color-neutral); opacity:1; font-size:12px; line-height:1.55; }
   .settings-copy { margin:0; max-width:60ch; }
+  .settings-action { min-height:40px; padding:0 12px; align-self:end; border:1px solid var(--elev-line); border-radius:9px; background:var(--elev-1); color:var(--color-text); font:700 12px inherit; cursor:pointer; white-space:nowrap; }
+  .settings-action:hover { border-color:var(--color-accent); background:color-mix(in srgb, var(--color-accent) 10%, var(--elev-1)); color:var(--color-text); }
+  .settings-action.primary { border-color:var(--color-accent); background:var(--color-accent); color:var(--color-on-accent); }
+  .settings-action.primary:hover { background:color-mix(in srgb, var(--color-accent) 88%, white); color:var(--color-on-accent); }
+  .provider-quick { display:grid; gap:9px; margin:12px 0 2px; padding:12px; border:1px solid var(--elev-line); border-radius:10px; background:var(--elev-1); }
+  .provider-quick-head { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
+  .provider-quick-head strong { color:var(--color-text); font-size:12px; }
+  .provider-quick-head span, .provider-import-status { color:var(--color-neutral); font-size:11px; line-height:1.4; }
+  .provider-quick textarea { min-height:68px; }
   .modes { grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
   .mode { min-height:104px; background:var(--elev-1); border-color:var(--elev-line); }
   .mode .mode-name { color:var(--color-text); }
@@ -787,6 +796,12 @@
   #app { height:calc(100vh - 60px); }
   .window-brand { min-width:310px; gap:9px; color:var(--color-accent); font-size:16px; font-weight:800; letter-spacing:.05em; }
   .window-mark { width:22px; height:22px; }
+  .title-nav { height:100%; display:flex; align-items:center; gap:3px; padding:0 10px; border-right:1px solid var(--axon-rule); -webkit-app-region:no-drag; }
+  .top-nav-btn { height:32px; display:inline-flex; align-items:center; gap:7px; padding:0 10px; border:1px solid transparent; border-radius:5px; background:transparent; color:var(--axon-muted); font-size:12px; font-weight:700; cursor:pointer; }
+  .top-nav-btn svg { width:16px; height:16px; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; }
+  .top-nav-btn:hover { background:var(--axon-soft); color:var(--color-text); }
+  .top-nav-btn.active { border-color:var(--axon-rule); background:var(--axon-raised); color:var(--color-text); box-shadow:inset 0 -2px 0 var(--color-accent); }
+  .top-nav-btn:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
   .title-recent { color:var(--axon-muted); font-size:12px; }
   .title-actions { gap:8px; }
   #browserToggle { display:inline-flex; align-items:center; min-height:34px; padding:0 10px; gap:8px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font-size:12px; font-weight:750; letter-spacing:.015em; }
@@ -794,7 +809,7 @@
   #browserToggle.active { border-color:color-mix(in srgb, var(--color-accent) 68%, var(--axon-rule)); background:color-mix(in srgb, var(--color-accent) 13%, var(--color-bg)); color:var(--color-text); }
   .browser-toggle-kicker { padding-right:8px; border-right:1px solid var(--axon-rule); color:var(--color-accent); font-size:9px; font-weight:850; letter-spacing:.1em; text-transform:uppercase; }
   #browserToggle.active .browser-toggle-kicker { color:var(--color-accent); }
-  #side { width:356px; padding:15px 18px 16px; background:color-mix(in srgb, var(--color-bg) 97%, var(--color-text)); border-right:1px solid var(--axon-rule); }
+  #side { width:320px; padding:15px 18px 16px; background:color-mix(in srgb, var(--color-bg) 97%, var(--color-text)); border-right:1px solid var(--axon-rule); }
   #side::before, #home::before { display:none; }
   .brand { padding:0 8px 15px; margin:0; color:var(--color-text); font-size:17px; font-weight:800; letter-spacing:.055em; }
   .brand .logo { width:26px; height:31px; filter:none; }
@@ -965,15 +980,72 @@
   .ops-tag.installed { color:var(--color-success); border-color:color-mix(in srgb, var(--color-success) 46%, var(--axon-rule)); }
   .empty-state { padding:22px; border:1px dashed var(--axon-rule); border-radius:7px; color:var(--axon-muted); font-size:14px; }
   .modal-card { border-radius:9px; box-shadow:0 28px 80px color-mix(in srgb, #000 48%, transparent); }
-  @media (max-width:1050px) { #side { width:294px; } .window-brand { min-width:248px; } .view-scroll { padding:38px 34px; } #home .wrap { width:min(850px, calc(100% - 64px)); } }
-  @media (max-width:760px) { .title-recent { display:none; } #side { width:244px; padding:13px 10px; } .window-brand { min-width:auto; } .window-title { display:none; } #home .wrap { width:calc(100% - 40px); padding-top:48px; } #browserPanel { width:min(100%,520px); } .sentry-topbar { align-items:start; flex-direction:column; padding:24px 22px 18px; } .sentry-layout { height:auto; grid-template-columns:1fr; } .sentry-session-rail { max-height:190px; border-right:0; border-bottom:1px solid var(--axon-rule); } .sentry-board { padding:20px; } .swarm-roles { grid-template-columns:1fr; } .swarm-role, .swarm-worker-field { min-height:auto; } .model-row { grid-template-columns:1fr auto; } .model-row .model-meta { display:none; } }
+
+  /* Operator-console reset: one compact shell, a working-set rail, and drawers
+     that support the task instead of claiming a second equal-sized workspace. */
+  .titlebar { height:48px; padding:0 14px; }
+  #app { height:calc(100vh - 48px); }
+  .title-nav { padding:0 2px; gap:2px; }
+  .top-nav-btn { height:30px; padding:0 9px; font-size:11px; }
+  .top-nav-btn.active { box-shadow:inset 0 -2px 0 var(--color-accent); }
+  .title-actions { gap:5px; }
+  .title-recent { font-size:11px; }
+  #subagentsToggle, #browserToggle { min-height:30px; padding:0 8px; font-size:11px; border-radius:5px; }
+  .window-control { width:38px; }
+  #side { width:264px; padding:13px 14px 14px; }
+  .brand { min-height:31px; margin-bottom:8px; padding:2px 4px; font-size:14px; }
+  .workspace-switch { margin-bottom:8px; }
+  .workspace-tab { min-height:37px; font-size:13px; }
+  .workspace-note { min-height:27px; padding:0 5px 7px; font-size:10px; }
+  .swarm-launch { min-height:46px; margin-bottom:8px; padding:7px 8px; }
+  .swarm-launch img { width:25px; height:25px; }
+  .newchat { min-height:40px; margin-bottom:8px; padding:0 11px; font-size:13px; }
+  .recents-label { margin-top:13px; padding:0 5px 6px; font-size:10px; }
+  .recent { min-height:31px; padding:6px 7px; font-size:12px; }
+  .sidefoot { margin-top:10px; padding:10px 5px 0; }
+  .local-profile { min-height:44px; padding:5px; }
+
+  #browserPanel { width:clamp(350px,28vw,460px); box-shadow:-12px 0 28px color-mix(in srgb, #000 26%, transparent); }
+  .browserbar { min-height:46px; padding:7px 8px; gap:6px; }
+  .browserbar button { width:29px; height:29px; }
+  .browser-context { min-height:47px; padding:8px 10px; }
+  #browserContextHint { display:none; }
+
+  .sentry-topbar { align-items:center; min-height:94px; padding:18px 24px 16px; }
+  .sentry-topbar h2, .sentry-lead h3 { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-weight:780; }
+  .sentry-topbar h2 { margin:4px 0 2px; font-size:23px; letter-spacing:-.025em; }
+  .sentry-topbar p { font-size:12px; }
+  .sentry-actions button { min-height:32px; padding:0 10px; font-size:11px; }
+  .sentry-layout { grid-template-columns:minmax(178px,218px) minmax(0,1fr); }
+  .sentry-session-rail { padding:12px 8px; }
+  .sentry-rail-head, .sentry-workers-head { padding:0 5px 8px; font-size:9px; }
+  .sentry-session { padding:8px; border-radius:4px; }
+  .sentry-session strong { font-size:11px; }
+  .sentry-session small { margin-top:3px; font-size:9px; }
+  .sentry-board { padding:18px 22px 30px; }
+  .sentry-lead { min-height:122px; padding:16px; border-radius:5px; background:var(--axon-soft); box-shadow:inset 2px 0 0 var(--color-accent); }
+  .sentry-lead h3 { margin:5px 0 6px; font-size:19px; }
+  .sentry-lead p { font-size:12px; line-height:1.5; }
+  .sentry-workers { margin-top:17px; }
+  .sentry-agent-grid { grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:8px; }
+  .sentry-agent { min-height:128px; padding:12px; border-radius:5px; }
+  .sentry-agent strong { font-size:12px; }
+  .sentry-agent-meta { margin:4px 0 8px; font-size:10px; }
+  .sentry-agent-result { font-size:11px; line-height:1.45; }
+
+  .swarm-controls { padding:12px; border-radius:6px; background:var(--axon-soft); }
+  .swarm-controls-head { margin-bottom:9px; }
+  .swarm-roles { gap:7px; }
+  .swarm-role, .swarm-worker-field { min-height:116px; padding:10px; border-radius:5px; background:var(--color-bg); }
+  @media (max-width:1050px) { #side { width:278px; } .window-brand { min-width:248px; } .title-nav { padding:0 7px; } .top-nav-btn { padding:0 7px; } .view-scroll { padding:38px 34px; } #home .wrap { width:min(850px, calc(100% - 64px)); } }
+  @media (max-width:760px) { .title-recent, .top-nav-btn[data-view="projects"], .top-nav-btn[data-view="models"] { display:none; } #side { width:244px; padding:13px 10px; } .window-brand { min-width:auto; } .window-title { display:none; } .title-nav { padding:0 4px; } #home .wrap { width:calc(100% - 40px); padding-top:48px; } #browserPanel { width:min(100%,520px); } .sentry-topbar { align-items:start; flex-direction:column; padding:24px 22px 18px; } .sentry-layout { height:auto; grid-template-columns:1fr; } .sentry-session-rail { max-height:190px; border-right:0; border-bottom:1px solid var(--axon-rule); } .sentry-board { padding:20px; } .swarm-roles { grid-template-columns:1fr; } .swarm-role, .swarm-worker-field { min-height:auto; } .model-row { grid-template-columns:1fr auto; } .model-row .model-meta { display:none; } }
 </style>
 </head>
 <body>
 <div id="loading" role="status" aria-live="polite"><div class="loading-mark"><img src="../assets/icon.png" alt="" /><strong>Axon</strong><span id="loadingText">Starting local workspace…</span></div></div>
 <canvas id="grid"></canvas>
 <header class="titlebar" aria-label="Axon window controls">
-  <div class="window-brand"><svg class="window-mark" viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="currentColor"/><circle cx="9" cy="12" r="2.3" fill="var(--color-bg)"/><path d="M10.8 10.8 16.5 5.5M11.2 12h7M10.8 13.2l5.7 5.3" stroke="var(--color-bg)" stroke-width="1.8" stroke-linecap="round"/></svg><span class="window-title">Axon</span></div>
+  <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button><button class="top-nav-btn" data-view="projects" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Projects</span></button><button class="top-nav-btn" data-view="models" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span>Models</span></button><button class="top-nav-btn" data-view="settings" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1 1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg><span>Settings</span></button></nav>
   <div class="window-spacer"></div>
   <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
   <div class="title-actions"><button id="subagentsToggle" title="Open active subagents" aria-expanded="false">Agents</button><button id="browserToggle" title="Open agent browser" aria-expanded="false"><span class="browser-toggle-kicker">Web</span><span class="browser-toggle-label">Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
@@ -1000,38 +1072,9 @@
     </button>
     <div class="workspace-note" id="workspaceNote">Direct conversation · no tools</div>
     <div class="newchat" id="newchat"><span style="opacity:.6">+</span><span id="newChatLabel">New chat</span></div>
-    <nav class="nav-bar" id="navBar">
-      <button class="nav-item active" data-view="chat" type="button">
-        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        <span>Chat</span>
-      </button>
-      <button class="nav-item" data-view="projects" type="button">
-        <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        <span>Projects</span>
-      </button>
-      <button class="nav-item" data-view="models" type="button">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-        <span>Models</span>
-      </button>
-      <button class="nav-item" data-view="settings" type="button" id="settingsNav">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1 1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
-        <span>Settings</span>
-      </button>
-    </nav>
     <div id="chatSidebar" class="sidebar-view active">
-      <div class="side-section-head"><span id="workspaceProjectsLabel">Projects</span><button id="sidebarProjectsAdd" type="button" title="Add project" aria-label="Add project">+</button></div>
-      <div id="sidebarProjects" aria-label="Projects"></div>
       <div class="recents-label" id="recents-label">Recent chats</div>
       <div id="recents"></div>
-    </div>
-    <div id="projectsSidebar" class="sidebar-view">
-      <div class="side-section-head"><span>Quick Actions</span></div>
-      <div class="newchat" id="projectsSidebarAdd" style="margin:0 4px"><span style="opacity:.6">+</span><span>New project</span></div>
-    </div>
-    <div id="modelsSidebar" class="sidebar-view">
-      <button id="modelsBrowse" class="newchat" type="button" style="margin:0 4px"><span style="opacity:.7">↓</span><span>Browse models</span></button>
-      <div class="side-section-head"><span>Installed</span></div>
-      <div id="modelsSidebarList" class="sidebar-empty">Loading models…</div>
     </div>
     <div class="sidefoot">
       <button id="localProfile" class="local-profile" type="button" aria-label="Set up local profile">
@@ -1169,7 +1212,7 @@
         <div class="lan-info">Enforced by Axon Terminal, not by instructions a model can talk itself out of. In Approve mode a blocked action appears in the transcript with an Allow button.</div>
       </div>
       <div class="fld"><span>Axon workspace mode</span><div class="row"><label class="fld"><select id="productModeSel"><option value="chat">Axon Chat — direct conversation</option><option value="code">Axon Code — direct repository work</option><option value="agent">Axon Work — autonomous multi-step tasks</option></select></label></div><div class="lan-info" id="productModeInfo">Chat talks directly. Code works in one repository. Work runs broader tasks with browser and delegation when useful.</div></div>
-      <div class="fld"><span>Provider profiles</span><div class="row"><label class="fld"><select id="providerProfileSel"></select></label><button id="providerNew" type="button">New profile</button></div><div class="row"><label class="fld"><input id="providerName" type="text" placeholder="Profile name" /></label><label class="fld"><select id="providerKind"><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option></select></label></div><div class="row"><label class="fld"><input id="providerEndpoint" type="url" placeholder="https://api.example.com/v1" /></label><label class="fld"><input id="providerModel" type="text" placeholder="Default model (optional)" /></label></div><div class="row"><label class="fld"><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="API key (stored securely; leave blank to keep)" /></label><button id="providerSave" type="button">Save profile</button></div><div id="providerStatus" class="lan-info">Ollama uses the current local or configured runtime. API keys are kept in the OS credential store.</div></div>
+      <div class="fld"><span>Provider profiles</span><div class="row"><label class="fld"><select id="providerProfileSel"></select></label><button id="providerNew" class="settings-action" type="button">New provider</button></div><div class="provider-quick"><div class="provider-quick-head"><strong>Quick setup</strong><span>Use a preset or paste a provider entry from your OpenCode config.</span></div><div class="row"><label class="fld"><select id="providerPreset"><option value="custom">Custom compatible API</option><option value="openai">OpenAI Responses API</option><option value="openrouter">OpenRouter compatible API</option></select></label><button id="providerApplyPreset" class="settings-action" type="button">Use preset</button></div><label class="fld"><textarea id="providerImport" rows="3" spellcheck="false" placeholder='Paste an OpenCode provider JSON entry or config here'></textarea></label><div class="row"><button id="providerImportOpenCode" class="settings-action" type="button">Import OpenCode config</button><span id="providerImportStatus" class="provider-import-status">Imports its name, endpoint, route type, and first listed model. API keys stay local to Axon.</span></div></div><div class="row"><label class="fld"><input id="providerName" type="text" placeholder="Profile name" /></label><label class="fld"><select id="providerKind"><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option></select></label></div><div class="row"><label class="fld"><input id="providerEndpoint" type="url" placeholder="https://api.example.com/v1" /></label><label class="fld"><input id="providerModel" type="text" placeholder="Default model (optional)" /></label></div><div class="row"><label class="fld"><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="API key (stored securely; leave blank to keep)" /></label><button id="providerSave" class="settings-action primary" type="button">Save profile</button></div><div id="providerStatus" class="lan-info">Ollama uses the current local or configured runtime. API keys are kept in the OS credential store.</div></div>
       <div class="fld"><span>Inference runtime</span><div class="row"><label class="fld"><select id="runtimeSel"><option value="ollama">Local Ollama</option><option value="exo">Exo cluster</option><option value="llamacpp">llama.cpp RPC (2-PC VRAM pool)</option></select></label><label class="fld"><input id="exoUrl" type="url" placeholder="http://192.168.50.1:52415" /></label><button id="exoCheck" type="button">Test Exo</button></div><div id="exoStatus" class="lan-info">Local Ollama runs on this device. Exo connects to a separately running cluster coordinator.</div>
         <div id="llamaCppFields" style="display:none">
           <div class="lan-info">Experimental and unauthenticated (llama.cpp's own RPC docs call it out) — bind only to a direct, isolated Ethernet link between two PCs, never a routable network. Run Axon on both machines: one Host, one Worker.</div>

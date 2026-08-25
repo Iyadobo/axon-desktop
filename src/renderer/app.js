@@ -31,15 +31,13 @@ let swarmMode = false, swarmLaunching = false;
 function switchView(viewName) {
   if (viewName === 'settings') { openSettings(); return; }
   activeView = viewName;
-  document.querySelectorAll('.nav-item').forEach((item) => {
+  document.querySelectorAll('[data-view]').forEach((item) => {
     item.classList.toggle('active', item.dataset.view === viewName);
   });
   document.querySelectorAll('.view').forEach((view) => {
     view.classList.toggle('active', view.id === 'view-' + viewName);
   });
-  document.querySelectorAll('.sidebar-view').forEach((view) => {
-    view.classList.toggle('active', view.id === viewName + 'Sidebar');
-  });
+  $('chatSidebar')?.classList.add('active');
   if (viewName === 'projects') renderProjectsPage();
   if (viewName === 'models') renderModelsPage();
   saveState('oactiveView', viewName);
@@ -55,7 +53,6 @@ function syncWorkspaceShell() {
     ? 'Autonomous tasks · browser and delegation'
     : workspace === 'code' ? 'Repository work · Axon Terminal tools' : 'Direct conversation · no tools';
   $('newChatLabel').textContent = workspace === 'work' ? 'New task' : workspace === 'code' ? 'New code session' : 'New chat';
-  $('workspaceProjectsLabel').textContent = workspace === 'work' ? 'Workspaces' : 'Projects';
   $('recents-label').textContent = workspace === 'work' ? 'Recent work' : workspace === 'code' ? 'Recent code' : 'Recent chats';
   $('main')?.setAttribute('data-workspace', workspace);
   const copy = workspace === 'work'
@@ -1405,6 +1402,46 @@ function renderProviderProfiles() {
     ? 'Ollama uses the current local runtime. Cloud models also work in Code and Work after you sign in with Ollama; no Axon API key is needed.'
     : (profile.credentialId ? 'API key saved in the OS credential store.' : 'Add an API key to use this profile. It will not be written to normal settings.');
 }
+const PROVIDER_PRESETS = {
+  custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
+  openai: { name: 'OpenAI', kind: 'responses', endpoint: 'https://api.openai.com/v1', model: '' },
+  openrouter: { name: 'OpenRouter', kind: 'openai-compatible', endpoint: 'https://openrouter.ai/api/v1', model: '' },
+};
+function fillProviderFields(profile) {
+  $('providerName').value = profile.name || '';
+  $('providerKind').value = profile.kind || 'openai-compatible';
+  $('providerEndpoint').value = profile.endpoint || '';
+  $('providerModel').value = profile.model || '';
+}
+function applyProviderPreset() {
+  const preset = PROVIDER_PRESETS[$('providerPreset').value] || PROVIDER_PRESETS.custom;
+  fillProviderFields(preset);
+  $('providerImportStatus').textContent = 'Preset applied. Add a model ID and API key, then save the profile.';
+}
+function openCodeProviderEntry(config) {
+  const candidates = config?.provider || config?.providers || config;
+  if (!candidates || typeof candidates !== 'object' || Array.isArray(candidates)) throw new Error('No provider entry found. Paste the provider object or a full OpenCode config.');
+  const entry = Object.entries(candidates).find(([, value]) => value && typeof value === 'object' && !Array.isArray(value) && (value.options || value.settings || value.models || value.npm || value.package));
+  if (!entry) throw new Error('No OpenCode provider with connection settings was found.');
+  return entry;
+}
+function importOpenCodeProviderConfig() {
+  try {
+    const raw = $('providerImport').value.trim();
+    if (!raw) throw new Error('Paste a provider entry or config first.');
+    const [id, source] = openCodeProviderEntry(JSON.parse(raw));
+    const packageName = String(source.npm || source.package || '');
+    const modelNames = source.models && typeof source.models === 'object' ? Object.keys(source.models) : [];
+    const endpoint = String(source.options?.baseURL || source.settings?.baseURL || source.baseURL || '').replace(/\/$/, '');
+    fillProviderFields({
+      name: source.name || id,
+      kind: packageName === '@ai-sdk/openai' ? 'responses' : 'openai-compatible',
+      endpoint,
+      model: modelNames[0] || '',
+    });
+    $('providerImportStatus').textContent = `Imported ${source.name || id}. Add its API key in Axon, then save the profile.`;
+  } catch (error) { $('providerImportStatus').textContent = error.message || 'Could not import that OpenCode config.'; }
+}
 async function saveProviderProfile() {
   const existing = currentProviderProfile();
   const profile = {
@@ -1845,10 +1882,9 @@ document.addEventListener('keydown', (e) => {
 });
 
 // settings
-for (const btn of document.querySelectorAll('#navBar .nav-item')) {
+for (const btn of document.querySelectorAll('.top-nav-btn[data-view]')) {
   btn.onclick = () => switchView(btn.dataset.view);
 }
-$('projectsSidebarAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projectsPageAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('settingsClose').onclick = closeSettings;
 $('settings').addEventListener('click', (e) => { if (e.target.id === 'settings') closeSettings(); });
@@ -1904,6 +1940,8 @@ $('productModeSel').onchange = () => { settings.productMode = $('productModeSel'
 if ($('productModeButton')) $('productModeButton').onclick = () => { const modes = ['chat', 'code', 'agent']; settings.productMode = modes[(modes.indexOf(settings.productMode) + 1) % modes.length]; syncProductMode(); saveSettings(); };
 $('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); applyProviderModelChoices(); if (swarmMode) syncSwarmRoles(); };
 $('providerNew').onclick = () => { const profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'New provider', kind: 'openai-compatible', endpoint: '', model: '', credentialId: '' }; settings.providerProfiles.push(profile); settings.activeProviderProfileId = profile.id; renderProviderProfiles(); };
+$('providerApplyPreset').onclick = applyProviderPreset;
+$('providerImportOpenCode').onclick = importOpenCodeProviderConfig;
 $('providerSave').onclick = saveProviderProfile;
 $('runtimeSel').onchange = () => { syncRuntimeFields(); selectRuntime(); };
 $('exoCheck').onclick = testExo;
@@ -1950,8 +1988,6 @@ $('swarmLaunch').onclick = openSwarm;
 $('swarmCount').oninput = syncSwarmLimit;
 $('swarmSentryModel').onchange = () => { if (swarmSelectableModels().length <= 1) $('swarmWorkerModel').value = $('swarmSentryModel').value; };
 $('swarmWorkerModel').onchange = () => { if (swarmSelectableModels().length <= 1) $('swarmSentryModel').value = $('swarmWorkerModel').value; };
-$('modelsBrowse').onclick = openModelDownloads;
-$('sidebarProjectsAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('projPick').onclick = createProject;
 // model picker wiring
 $('modelBtn').onclick = openModelPicker;
