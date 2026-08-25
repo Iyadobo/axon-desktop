@@ -13,6 +13,8 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
 })[char]);
 
 let conversations = [];   // [{id, sessionId, title, model, ts, projectId}]
+let swarmSessions = [];   // Dedicated Sentry sessions; never mixed into normal chat history.
+let activeSwarmId = null;
 let activeId = null;      // current conversation id (null = home/fresh)
 let localConversationBackup = null;
 // Many chats may generate at once. Keep their DOM + persistence context by
@@ -159,7 +161,8 @@ function syncSwarmLimit() {
   if (limit) { input.max = String(limit); if (Number(input.value) > limit) input.value = String(limit); $('swarmLimitInfo').textContent = 'Ollama routes allow up to 3 concurrent workers.'; }
   else { input.removeAttribute('max'); $('swarmLimitInfo').textContent = 'This provider has no Axon concurrency cap; its API limits still apply.'; }
 }
-function openSwarm() {
+function openSwarm(create = false) {
+  if (!create && swarmSessions.length) { activeSwarmId ||= swarmSessionOrder()[0]?.id || null; showSentryConsole(); return; }
   swarmMode = true; activeId = null; $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = false; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
   showHomeView(); $('greet').textContent = 'What should the swarm take on?'; document.querySelector('#home .sub')?.replaceChildren('Give Axon one outcome. Independent workers will investigate it in parallel.'); document.querySelector('.home-hint')?.replaceChildren('Choose a model and attach the relevant files, then launch the swarm with the normal composer. Workers are read-only so they cannot collide in your workspace.');
   const chips = [...document.querySelectorAll('#chips .chip')]; ['Explore approaches', 'Review a codebase', 'Research a topic', 'Compare options'].forEach((label, index) => { if (chips[index]) chips[index].textContent = label; });
@@ -172,10 +175,14 @@ async function launchSwarm(entry) {
     const selectable = swarmSelectableModels();
     const sentryModel = $('swarmSentryModel').value || entry.model;
     const workerModel = selectable.length <= 1 ? sentryModel : ($('swarmWorkerModel').value || entry.model);
-    const result = await window.ollama.swarmStart({ sentryModel, workerModel, prompt: entry.combined, images: entry.images, workers: Number($('swarmCount').value), systemPrompt: projectSystemPrompt(), cwd: projectCwd(), provider });
+    const result = await window.ollama.swarmStart({ sentryModel, workerModel, prompt: entry.combined, images: entry.images, workers: Number($('swarmCount').value), systemPrompt: projectSystemPrompt(), cwd: projectCwd(), provider, mode: settings.permissionMode });
     if (!result?.ok) throw new Error(result?.error || 'Could not launch the swarm.');
     $('swarmStatus').textContent = result.capped ? `Ollama limited this swarm to ${result.count} workers.` : `${result.count} worker${result.count === 1 ? '' : 's'} launched.`;
-    setSubagentsOpen(true);
+    activeSwarmId = result.swarmId;
+    const existing = swarmSessions.find((session) => session.id === result.swarmId);
+    const session = normalizeSwarmSession({ id: result.swarmId, title: entry.combined.replace(/\s+/g, ' ').slice(0, 120), sentryModel, workerModel, providerName: provider?.name || 'Current provider', mode: settings.permissionMode, status: 'launching', ts: Date.now(), updatedAt: Date.now(), agents: existing?.agents || [] });
+    if (existing) Object.assign(existing, session); else swarmSessions.unshift(session);
+    saveSwarmSessions(); showSentryConsole();
   } catch (error) { $('swarmStatus').textContent = error.message || 'Could not launch the swarm.'; }
   finally { swarmLaunching = false; syncComposerState(); }
 }
@@ -642,52 +649,10 @@ async function loadModels() {
   setLoading('Checking local models…');
   try {
     const data = await window.ollama.listModels();
-    const sel = $('model'); sel.innerHTML = '';
     const localModels = data.models || [];
-    // Axon exposes only locally installed models as runnable choices. The
-    // download catalogue is separate and filters these names out before pull.
-    const models = localModels.map((model) => ({ ...model, source: 'local' }));
-    if (!models.length) {
-      modelCatalogue = []; syncModelButton();
-      const sidebarList = $('modelsSidebarList'); if (sidebarList) sidebarList.textContent = 'No local models installed';
-      return setStatus(false, 'no models');
-    }
-    for (const m of models) {
-      const o = document.createElement('option');
-      o.value = m.name;
-      o.textContent = m.name + (m.source === 'cloud' ? ' · Cloud' : (m.details?.parameter_size ? ' · ' + m.details.parameter_size : ''));
-      sel.appendChild(o);
-    }
-    modelCatalogue = models;
-    const pref = persisted.omodel;
-    if (pref && models.some((m) => m.name === pref)) sel.value = pref;
-    syncModelButton();
-    if ($('modelPicker').classList.contains('show')) renderPicker();
+    localModelCatalogue = localModels.map((model) => ({ ...model, source: 'local' }));
+    applyProviderModelChoices();
     setStatus(true, localModels.length ? 'ready' : 'no models');
-    // Update models sidebar quick list
-    const sidebarList = $('modelsSidebarList');
-    if (sidebarList) {
-      sidebarList.innerHTML = '';
-      if (models.length) {
-        for (const m of models.slice(0, 10)) {
-          const item = document.createElement('div');
-          item.style.cssText = 'padding:6px 8px;font-size:var(--t-xs);cursor:pointer;border-radius:6px;transition:background .12s';
-          item.textContent = m.name;
-          item.onmouseenter = () => { item.style.background = 'var(--elev-2)'; };
-          item.onmouseleave = () => { item.style.background = 'transparent'; };
-          item.onclick = () => { $('model').value = m.name; saveState('omodel', m.name); syncModelButton(); };
-          sidebarList.appendChild(item);
-        }
-        if (models.length > 10) {
-          const more = document.createElement('div');
-          more.style.cssText = 'padding:6px 8px;font-size:var(--t-xs);opacity:.5';
-          more.textContent = '+' + (models.length - 10) + ' more';
-          sidebarList.appendChild(more);
-        }
-      } else {
-        sidebarList.textContent = 'No models installed';
-      }
-    }
   } catch { setStatus(false, 'offline'); }
 }
 // ---- local model downloads --------------------------------------------------
@@ -804,6 +769,7 @@ window.ollama.on('model-pull-progress', (update) => {
 // The <select id="model"> stays the source of truth (slash commands, saved
 // conversations and the send path all read it); this is a richer way to set it.
 let modelCatalogue = [];
+let localModelCatalogue = [];
 let pickerCursor = 0;
 // Family marks. Where a vendor's mark is available under a free licence it is
 // used (see model-logos.js); where it is not — Microsoft's Phi, IBM's Granite,
@@ -1002,6 +968,57 @@ function normalizeSteps(value) {
   }
   return out;
 }
+function normalizeSwarmSession(value) {
+  if (!value || typeof value !== 'object' || !value.id) return null;
+  const agents = Array.isArray(value.agents) ? value.agents.filter((agent) => agent && agent.id).slice(-16).map((agent) => ({
+    id: String(agent.id), task: String(agent.task || 'Agent task').slice(0, 240), model: String(agent.model || '').slice(0, 160), status: String(agent.status || 'working').slice(0, 40), result: String(agent.result || '').slice(0, 24000), startedAt: Number(agent.startedAt) || 0, finishedAt: Number(agent.finishedAt) || 0,
+  })) : [];
+  return { id: String(value.id), title: String(value.title || 'Untitled swarm').slice(0, 120), sentryModel: String(value.sentryModel || '').slice(0, 160), workerModel: String(value.workerModel || '').slice(0, 160), providerName: String(value.providerName || '').slice(0, 80), mode: String(value.mode || 'auto'), status: String(value.status || 'working'), ts: Number(value.ts) || Date.now(), updatedAt: Number(value.updatedAt) || Number(value.ts) || Date.now(), agents };
+}
+function loadSwarmSessions() {
+  try { swarmSessions = (Array.isArray(persisted.oswarmSessions) ? persisted.oswarmSessions : []).map(normalizeSwarmSession).filter(Boolean); }
+  catch { swarmSessions = []; }
+}
+function saveSwarmSessions() { saveState('oswarmSessions', swarmSessions.slice(0, 40).map((session) => ({ ...session, agents: session.agents.slice(-16) }))); }
+function swarmSessionOrder() { return [...swarmSessions].sort((a, b) => Number(b.updatedAt || b.ts) - Number(a.updatedAt || a.ts)); }
+function activeSwarmSession() { return swarmSessions.find((session) => session.id === activeSwarmId) || null; }
+function renderSentryConsole() {
+  const sessions = swarmSessionOrder(); const rail = $('sentrySessions'); if (!rail) return;
+  $('sentrySessionCount').textContent = String(sessions.length);
+  rail.innerHTML = '';
+  if (!sessions.length) rail.innerHTML = '<div class="sentry-empty">No Swarm sessions yet.</div>';
+  for (const session of sessions) {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'sentry-session' + (session.id === activeSwarmId ? ' active' : '');
+    button.innerHTML = '<strong>' + esc(session.title) + '</strong><small>' + esc(session.sentryModel || 'Sentry') + ' · ' + esc(session.status || 'working') + '</small>';
+    button.onclick = () => { activeSwarmId = session.id; showSentryConsole(); }; rail.appendChild(button);
+  }
+  const session = activeSwarmSession(); const lead = $('sentryLead'); const grid = $('sentryAgentGrid');
+  if (!session) { lead.innerHTML = '<span class="sentry-kicker">Sentry</span><h3>Awaiting a session</h3><p>The Sentry will consolidate each worker\'s findings here.</p>'; grid.innerHTML = '<div class="sentry-empty">Launch a Swarm to begin a dedicated Sentry session.</div>'; $('sentryAgentSummary').textContent = 'No active agents'; return; }
+  const agents = session.agents || []; const sentry = agents.find((agent) => /^Sentry\b/.test(agent.task)); const workers = agents.filter((agent) => agent.id !== session.id && agent !== sentry);
+  lead.innerHTML = '<span class="sentry-kicker">Sentry · ' + esc(sentry?.status || session.status || 'waiting') + '</span><h3>' + esc(sentry?.task || session.sentryModel || 'Sentry preparing the brief') + '</h3><p>' + esc(sentry?.result || 'Workers are investigating. Their reports will arrive here for synthesis.') + '</p>';
+  const running = workers.filter((agent) => !['completed', 'failed'].includes(agent.status)).length;
+  $('sentryAgentSummary').textContent = workers.length ? `${running ? running + ' active · ' : ''}${workers.length} worker${workers.length === 1 ? '' : 's'}` : 'Waiting for workers';
+  grid.innerHTML = '';
+  if (!workers.length) { grid.innerHTML = '<div class="sentry-empty">Worker lanes will appear as soon as the swarm starts.</div>'; return; }
+  for (const agent of workers) {
+    const card = document.createElement('article'); card.className = 'sentry-agent'; card.dataset.status = agent.status || 'working';
+    card.innerHTML = '<div class="sentry-agent-head"><strong>' + esc(agent.task) + '</strong><span class="sentry-agent-status">' + esc(agent.status || 'working') + '</span></div><div class="sentry-agent-meta">' + esc(agent.model || session.workerModel || 'selected model') + '</div><div class="sentry-agent-result">' + esc(agent.result || 'Investigating the workspace…') + '</div>';
+    grid.appendChild(card);
+  }
+}
+function showSentryConsole() {
+  $('home').style.display = 'none'; $('chat').classList.remove('show'); $('sentryConsole').hidden = false; renderSentryConsole();
+}
+function upsertSwarmAgent(agent) {
+  if (!agent?.swarmId) return;
+  let session = swarmSessions.find((item) => item.id === agent.swarmId);
+  if (!session) { session = normalizeSwarmSession({ id: agent.swarmId, title: 'Recovered swarm session', ts: Date.now(), agents: [] }); swarmSessions.unshift(session); }
+  const index = session.agents.findIndex((item) => item.id === agent.id);
+  const next = { ...(index >= 0 ? session.agents[index] : {}), ...agent, id: String(agent.id || agent.swarmId), task: String(agent.task || '').slice(0, 240), model: String(agent.model || '').slice(0, 160), status: String(agent.status || 'working'), result: String(agent.result || '').slice(0, 24000) };
+  if (index >= 0) session.agents[index] = next; else session.agents.push(next);
+  if (agent.id === agent.swarmId) session.status = next.status;
+  session.updatedAt = Date.now(); saveSwarmSessions(); if (activeSwarmId === session.id) renderSentryConsole();
+}
 function loadConvs() {
   try { conversations = (Array.isArray(persisted.oconvs) ? persisted.oconvs : []).map(normalizeConversation).filter(Boolean); }
   catch { conversations = []; }
@@ -1140,12 +1157,14 @@ function openConv(id) {
 function showHomeView() {
   $('home').style.display = '';
   $('chat').classList.remove('show');
+  $('sentryConsole').hidden = true;
   $('home').querySelector('.wrap').insertBefore($('composerCard'), $('chips'));
   $('prompt').focus();
 }
 function showChatView() {
   $('home').style.display = 'none';
   $('chat').classList.add('show');
+  $('sentryConsole').hidden = true;
   $('composerSlot').appendChild($('composerCard'));
 }
 function newChat() { activeId = null; settings.activeConversationIds[workspaceGroup()] = null; saveSettings(); $('log').innerHTML = ''; showHomeView(); renderRecents(); syncComposerState(); switchView('chat'); }
@@ -1349,6 +1368,31 @@ function addToolCall(turn, s) {
 function currentProviderProfile() {
   return settings.providerProfiles.find((profile) => profile.id === settings.activeProviderProfileId) || settings.providerProfiles[0];
 }
+function providerModelChoices() {
+  const profile = currentProviderProfile();
+  if (profile?.kind === 'ollama') return localModelCatalogue;
+  const name = String(profile?.model || '').trim();
+  return name ? [{ name, source: 'api', details: { parameter_size: profile.kind === 'responses' ? 'Responses API' : 'API route' } }] : [];
+}
+function applyProviderModelChoices() {
+  const profile = currentProviderProfile(); const sel = $('model'); if (!sel) return;
+  const models = providerModelChoices(); const prior = sel.value;
+  modelCatalogue = models;
+  sel.replaceChildren(...models.map((model) => { const option = document.createElement('option'); option.value = model.name; option.textContent = model.name + (model.source === 'api' ? ' · API' : (model.details?.parameter_size ? ' · ' + model.details.parameter_size : '')); return option; }));
+  const preferred = profile?.kind === 'ollama' ? persisted.omodel : profile?.model;
+  if (models.some((model) => model.name === preferred)) sel.value = preferred;
+  else if (models.some((model) => model.name === prior)) sel.value = prior;
+  syncModelButton();
+  if ($('modelPicker').classList.contains('show')) renderPicker();
+  const sidebar = $('modelsSidebarList'); if (!sidebar) return;
+  sidebar.innerHTML = '';
+  if (!models.length) { sidebar.textContent = profile?.kind === 'ollama' ? 'No local models installed' : 'Set this profile\'s default model in Settings'; return; }
+  for (const model of models.slice(0, 10)) {
+    const item = document.createElement('button'); item.type = 'button'; item.className = 'sidebar-model-choice'; item.textContent = model.name;
+    item.onclick = () => { sel.value = model.name; if (profile?.kind === 'ollama') saveState('omodel', model.name); syncModelButton(); if (swarmMode) syncSwarmRoles(); };
+    sidebar.appendChild(item);
+  }
+}
 function renderProviderProfiles() {
   const select = $('providerProfileSel'); select.innerHTML = '';
   for (const profile of settings.providerProfiles) {
@@ -1376,7 +1420,7 @@ async function saveProviderProfile() {
     const saved = await window.ollama.providerSave(profile, $('providerApiKey').value);
     const index = settings.providerProfiles.findIndex((item) => item.id === saved.id);
     if (index >= 0) settings.providerProfiles[index] = saved; else settings.providerProfiles.push(saved);
-    settings.activeProviderProfileId = saved.id; saveSettings(); renderProviderProfiles();
+    settings.activeProviderProfileId = saved.id; saveSettings(); renderProviderProfiles(); applyProviderModelChoices(); if (swarmMode) syncSwarmRoles();
   } catch (error) { $('providerStatus').textContent = 'Could not save provider: ' + error.message; }
 }
 // Results attach under the call that produced them so the pair reads as one unit.
@@ -1764,6 +1808,8 @@ function openBrowserAt(url) {
 }
 $('browserToggle').onclick = () => setBrowserOpen(!browserOpen);
 $('subagentsToggle').onclick = () => setSubagentsOpen(!subagentsOpen); $('subagentsClose').onclick = () => setSubagentsOpen(false);
+$('sentryNewSwarm').onclick = () => openSwarm(true);
+$('sentryBackToChat').onclick = () => { swarmMode = false; $('main').removeAttribute('data-swarm'); $('swarmLaunch').classList.remove('active'); newChat(); };
 $('windowMinimize').onclick = () => window.ollama.windowControl('minimize');
 $('windowMaximize').onclick = () => window.ollama.windowControl('maximize');
 $('windowClose').onclick = () => window.ollama.windowControl('close');
@@ -1772,10 +1818,17 @@ $('browserBack').onclick = () => window.ollama.browserAction('back');
 $('browserForward').onclick = () => window.ollama.browserAction('forward');
 $('browserReload').onclick = () => window.ollama.browserAction('reload');
 $('browserUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') openBrowserAt($('browserUrl').value.trim()); });
+document.addEventListener('keydown', (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l' && browserOpen) { event.preventDefault(); $('browserUrl').focus(); $('browserUrl').select(); }
+  if (event.key === 'Escape' && browserOpen && document.activeElement === $('browserUrl')) { $('browserUrl').blur(); }
+});
 window.addEventListener('resize', () => requestAnimationFrame(syncBrowserBounds));
-window.ollama.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; });
+window.ollama.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; if (s.title) $('browserPageTitle').textContent = s.title; $('browserBack').disabled = !s.canBack; $('browserForward').disabled = !s.canForward; });
 window.ollama.on('browser-invoked', (s) => { setBrowserOpen(true); if (s?.url) $('browserUrl').value = s.url; });
-window.ollama.on('subagent-update', (agent) => { const prior = subagents.get(agent.id) || {}; subagents.set(agent.id, { ...prior, ...agent }); setSubagentsOpen(true); renderSubagents(); });
+window.ollama.on('subagent-update', (agent) => {
+  if (agent?.swarmId) { upsertSwarmAgent(agent); if (!activeSwarmId) activeSwarmId = agent.swarmId; if (activeSwarmId === agent.swarmId) showSentryConsole(); return; }
+  const prior = subagents.get(agent.id) || {}; subagents.set(agent.id, { ...prior, ...agent }); setSubagentsOpen(true); renderSubagents();
+});
 
 // attachments
 $('attachBtn').onclick = () => $('fileInput').click();
@@ -1849,7 +1902,7 @@ $('permissionModeButton').onclick = () => {
 };
 $('productModeSel').onchange = () => { settings.productMode = $('productModeSel').value; syncProductMode(); saveSettings(); };
 if ($('productModeButton')) $('productModeButton').onclick = () => { const modes = ['chat', 'code', 'agent']; settings.productMode = modes[(modes.indexOf(settings.productMode) + 1) % modes.length]; syncProductMode(); saveSettings(); };
-$('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); if (swarmMode) syncSwarmRoles(); };
+$('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); applyProviderModelChoices(); if (swarmMode) syncSwarmRoles(); };
 $('providerNew').onclick = () => { const profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'New provider', kind: 'openai-compatible', endpoint: '', model: '', credentialId: '' }; settings.providerProfiles.push(profile); settings.activeProviderProfileId = profile.id; renderProviderProfiles(); };
 $('providerSave').onclick = saveProviderProfile;
 $('runtimeSel').onchange = () => { syncRuntimeFields(); selectRuntime(); };
@@ -2186,11 +2239,11 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.ollama.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels', 'ouserProfile']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'oswarmSessions', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels', 'ouserProfile']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;
-        try { persisted[key] = ['osettings', 'oprojects', 'oconvs', 'ocloudModels'].includes(key) ? JSON.parse(oldValue) : oldValue; }
+        try { persisted[key] = ['osettings', 'oprojects', 'oconvs', 'oswarmSessions', 'ocloudModels'].includes(key) ? JSON.parse(oldValue) : oldValue; }
         catch { continue; }
       }
     }
@@ -2203,6 +2256,7 @@ function refreshGridColor() {
   if (persisted.oworkspace !== defaultWorkspace) saveState('oworkspace', defaultWorkspace);
   $('workspacePath').value = defaultWorkspace;
   loadConvs();
+  loadSwarmSessions();
   activeProjectId = projects.some((p) => p.id === persisted.oactiveProject) ? persisted.oactiveProject : null;
   $('lanHost').value = persisted.olanHost || '';
   $('lanServerChk').checked = persisted.olanHostEnabled === true;
