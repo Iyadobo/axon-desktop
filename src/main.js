@@ -667,7 +667,12 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
     if (providerKind === 'ollama') common.push('--oss', '--local-provider', 'ollama');
     if (model) common.push('--model', model);
     if (productMode === 'agent') common.push('--enable', 'multi_agent_v2');
-    const args = sessionId ? ['exec', 'resume', sessionId, ...common, instruction] : ['exec', ...common, instruction];
+    // `resume` has its own narrower option set. Put shared exec options before
+    // the subcommand so profile, sandbox, and browser MCP setup apply to both
+    // a new session and a resumed one.
+    const args = sessionId
+      ? ['exec', ...common, 'resume', sessionId, instruction]
+      : ['exec', ...common, instruction];
     const env = {
       ...process.env,
       AXON_HOME: axonHome,
