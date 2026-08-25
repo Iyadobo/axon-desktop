@@ -1,6 +1,6 @@
 // src/lan.js -- same-WiFi link between two app instances.
 // ponytail: raw TCP + newline-delimited JSON. No HTTP, no web GUI.
-// The server runs claude locally and streams events back over the socket; the
+// The server runs Axon locally and streams events back over the socket; the
 // client forwards chats to the server and maps events back to the renderer, so
 // the renderer UI is unchanged on either side.
 const net = require('net');

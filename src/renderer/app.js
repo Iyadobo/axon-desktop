@@ -1,4 +1,4 @@
-// Minimal chat on the Claude Code harness, routed to the selected Ollama model.
+// Axon's desktop workspace: direct chat plus Axon Terminal-backed Code and Agent modes.
 // Style: "Relay" modernist (light/dark, sidebar, surface composer card). Features:
 // slash-command autocomplete, system prompt + appearance settings, file attachments,
 // folder-workspace projects, markdown rendering, copy, per-turn model labels.
@@ -55,7 +55,8 @@ const FONT_STACKS = {
   mono: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
   serif: 'Georgia, "Times New Roman", serif',
 };
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', harness: 'claude', codexModel: '', opencodeModel: '', permissionMode: 'auto' };
+const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', kind: 'ollama', endpoint: '', model: '', credentialId: '' };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local' };
 let settings = { ...DEFAULT_SETTINGS };
 const ACCENTS = ['#2a4bd6', '#007d5a', '#b03060', '#8a3df0', '#c2410c', '#111827'];
 const persisted = {};
@@ -67,6 +68,8 @@ function loadSettings() {
     if (!saved.colors && (!saved.accent || saved.accent.toLowerCase() === '#2a4bd6')) settings.colors.accent = DEFAULT_SETTINGS.accent;
     else if (!saved.colors && saved.accent) settings.colors.accent = saved.accent;
     settings.accent = settings.colors.accent;
+    settings.providerProfiles = Array.isArray(saved.providerProfiles) && saved.providerProfiles.length ? saved.providerProfiles.map((profile) => ({ ...DEFAULT_PROVIDER, ...profile, credentialId: profile.credentialId || '' })) : [{ ...DEFAULT_PROVIDER }];
+    if (!settings.providerProfiles.some((profile) => profile.id === settings.activeProviderProfileId)) settings.activeProviderProfileId = settings.providerProfiles[0].id;
   } catch {}
 }
 function saveState(key, value) { persisted[key] = value; window.ollama.saveState({ [key]: value }).catch(() => {}); }
@@ -115,14 +118,13 @@ function openSettings() {
   $('densitySel').value = settings.density;
   $('motionSel').value = settings.motion;
   $('fontSel').value = settings.font;
-  $('harnessSel').value = settings.harness;
-  $('codexModel').value = settings.codexModel;
-  $('opencodeModel').value = settings.opencodeModel;
+  $('productModeSel').value = settings.productMode;
   $('runtimeSel').value = ['exo', 'llamacpp'].includes(persisted.oRuntime) ? persisted.oRuntime : 'ollama';
   $('exoUrl').value = persisted.oExoUrl || 'http://127.0.0.1:52415';
   syncRuntimeFields();
+  renderProviderProfiles();
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
-  syncHarnessFields();
+  syncProductMode();
   syncModes();
   syncPaletteInputs(); renderSwatches(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
@@ -371,7 +373,7 @@ async function renderModelsPage() {
       row.innerHTML = '<div style="font-weight:600;font-size:var(--t-sm)">' + esc(m.name) + '</div>'
         + (params ? '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + esc(params) + '</div>' : '')
         + (size ? '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + size + '</div>' : '')
-        + (isVision ? '<span style="font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid color-mix(in srgb, #22c1c3 40%, var(--elev-line));color:#22c1c3;font-weight:600">VISION</span>' : '')
+        + (isVision ? '<span style="font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid color-mix(in srgb, var(--color-info) 40%, var(--elev-line));color:var(--color-info);font-weight:600">VISION</span>' : '')
         + '<span style="font-size:10px;padding:2px 6px;border-radius:999px;border:1px solid var(--elev-line);color:var(--color-neutral);font-weight:600">' + esc(family.name) + '</span>';
       list.appendChild(row);
     }
@@ -382,7 +384,7 @@ async function renderModelsPage() {
   const rec = document.createElement('div');
   rec.style.cssText = 'margin-top:28px';
   rec.innerHTML = '<h3 style="font-size:var(--t-body);font-weight:700;margin:0 0 4px">Recommended for Axon</h3>'
-    + '<div style="font-size:var(--t-xs);color:var(--color-neutral);margin-bottom:12px">Curated picks that work well with the Claude Code harness. Small models (&lt;3B) struggle with tool use.</div>';
+    + '<div style="font-size:var(--t-xs);color:var(--color-neutral);margin-bottom:12px">Curated local picks for Axon. Small models (&lt;3B) are best for Chat; use a capable coder model for Code or Agent.</div>';
   const recList = document.createElement('div');
   recList.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px';
   for (const m of RECOMMENDED_MODELS) {
@@ -391,7 +393,7 @@ async function renderModelsPage() {
     card.style.cssText = 'padding:12px;border:1px solid var(--elev-line);border-radius:10px;background:var(--elev-1);display:flex;flex-direction:column;gap:4px';
     card.innerHTML = '<div style="font-weight:600;font-size:var(--t-sm)">' + esc(m.name) + '</div>'
       + '<div style="font-size:var(--t-xs);color:var(--color-neutral)">' + esc(m.tag) + '</div>'
-      + '<div style="font-size:var(--t-xs);color:' + (isInstalled ? '#3fbf7f' : 'var(--color-neutral)') + '">' + (isInstalled ? '✓ Installed' : 'Not installed') + '</div>';
+      + '<div style="font-size:var(--t-xs);color:' + (isInstalled ? 'var(--color-success)' : 'var(--color-neutral)') + '">' + (isInstalled ? '✓ Installed' : 'Not installed') + '</div>';
     recList.appendChild(card);
   }
   rec.appendChild(recList);
@@ -407,7 +409,7 @@ async function renderModelsPage() {
     vList.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px';
     for (const m of visionModels) {
       const tag = document.createElement('span');
-      tag.style.cssText = 'padding:6px 12px;border:1px solid color-mix(in srgb, #22c1c3 40%, var(--elev-line));border-radius:999px;font-size:var(--t-xs);color:#22c1c3';
+      tag.style.cssText = 'padding:6px 12px;border:1px solid color-mix(in srgb, var(--color-info) 40%, var(--elev-line));border-radius:999px;font-size:var(--t-xs);color:var(--color-info)';
       tag.textContent = m.name;
       vList.appendChild(tag);
     }
@@ -713,7 +715,6 @@ const MODEL_FAMILIES = [
   { test: /^deepseek/i, name: 'DeepSeek', brand: 'deepseek' },
   { test: /^mistral|^mixtral|^codestral|^devstral/i, name: 'Mistral', brand: 'mistral' },
   { test: /^gemma|^gemini/i, name: 'Gemma', brand: 'gemini' },
-  { test: /^claude/i, name: 'Claude', brand: 'anthropic' },
   { test: /^phi/i, name: 'Phi', color: '#e26bd8', shape: '<circle cx="12" cy="12" r="7"/><path d="M12 3v18"/>' },
   { test: /^granite/i, name: 'Granite', color: '#8a94a6', shape: '<path d="M5 8h14v11H5Z"/><path d="M5 8l7-4 7 4"/>' },
   { test: /^gpt|^o[13]-|^oss/i, name: 'GPT', color: '#69b39b', shape: '<circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/>' },
@@ -955,7 +956,7 @@ function renderRecentPopup() {
     const row = document.createElement('div'); row.className = 'recent-popover-item' + (chat.id === activeId ? ' active' : '');
     row.tabIndex = 0; row.setAttribute('role', 'button');
     row.innerHTML = '<span class="recent-popover-title">' + esc(chat.title || '(empty)') + '</span><span class="recent-popover-meta">'
-      + esc(chat.projectId ? (projects.find((p) => p.id === chat.projectId)?.name || 'Project') : 'All chats') + ' · ' + esc(chat.model || chat.harness || 'Axon') + '</span>';
+      + esc(chat.projectId ? (projects.find((p) => p.id === chat.projectId)?.name || 'Project') : 'All chats') + ' · ' + esc(chat.model || chat.productMode || 'Axon') + '</span>';
     row.onclick = () => { openConv(chat.id); closeRecentPopup(); };
     row.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openConv(chat.id); closeRecentPopup(); } };
     const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'recent-popover-pin'; pin.textContent = chat.pinned ? '★' : '☆'; pin.title = chat.pinned ? 'Unpin chat' : 'Pin chat';
@@ -1176,9 +1177,7 @@ function addSysNote(text) {
 // expander. Unknown tools fall back to their first short string argument.
 const baseName = (p) => String(p || '').split(/[\\/]/).filter(Boolean).pop() || String(p || '');
 const hostOf = (u) => { try { return new URL(String(u)).host; } catch { return String(u || ''); } };
-// Harnesses name the same tools differently — Claude Code uses `Read`/`Grep` with
-// snake_case arguments, opencode uses `read`/`grep` with camelCase — so match the
-// name case-insensitively and accept either argument spelling.
+// Axon Terminal tools may use snake_case or camelCase arguments, so accept both.
 const pick = (a, ...keys) => { for (const k of keys) if (a[k] != null && a[k] !== '') return a[k]; return undefined; };
 const TOOL_SUMMARY = {
   read: (a) => baseName(pick(a, 'file_path', 'filePath')) + (a.offset ? ' · from line ' + a.offset : ''),
@@ -1224,7 +1223,41 @@ function addToolCall(turn, s) {
   if (s.id) turn.tools.set(s.id, block);
   turn.pendingTool = block;
   record(turn, { k: 'tool', id: s.id, fn: s.fn, args: s.args });
-  if (!turn.replaying && s.fn === 'WebFetch' && typeof s.args?.url === 'string') openBrowserAt(s.args.url);
+  const browser = window.ollama.browserInvocation(s.fn, s.args);
+  if (!turn.replaying && browser?.type === 'navigate') openBrowserAt(browser.url);
+}
+function currentProviderProfile() {
+  return settings.providerProfiles.find((profile) => profile.id === settings.activeProviderProfileId) || settings.providerProfiles[0];
+}
+function renderProviderProfiles() {
+  const select = $('providerProfileSel'); select.innerHTML = '';
+  for (const profile of settings.providerProfiles) {
+    const option = document.createElement('option'); option.value = profile.id; option.textContent = profile.name || 'Unnamed provider'; select.appendChild(option);
+  }
+  const profile = currentProviderProfile();
+  select.value = profile.id; $('providerName').value = profile.name; $('providerKind').value = profile.kind; $('providerEndpoint').value = profile.endpoint; $('providerModel').value = profile.model;
+  $('providerApiKey').value = '';
+  $('providerStatus').textContent = profile.kind === 'ollama'
+    ? 'Ollama uses the current local or configured runtime. No API key is stored.'
+    : (profile.credentialId ? 'API key saved in the OS credential store.' : 'Add an API key to use this profile. It will not be written to normal settings.');
+}
+async function saveProviderProfile() {
+  const existing = currentProviderProfile();
+  const profile = {
+    id: existing?.id || rid(),
+    name: $('providerName').value.trim() || 'Unnamed provider',
+    kind: $('providerKind').value,
+    endpoint: $('providerEndpoint').value.trim().replace(/\/$/, ''),
+    model: $('providerModel').value.trim(),
+    credentialId: existing?.credentialId || '',
+  };
+  if (profile.kind !== 'ollama' && !/^https?:\/\//i.test(profile.endpoint)) { $('providerStatus').textContent = 'Enter a full http:// or https:// API endpoint.'; return; }
+  try {
+    const saved = await window.ollama.providerSave(profile, $('providerApiKey').value);
+    const index = settings.providerProfiles.findIndex((item) => item.id === saved.id);
+    if (index >= 0) settings.providerProfiles[index] = saved; else settings.providerProfiles.push(saved);
+    settings.activeProviderProfileId = saved.id; saveSettings(); renderProviderProfiles();
+  } catch (error) { $('providerStatus').textContent = 'Could not save provider: ' + error.message; }
 }
 // Results attach under the call that produced them so the pair reads as one unit.
 // Long output is clipped to the first few lines behind an explicit expander.
@@ -1403,17 +1436,17 @@ function addCopyBtn(turnEl, text) {
 // ---- help ------------------------------------------------------------------
 async function showHelp() {
   showChatView();
-  let cmds = [];
-  try { cmds = await window.ollama.listCommands(); } catch {}
   const lines = [
-    'Commands',
+    'Axon commands',
     '  /new · /clear  — start a fresh chat',
     '  /model <name>  — switch model (prefix match)',
     '  /help          — this list',
-    '  /compact       — unavailable in headless mode (use /clear)',
+    '  /compact       — start a fresh context (use /clear)',
     '',
-    'Custom commands (~/.claude/commands/*.md):',
-    ...(cmds.length ? cmds.map((c) => '  /' + c.name + (c.description ? ' — ' + c.description : '')) : ['  (none — add markdown files to ~/.claude/commands)']),
+    'Modes:',
+    '  Chat  — direct model conversation',
+    '  Code  — workspace work through Axon Terminal',
+    '  Agent — can delegate scoped work through Axon Terminal',
     '',
     'Anything else /foo is sent to the model verbatim. Attach files with the paperclip or drag-drop.',
   ];
@@ -1451,10 +1484,8 @@ function takeComposerEntry() {
   const text = $('prompt').value.trim();
   if (!text && !attachments.length) return null;
   const images = attachments.filter((a) => a.image).map((a) => ({ name: a.name, type: a.type, data: a.data }));
-  // Claude Code routes to the selected local Ollama model; the external harnesses
-  // pick their own model (blank = that CLI's account default).
-  const harnessModel = { codex: settings.codexModel, opencode: settings.opencodeModel }[settings.harness];
-  const entry = { text, combined: inlineAttachments(text), images, harness: settings.harness, model: harnessModel !== undefined ? harnessModel.trim() : $('model').value };
+  const provider = currentProviderProfile();
+  const entry = { text, combined: inlineAttachments(text), images, productMode: settings.productMode, providerProfileId: provider?.id, model: provider?.model || $('model').value };
   clearInput(); clearAttachments(); return entry;
 }
 
@@ -1475,26 +1506,30 @@ async function send() {
 }
 async function startMessage(entry) {
   const { text, combined, images, model } = entry;
-  // create / reuse conversation
+  // Modes have intentionally different runtimes and system boundaries. Never
+  // silently run a Code/Agent request through a prior Chat conversation (or
+  // vice versa); mode changes begin a fresh conversation automatically.
   let conv = activeId ? conversations.find((c) => c.id === activeId) : null;
+  if (conv && (conv.productMode || 'chat') !== entry.productMode) conv = null;
   if (!conv) {
-    conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, harness: entry.harness, ts: Date.now(), updatedAt: Date.now(), projectId: activeProjectId, turns: [] };
+    conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, productMode: entry.productMode, providerProfileId: entry.providerProfileId, ts: Date.now(), updatedAt: Date.now(), projectId: activeProjectId, turns: [] };
     conversations.unshift(conv); activeId = conv.id; renderRecents();
   }
   conv.updatedAt = Date.now(); saveConvs();
   const systemPrompt = projectSystemPrompt();
-  const fingerprint = instructionFingerprint(conv.harness || entry.harness, systemPrompt);
-  // Claude Code preserves a session's initial system context on --resume. A
-  // changed Axon/project instruction set must start a clean session to apply.
+  const fingerprint = instructionFingerprint(conv.productMode || entry.productMode, systemPrompt);
+  // Terminal sessions preserve their initial instruction context, so a changed
+  // Axon/project instruction set must start a clean session to apply.
   if (conv.instructionFingerprint !== fingerprint) { conv.sessionId = null; conv.instructionFingerprint = fingerprint; saveConvs(); }
   showChatView();
   addUserTurn(text, images);
   const requestId = rid() + rid();
-  const turn = newAiTurn(model || 'Codex CLI');
+  const turn = newAiTurn(model || 'Axon');
   turn.conversationId = conv.id;
   activeTurns.set(requestId, turn);
   renderRecents(); syncComposerState();
-  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, harness: conv.harness || entry.harness, mode: settings.permissionMode, grants: conv.grants || [] });
+  const provider = settings.providerProfiles.find((profile) => profile.id === (conv.providerProfileId || entry.providerProfileId)) || currentProviderProfile();
+  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, productMode: conv.productMode || entry.productMode, provider, mode: settings.permissionMode, grants: conv.grants || [] });
   if (!result?.ok) {
     const failed = activeTurns.get(requestId);
     if (failed) { failed.turnEl.classList.add('error'); failed.streamEl.innerHTML = '<div class="block text">[error] ' + esc(result?.error || 'Could not start this chat.') + '</div>'; activeTurns.delete(requestId); renderRecents(); syncComposerState(); }
@@ -1502,8 +1537,6 @@ async function startMessage(entry) {
 }
 
 // ---- slash-command autocomplete -------------------------------------------
-// ponytail: known app-side commands appear instantly while the CLI discovery
-// fills the rest of the list in the background.
 const CORE_COMMANDS = [
   { name: 'new', description: 'Start a fresh chat', tag: 'Axon' },
   { name: 'clear', description: 'Start a fresh chat', tag: 'Axon' },
@@ -1511,33 +1544,14 @@ const CORE_COMMANDS = [
   { name: 'help', description: 'Show commands and shortcuts', tag: 'Axon' },
   { name: 'compact', description: 'Start fresh (headless fallback)', tag: 'Axon' },
 ];
-let allCommands = [];
-let cmdOpen = false, cmdItems = [], cmdSel = 0, commandLoadStarted = false;
-
-async function ensureCommands() {
-  if (allCommands.length) return;
-  const model = $('model').value || 'qwen2.5:1.5b';
-  let names = []; let custom = [];
-  try { names = await window.ollama.fetchCommands(model); } catch {}
-  try { custom = await window.ollama.listCommands(); } catch {}
-  const customMap = new Map(custom.map((c) => [c.name, c.description || '']));
-  const customNames = new Set(custom.map((c) => c.name));
-  const seen = new Set(), merged = [];
-  for (const n of names) {
-    if (seen.has(n)) continue; seen.add(n);
-    merged.push({ name: n, description: customMap.get(n) || '', tag: customNames.has(n) ? 'custom' : (n.includes(':') ? 'plugin' : 'command') });
-  }
-  for (const c of custom) {
-    if (!seen.has(c.name)) { seen.add(c.name); merged.push({ name: c.name, description: c.description || '', tag: 'custom' }); }
-  }
-  allCommands = merged;
-}
+let allCommands = CORE_COMMANDS;
+let cmdOpen = false, cmdItems = [], cmdSel = 0;
 function showCoreCommands(prefix) {
   const matches = CORE_COMMANDS.filter((c) => c.name.startsWith(prefix));
   if (!matches.length) return closeCmdList();
   cmdItems = matches; cmdSel = 0;
   const box = $('cmdlist');
-  box.innerHTML = '<div class="cmdhead">Commands · loading more</div>' + matches.map((c, i) =>
+  box.innerHTML = '<div class="cmdhead">Axon commands</div>' + matches.map((c, i) =>
     '<div class="cmditem' + (i === 0 ? ' sel' : '') + '" data-i="' + i + '"><span class="cmdname">/' + c.name + '</span><span class="cmddesc">' + c.description + '</span><span class="cmdtag">' + c.tag + '</span></div>'
   ).join('');
   box.classList.add('show'); cmdOpen = true;
@@ -1547,13 +1561,6 @@ function showCoreCommands(prefix) {
 async function openCmdList() {
   const m = $('prompt').value.match(/^\/([A-Za-z0-9_:.\-]*)$/);
   if (!m) { closeCmdList(); return; }
-  if (!allCommands.length && !commandLoadStarted) {
-    commandLoadStarted = true;
-    showCoreCommands(m[1]);
-    ensureCommands().then(() => { if ($('prompt').value.match(/^\/[A-Za-z0-9_:.\-]*$/)) openCmdList(); });
-    return;
-  }
-  if (!allCommands.length) { showCoreCommands(m[1]); return; }
   const prefix = m[1];
   const matches = allCommands.filter((c) => c.name.startsWith(prefix)).slice(0, 50);
   if (!matches.length) { closeCmdList(); return; }
@@ -1637,6 +1644,7 @@ $('browserReload').onclick = () => window.ollama.browserAction('reload');
 $('browserUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') openBrowserAt($('browserUrl').value.trim()); });
 window.addEventListener('resize', () => requestAnimationFrame(syncBrowserBounds));
 window.ollama.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; });
+window.ollama.on('browser-invoked', (s) => { setBrowserOpen(true); if (s?.url) $('browserUrl').value = s.url; });
 
 // attachments
 $('attachBtn').onclick = () => $('fileInput').click();
@@ -1665,11 +1673,19 @@ $('themeSel').onchange = () => { settings.theme = $('themeSel').value; settings.
 $('densitySel').onchange = () => { settings.density = $('densitySel').value; saveSettings(); applyAppearance(); };
 $('motionSel').onchange = () => { settings.motion = $('motionSel').value; saveSettings(); applyAppearance(); };
 $('fontSel').onchange = () => { settings.font = $('fontSel').value; saveSettings(); applyAppearance(); };
-// Only the selected harness's model field is relevant; hide the other one so the
-// row does not read as three unrelated inputs.
-function syncHarnessFields() {
-  $('codexModel').parentElement.style.display = settings.harness === 'codex' ? '' : 'none';
-  $('opencodeModel').parentElement.style.display = settings.harness === 'opencode' ? '' : 'none';
+function syncProductMode() {
+  const mode = ['chat', 'code', 'agent'].includes(settings.productMode) ? settings.productMode : 'chat';
+  settings.productMode = mode;
+  const labels = { chat: 'Chat', code: 'Code', agent: 'Agent' };
+  const descriptions = {
+    chat: 'Chat sends a direct conversation to the selected provider. No workspace tools are exposed.',
+    code: 'Code runs through Axon Terminal in the selected workspace, with your permission policy.',
+    agent: 'Agent runs through Axon Terminal and may delegate well-scoped work to configured subagents.',
+  };
+  $('productModeSel').value = mode;
+  $('productModeButton').textContent = labels[mode];
+  $('productModeButton').title = descriptions[mode];
+  $('productModeInfo').textContent = descriptions[mode];
 }
 // Permission mode: a segmented control rather than a <select>, because the
 // difference between the three is the description, not the label.
@@ -1698,7 +1714,11 @@ $('permissionModeButton').onclick = () => {
   settings.permissionMode = order[(order.indexOf(settings.permissionMode) + 1) % order.length];
   syncModes(); saveSettings();
 };
-$('harnessSel').onchange = () => { settings.harness = $('harnessSel').value; syncHarnessFields(); saveSettings(); };
+$('productModeSel').onchange = () => { settings.productMode = $('productModeSel').value; syncProductMode(); saveSettings(); };
+$('productModeButton').onclick = () => { const modes = ['chat', 'code', 'agent']; settings.productMode = modes[(modes.indexOf(settings.productMode) + 1) % modes.length]; syncProductMode(); saveSettings(); };
+$('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); };
+$('providerNew').onclick = () => { const profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'New provider', kind: 'openai-compatible', endpoint: '', model: '', credentialId: '' }; settings.providerProfiles.push(profile); settings.activeProviderProfileId = profile.id; renderProviderProfiles(); };
+$('providerSave').onclick = saveProviderProfile;
 $('runtimeSel').onchange = () => { syncRuntimeFields(); selectRuntime(); };
 $('exoCheck').onclick = testExo;
 $('llamaCppRole').onchange = () => { syncLlamaCppRoleFields(); saveLlamaCppConfigFromFields(); };
@@ -1723,8 +1743,6 @@ window.ollama.on('llamacpp-status-change', (update) => {
   $('llamaCppStatus').textContent = `${update.role === 'worker' ? 'Worker' : 'Host'} stopped${update.code ? ' (exit ' + update.code + ')' : ''}.${update.tail ? ' ' + update.tail.trim().slice(-300) : ''}`;
   if ($('settings').classList.contains('show')) refreshLlamaCppStatus();
 });
-$('codexModel').oninput = () => { settings.codexModel = $('codexModel').value.trim(); saveSettings(); };
-$('opencodeModel').oninput = () => { settings.opencodeModel = $('opencodeModel').value.trim(); saveSettings(); };
 for (const [inputId, colorKey] of [['accentColor', 'accent'], ['backgroundColor', 'background'], ['surfaceColor', 'surface'], ['textColor', 'text']]) {
   $(inputId).oninput = () => { settings.colors[colorKey] = $(inputId).value; if (colorKey === 'accent') settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); if (colorKey === 'accent') renderSwatches(); };
 }
@@ -1778,7 +1796,7 @@ $('projInstr').addEventListener('input', () => { const p = activeProject(); if (
 function describeDependency(name, value) { return name + ': ' + (value ? value.replace(/\s+/g, ' ').slice(0, 48) : 'missing'); }
 async function refreshAppInfo() {
   const info = await window.ollama.appInfo();
-  $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Claude', info.dependencies.claude), describeDependency('Node', info.dependencies.node)].join(' · ');
+  $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Axon Terminal', info.dependencies.axon), describeDependency('Node', info.dependencies.node)].join(' · ');
 }
 $('appUpdateBtn').onclick = async () => {
   const button = $('appUpdateBtn'); button.disabled = true; $('maintenanceInfo').textContent = 'Checking for an Axon update…';

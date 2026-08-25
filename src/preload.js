@@ -1,4 +1,15 @@
 const { contextBridge, ipcRenderer } = require('electron');
+// Preload runs in Electron's sandboxed loader, which intentionally cannot
+// import arbitrary sibling modules. Keep this tiny pure normalizer here; the
+// matching Node module is used by the non-Electron self-check.
+function browserInvocation(toolName, args = {}) {
+  const name = String(toolName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const url = [args.url, args.href, args.target].find((value) => typeof value === 'string' && value.trim());
+  if (['webfetch', 'browseropen', 'browsernavigate', 'browsergoto'].includes(name) && url) return { type: 'navigate', url: url.trim() };
+  const query = [args.query, args.q, args.search].find((value) => typeof value === 'string' && value.trim());
+  if (['websearch', 'browsersearch'].includes(name) && query) return { type: 'navigate', url: 'https://www.google.com/search?q=' + encodeURIComponent(query.trim()) };
+  return null;
+}
 contextBridge.exposeInMainWorld('ollama', {
   listModels: () => ipcRenderer.invoke('list-models'),
   refreshCloudModels: () => ipcRenderer.invoke('refresh-cloud-models'),
@@ -14,9 +25,6 @@ contextBridge.exposeInMainWorld('ollama', {
   llamaCppSetConfig: (next) => ipcRenderer.invoke('llamacpp-set-config', next),
   llamaCppStart: () => ipcRenderer.invoke('llamacpp-start'),
   llamaCppStop: () => ipcRenderer.invoke('llamacpp-stop'),
-  listCommands: () => ipcRenderer.invoke('list-commands'),
-  fetchCommands: (model) => ipcRenderer.invoke('fetch-commands', model),
-  refreshCommands: (model) => ipcRenderer.invoke('refresh-commands', model),
   chat: (model, prompt, sessionId, opts) => ipcRenderer.invoke('chat', { model, prompt, sessionId, ...opts }),
   stop: (requestId) => ipcRenderer.invoke('chat-stop', requestId),
   steer: (requestId) => ipcRenderer.invoke('chat-steer', requestId),
@@ -49,5 +57,7 @@ contextBridge.exposeInMainWorld('ollama', {
   browserHide: () => ipcRenderer.invoke('browser-hide'),
   browserNavigate: (url) => ipcRenderer.invoke('browser-navigate', url),
   browserAction: (action) => ipcRenderer.invoke('browser-action', action),
+  browserInvocation: (toolName, args) => browserInvocation(toolName, args),
+  providerSave: (profile, apiKey) => ipcRenderer.invoke('provider-save', profile, apiKey),
   on: (ch, cb) => { ipcRenderer.on(ch, (_e, v) => cb(v)); },
 });

@@ -1,7 +1,7 @@
 {
   "name": "axon",
   "version": "0.7.15",
-  "description": "Axon is a local agent workspace powered by Claude Code and a selected Ollama model",
+  "description": "Axon is a local-first Chat, Code, and Agent workspace powered by Ollama and Axon Terminal",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -17,6 +17,16 @@
     "files": [
       "src/**",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "axon-terminal/codex-rs/target/release/axon.exe",
+        "to": "axon-terminal/axon.exe"
+      },
+      {
+        "from": "src/axon-browser-mcp.js",
+        "to": "axon-browser-mcp.js"
+      }
     ],
     "win": {
       "target": "nsis",

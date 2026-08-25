@@ -1,5 +1,5 @@
-// Electron main: tray + window + ollama serve lifecycle + chat via the Claude Code harness.
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView } = require('electron');
+// Electron main: tray + window + Ollama lifecycle + native Axon chat and terminal modes.
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -7,13 +7,9 @@ const https = require('https');
 const crypto = require('crypto');
 const os = require('os');
 const { spawn, spawnSync, execSync } = require('child_process');
-const { parseEvent } = require('./cc');
-const { parseOpencodeEvent, newOpencodeState } = require('./oc');
-const { maybeExpandSlash, listCommands } = require('./commands');
 const lan = require('./lan');
 const { createConfigStore } = require('./config');
 const llamacppRuntime = require('./llamacpp-runtime');
-const llamacppBridge = require('./llamacpp-bridge');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('io.axon.workspace'); } catch {}
@@ -32,14 +28,9 @@ app.on('second-instance', () => {
 
 const LOCAL_OLLAMA_URL = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
 let runtimeKind = 'ollama', exoBase = '';
-// llama.cpp only speaks OpenAI-style chat completions, not the Anthropic
-// Messages protocol Claude Code's CLI expects, so a local loopback-only bridge
-// (src/llamacpp-bridge.js) sits between them and translates. See ensureLlamaCppBridge().
-const LLAMACPP_BRIDGE_PORT = 47420;
 let llamaCppConfig = { role: 'host', modelPath: '', bindIp: '', rpcPeers: '', apiPort: 8090, rpcPort: 50052, contextSize: 0 };
-let llamaCppBridgeServer = null, llamaCppHostProc = null, llamaCppWorkerProc = null;
+let llamaCppHostProc = null, llamaCppWorkerProc = null;
 const activeOllamaUrl = () => runtimeKind === 'exo' ? exoBase + '/ollama' : LOCAL_OLLAMA_URL;
-const activeClaudeBase = () => runtimeKind === 'exo' ? exoBase : runtimeKind === 'llamacpp' ? `http://127.0.0.1:${LLAMACPP_BRIDGE_PORT}` : LOCAL_OLLAMA_URL.replace(/\/$/, '');
 const runtimeEndpoint = (pathname) => new URL(String(pathname || '').replace(/^\//, ''), activeOllamaUrl().replace(/\/?$/, '/'));
 // Vendored/downloaded runtimes live at <repo>/runtimes in dev (matches the
 // existing runtimes/exo convention) and under userData once packaged, since
@@ -58,11 +49,6 @@ function normalizeLlamaCppConfig(value) {
     contextSize: Number.isInteger(Number(v.contextSize)) && Number(v.contextSize) > 0 ? Number(v.contextSize) : 0,
   };
 }
-async function ensureLlamaCppBridge() {
-  if (llamaCppBridgeServer) return;
-  llamaCppBridgeServer = await llamacppBridge.startBridge({ port: LLAMACPP_BRIDGE_PORT, upstreamBase: `http://127.0.0.1:${llamaCppConfig.apiPort}`, host: '127.0.0.1' });
-}
-function stopLlamaCppBridge() { if (llamaCppBridgeServer) { try { llamaCppBridgeServer.close(); } catch {} llamaCppBridgeServer = null; } }
 async function listActiveModels() {
   if (runtimeKind === 'llamacpp') {
     if (!llamaCppConfig.modelPath) return { models: [] };
@@ -71,12 +57,10 @@ async function listActiveModels() {
   }
   return await ollama('/api/tags');
 }
-// ponytail: scoped auto-approve instead of blanket --dangerously-skip-permissions; user wanted auto-run.
-const ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebFetch'];
 // The official release feed. Maintainers can point a fork at its own feed.
 const UPDATE_REPOSITORY = process.env.AXON_UPDATE_REPOSITORY || 'Iyadobo/Axon';
 
-let tray = null, win = null, ollamaProc = null, browserPanel = null, isQuitting = false;
+let tray = null, win = null, ollamaProc = null, browserPanel = null, browserBridge = null, browserBridgeEndpoint = '', browserBridgeToken = '', isQuitting = false;
 let trayLabel = 'Axon: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
@@ -93,66 +77,18 @@ function whereFirst(command) {
       .split(/\r?\n/).map((s) => s.trim()).find((p) => p && fs.existsSync(p)) || null;
   } catch { return null; }
 }
-function npmShimLaunch(shim) {
-  try {
-    const body = fs.readFileSync(shim, 'utf8');
-    const match = body.match(/node_modules[\\/]([^"\r\n]+?\.js)/i);
-    if (!match) return null;
-    const entry = path.join(path.dirname(shim), 'node_modules', ...match[1].split(/[\\/]+/));
-    if (!fs.existsSync(entry)) return null;
-    return { command: whereFirst('node.exe') || 'node', prefix: [entry] };
-  } catch { return null; }
-}
-function findClaude() {
-  if (process.platform !== 'win32') {
-    const home = os.homedir();
-    const direct = [whereFirst('claude'), path.join(home, '.local', 'bin', 'claude')].find((candidate) => candidate && fs.existsSync(candidate));
-    return direct ? { command: direct, prefix: [] } : null;
-  }
-  // Windows Start Menu launches can inherit an older PATH than an interactive
-  // terminal. Claude's native installer uses ~/.local/bin, so probe it directly
-  // instead of falling through to the non-existent bare `claude` command.
-  const direct = [
-    whereFirst('claude.exe'),
-    process.env.USERPROFILE && path.join(process.env.USERPROFILE, '.local', 'bin', 'claude.exe'),
-    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Claude', 'claude.exe'),
-  ].find((candidate) => candidate && fs.existsSync(candidate));
-  if (direct) return { command: direct, prefix: [] };
-  const bare = whereFirst('claude');
-  if (bare && /\.exe$/i.test(bare)) return { command: bare, prefix: [] };
-  const shims = [whereFirst('claude.cmd'), process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'claude.cmd')].filter(Boolean);
-  for (const shim of shims) { const launch = npmShimLaunch(shim); if (launch) return launch; }
-  return null;
-}
-function findCodex() {
-  if (process.platform !== 'win32') {
-    const home = os.homedir();
-    const direct = [whereFirst('codex'), path.join(home, '.local', 'bin', 'codex')].find((candidate) => candidate && fs.existsSync(candidate));
-    return direct ? { command: direct, prefix: [] } : null;
-  }
-  const direct = [
-    whereFirst('codex.exe'),
-    process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'codex.cmd'),
-  ].find((candidate) => candidate && fs.existsSync(candidate));
-  return direct ? { command: direct, prefix: [] } : null;
-}
-function findOpencode() {
-  const home = os.homedir();
-  if (process.platform !== 'win32') {
-    const direct = [whereFirst('opencode'), path.join(home, '.opencode', 'bin', 'opencode'), path.join(home, '.local', 'bin', 'opencode')]
-      .find((candidate) => candidate && fs.existsSync(candidate));
-    return direct ? { command: direct, prefix: [] } : null;
-  }
-  // The npm package ships a platform binary and puts only a .cmd shim on PATH.
-  // A .cmd cannot be spawned without a shell, and opencode.exe itself is not on
-  // PATH, so probe inside the package rather than trusting `where`.
-  const direct = [
-    whereFirst('opencode.exe'),
-    process.env.APPDATA && path.join(process.env.APPDATA, 'npm', 'node_modules', 'opencode-ai', 'bin', 'opencode.exe'),
-    path.join(home, '.opencode', 'bin', 'opencode.exe'),
-    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'opencode', 'opencode.exe'),
-  ].find((candidate) => candidate && fs.existsSync(candidate));
-  return direct ? { command: direct, prefix: [] } : null;
+function findAxonTerminal() {
+  const executable = process.platform === 'win32' ? 'axon.exe' : 'axon';
+  const candidates = [
+    // Development checkout: build this controlled fork locally.
+    path.join(__dirname, '..', 'axon-terminal', 'codex-rs', 'target', 'release', executable),
+    path.join(__dirname, '..', 'axon-terminal', 'codex-rs', 'target', 'debug', executable),
+    // Packaged builds place the terminal next to the application resources.
+    app.isPackaged && path.join(process.resourcesPath, 'axon-terminal', executable),
+    whereFirst(executable),
+  ].filter(Boolean);
+  const command = candidates.find((candidate) => candidate && fs.existsSync(candidate));
+  return command ? { command, prefix: [] } : null;
 }
 function runQuiet(command, args, timeout = 15000) {
   return new Promise((resolve) => {
@@ -164,20 +100,30 @@ function runQuiet(command, args, timeout = 15000) {
   });
 }
 async function dependencyStatus() {
-  const claudeLaunch = findClaude(), codexLaunch = findCodex(), opencodeLaunch = findOpencode();
-  const [ollama, node, claude] = await Promise.all([
+  const axonLaunch = findAxonTerminal();
+  const [ollama, node, axon] = await Promise.all([
     runQuiet(whereFirst(process.platform === 'win32' ? 'ollama.exe' : 'ollama') || 'ollama', ['--version']),
     runQuiet(whereFirst(process.platform === 'win32' ? 'node.exe' : 'node') || 'node', ['--version']),
-    claudeLaunch ? runQuiet(claudeLaunch.command, [...claudeLaunch.prefix, '--version']) : Promise.resolve(null),
+    axonLaunch ? runQuiet(axonLaunch.command, [...axonLaunch.prefix, '--version']) : Promise.resolve(null),
   ]);
-  const codexVersion = codexLaunch ? await runQuiet(codexLaunch.command, [...codexLaunch.prefix, '--version']) : null;
-  const codexLogin = codexLaunch ? await runQuiet(codexLaunch.command, [...codexLaunch.prefix, 'login', 'status']) : null;
-  const codex = codexVersion ? `${codexVersion}${/logged in/i.test(codexLogin || '') && !/not logged in/i.test(codexLogin || '') ? '' : ' (not logged in)'}` : null;
-  const opencode = opencodeLaunch ? await runQuiet(opencodeLaunch.command, [...opencodeLaunch.prefix, '--version']) : null;
-  return { ollama, node, claude, codex, opencode };
+  return { ollama, node, axon };
 }
 let config = null;
 const visionCapability = new Map();
+function providerSecretsPath() { return path.join(app.getPath('userData'), 'provider-secrets.json'); }
+function loadProviderSecrets() {
+  try { return JSON.parse(fs.readFileSync(providerSecretsPath(), 'utf8')); } catch { return {}; }
+}
+function saveProviderSecret(id, value) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Secure credential storage is unavailable on this system.');
+  const secrets = loadProviderSecrets();
+  secrets[id] = safeStorage.encryptString(String(value)).toString('base64');
+  fs.writeFileSync(providerSecretsPath(), JSON.stringify(secrets), { encoding: 'utf8', mode: 0o600 });
+}
+function readProviderSecret(id) {
+  if (!id || !safeStorage.isEncryptionAvailable()) return null;
+  try { const value = loadProviderSecrets()[id]; return value ? safeStorage.decryptString(Buffer.from(value, 'base64')) : null; } catch { return null; }
+}
 
 // ---- ollama serve lifecycle ----------------------------------------------
 async function isOllamaUp() {
@@ -189,7 +135,7 @@ async function isOllamaUp() {
 }
 async function ensureOllama() {
   if (runtimeKind === 'exo') return setTray('Axon: Exo runtime selected');
-  if (runtimeKind === 'llamacpp') { try { await ensureLlamaCppBridge(); } catch {} return setTray('Axon: llama.cpp RPC runtime'); }
+  if (runtimeKind === 'llamacpp') return setTray('Axon: llama.cpp RPC runtime');
   if (await isOllamaUp()) return setTray('Axon: running');
   ollamaProc = spawn('ollama', ['serve'], { windowsHide: true, shell: false });
   ollamaProc.on('exit', () => { ollamaProc = null; setTray('Axon: stopped'); });
@@ -358,6 +304,11 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  if (!app.isPackaged) {
+    win.webContents.on('console-message', (_event, details) => {
+      console.error(`[renderer:${details.level}] ${details.sourceId}:${details.lineNumber} ${details.message}`);
+    });
+  }
   // Open maximized: Axon is a workspace, and the transcript plus the browser
   // pane both want room. Maximize before showing so there is no resize flash;
   // the width/height above stay as the restore-down size.
@@ -455,201 +406,257 @@ function setBrowserBounds(bounds) {
   const width = Math.max(1, Math.floor(bounds?.width || 1)), height = Math.max(1, Math.floor(bounds?.height || 1));
   panel.setBounds({ x, y, width, height });
 }
-
-// ---- custom slash-command discovery --------------------------------------
-// Claude Code does NOT expand custom slash commands in headless -p mode (verified:
-// /relaytest was sent to the model literally, never the command body), so we expand
-// ~/.claude/commands/*.md ourselves (src/commands.js, testable). Built-in REPL commands
-// (/clear, /model, /help, /compact) are intercepted in the renderer; everything else
-// /foo is expanded if a file exists, otherwise passed through to the model as-is.
-
-// ---- chat via the Claude Code harness -------------------------------------
-// sessionId: null -> start a new Claude Code session; otherwise --resume <sessionId>.
-// Axon adds its identity and the user's instructions to Claude Code's tool prompt;
-// the harness remains available without being mistaken for the model's identity.
-const AXON_IDENTITY_PROMPT = [
-  'You are the language model operating inside Axon, a local desktop agent workspace.',
-  'Claude Code is the harness that provides your tools and session runtime; it is not your identity.',
-  'Do not introduce yourself as Claude Code. When asked who you are, say you are the assistant running in Axon and, if useful, explain that Claude Code is the underlying harness.',
-  'The Axon instructions below are direct requirements for your behaviour, tone, and constraints.',
-].join('\n');
-
-// ---- permission modes -------------------------------------------------------
-// Three tiers, mapped onto whatever each harness actually enforces:
-//   approve — read-only by default. Anything that writes, deletes or runs a
-//             command is refused by the harness, and Axon surfaces the refusal
-//             as an Allow control in the transcript.
-//   auto    — the curated tool set runs without asking (the long-standing
-//             behaviour, and still the default).
-//   full    — nothing is withheld.
-// Claude Code's own flags do the enforcing, so a model cannot talk its way past
-// this the way it could past a system-prompt rule.
-const PERMISSION_MODES = new Set(['approve', 'auto', 'full']);
-const READ_ONLY_TOOLS = ['Read', 'Glob', 'Grep', 'WebFetch'];
-const normalizeMode = (value) => (PERMISSION_MODES.has(value) ? value : 'auto');
-// Tool names Axon will let the user grant from the transcript. Anything outside
-// this list is not offerable, so a hostile tool name cannot smuggle extra
-// arguments into the CLI's --allowedTools list.
-const GRANTABLE_TOOLS = new Set([...ALLOWED_TOOLS, ...READ_ONLY_TOOLS]);
-function sanitizeGrants(value) {
-  if (!Array.isArray(value)) return [];
-  return [...new Set(value.map(String).filter((tool) => GRANTABLE_TOOLS.has(tool)))];
+function browserSnapshotScript() {
+  return `(() => {
+    const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+    const controls = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"]')]
+      .filter(visible).slice(0, 120).map((el, index) => {
+        const id = el.dataset.axonBrowserId || ('axon-' + (index + 1)); el.dataset.axonBrowserId = id;
+        return { id, tag: el.tagName.toLowerCase(), text: (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 180), href: el.href || undefined, type: el.type || undefined };
+      });
+    return { title: document.title, url: location.href, text: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 12000), controls };
+  })()`;
 }
-// The hesitation contract. Strongest in approve mode (where a refusal is
-// expected and the model should plan rather than flail), still present in full
-// mode, where nothing but the model's own judgement is left.
-function permissionPrompt(mode, grants) {
-  const lines = ['[Execution policy]'];
-  if (mode === 'approve') {
-    lines.push(
-      'You are in APPROVE mode. Only read-only tools are granted' + (grants.length ? `, plus these the user has approved this session: ${grants.join(', ')}.` : '.'),
-      'Before any action that writes, deletes, installs or runs a shell command: say what you intend to do and why, in one or two sentences, and then attempt it.',
-      'If the harness refuses the action, do not retry it and do not look for a way around it. Explain what you needed and stop; the user gets an Allow button and decides.',
-    );
-  } else if (mode === 'full') {
-    lines.push(
-      'You are in FULL mode. No permission checks will stop you, so your own judgement is the only safeguard.',
-      'Before anything destructive or hard to undo — deleting files, force-pushing, rewriting history, dropping data, mass edits — state what you are about to do and pause for the user to confirm in their next message.',
-      'Prefer the reversible version of an action when one exists.',
-    );
-  } else {
-    lines.push(
-      'You are in AUTO mode. Reading, writing, editing and ordinary shell commands run without asking.',
-      'Say what you are doing as you go. Before anything destructive or hard to undo — deleting files, force-pushing, rewriting history, dropping data, mass edits — stop and ask first rather than proceeding.',
-    );
+async function readBrowser() {
+  const panel = ensureBrowserPanel();
+  return panel.webContents.executeJavaScript(browserSnapshotScript(), true);
+}
+function revealBrowser(url) {
+  const valid = validBrowserURL(url);
+  if (!valid) throw new Error('Use a full http:// or https:// address.');
+  const panel = ensureBrowserPanel();
+  win?.webContents.send('browser-invoked', { url: valid });
+  panel.webContents.loadURL(valid);
+  return { url: valid };
+}
+function startBrowserBridge() {
+  if (browserBridge) return Promise.resolve();
+  browserBridgeToken = crypto.randomBytes(32).toString('hex');
+  browserBridge = http.createServer((request, response) => {
+    const done = (status, data) => { response.writeHead(status, { 'content-type': 'application/json' }); response.end(JSON.stringify(data)); };
+    if (request.method !== 'POST' || request.headers['x-axon-browser-token'] !== browserBridgeToken) return done(403, { error: 'Axon Browser access denied.' });
+    let raw = ''; request.setEncoding('utf8');
+    request.on('data', (chunk) => { raw += chunk; if (raw.length > 128 * 1024) request.destroy(); });
+    request.on('end', async () => {
+      let payload = {}; try { payload = raw ? JSON.parse(raw) : {}; } catch { return done(400, { error: 'Invalid browser request.' }); }
+      try {
+        const action = request.url?.replace(/^\//, '');
+        if (action === 'open') return done(200, revealBrowser(payload.url));
+        // Any native browser tool invocation should reveal the sidecar. In
+        // particular, agents commonly start with browser_read rather than
+        // browser_open, and failed interactions should still be visible.
+        win?.webContents.send('browser-invoked', {});
+        if (action === 'read') return done(200, await readBrowser());
+        const panel = ensureBrowserPanel();
+        if (action === 'click' || action === 'type') {
+          const id = String(payload.id || ''); if (!/^axon-\d+$/.test(id)) throw new Error('Use an element ID returned by browser_read.');
+          const text = action === 'type' ? String(payload.text || '') : '';
+          const result = await panel.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-axon-browser-id="${id}"]'); if (!el) return { error: 'That page element is no longer available. Read the page again.' }; if ('${action}' === 'click') { el.click(); return { ok: true }; } el.focus(); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set; if (!setter) return { error: 'That element cannot accept typed text.' }; setter.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true }; })()`, true);
+          if (result?.error) throw new Error(result.error); return done(200, result);
+        }
+        if (action === 'screenshot') {
+          const image = await panel.webContents.capturePage();
+          return done(200, { mimeType: 'image/png', data: image.toPNG().toString('base64') });
+        }
+        return done(404, { error: 'Unknown browser action.' });
+      } catch (error) { return done(400, { error: error.message }); }
+    });
+  });
+  return new Promise((resolve, reject) => {
+    browserBridge.once('error', reject);
+    browserBridge.listen(0, '127.0.0.1', () => {
+      const address = browserBridge.address(); browserBridgeEndpoint = `http://127.0.0.1:${address.port}`; resolve();
+    });
+  });
+}
+function ensureAxonBrowserMcpConfig(provider = null) {
+  const home = path.join(app.getPath('userData'), 'terminal'); fs.mkdirSync(home, { recursive: true });
+  const quote = (value) => JSON.stringify(String(value));
+  const mcpScript = app.isPackaged ? path.join(process.resourcesPath, 'axon-browser-mcp.js') : path.join(__dirname, 'axon-browser-mcp.js');
+  let profile = `[mcp_servers.axon_browser]\ncommand = ${quote(process.execPath)}\nargs = [${quote(mcpScript)}]\nenv = { ELECTRON_RUN_AS_NODE = "1" }\n`;
+  if (provider?.kind === 'responses') {
+    profile += `\nmodel_provider = "axon_custom"\n[model_providers.axon_custom]\nname = ${quote(provider.name || 'Axon API')}\nbase_url = ${quote(provider.endpoint)}\nenv_key = "AXON_PROVIDER_API_KEY"\nwire_api = "responses"\n`;
   }
-  lines.push('Never work around a refused permission by reaching for a different tool that achieves the same effect.');
-  return lines.join('\n');
+  fs.writeFileSync(path.join(home, 'browser.config.toml'), profile, 'utf8');
+  return home;
 }
-function axonSystemPrompt(userInstructions, mode = 'auto', grants = []) {
-  const user = String(userInstructions || '').trim();
-  const base = `${AXON_IDENTITY_PROMPT}\n\n${permissionPrompt(normalizeMode(mode), grants)}`;
-  return user ? `${base}\n\n[Axon instructions]\n${user}` : base;
+
+// ---- execution permissions -------------------------------------------------
+// Axon Terminal enforces the sandbox; this only validates the renderer value.
+const PERMISSION_MODES = new Set(['approve', 'auto', 'full']);
+const normalizeMode = (value) => (PERMISSION_MODES.has(value) ? value : 'auto');
+
+// Axon Chat deliberately avoids an agent harness. It is a fast, local-first
+// conversation surface backed by the selected Ollama-compatible runtime.
+const directChatSessions = new Map();
+function apiEndpoint(base, pathName) {
+  const baseUrl = new URL(String(base || '').replace(/\/$/, '') + '/');
+  return new URL(pathName.replace(/^\//, ''), baseUrl.href.endsWith('/v1/') ? baseUrl : new URL('v1/', baseUrl));
 }
-function isVisionRejection(value) {
-  const text = String(value || '');
-  return /(?:image|vision|screenshot).{0,100}(?:not supported|unsupported|cannot|can't|does not support|not capable)|(?:400).{0,100}(?:image|vision|screenshot)/i.test(text);
+function runApiChat(model, prompt, sessionId, send, systemPrompt, holder, provider, history, user) {
+  return new Promise((resolve) => {
+    const key = readProviderSecret(provider?.credentialId);
+    if (!key) { send('chat-error', 'This provider profile has no saved API key. Add one in Settings.'); send('chat-done', { sessionId, ok: false }); return resolve(); }
+    const sid = sessionId || crypto.randomUUID();
+    const responses = provider.kind === 'responses';
+    let target; try { target = apiEndpoint(provider.endpoint, responses ? 'responses' : 'chat/completions'); } catch { send('chat-error', 'This provider has an invalid endpoint.'); send('chat-done', { sessionId: sid, ok: false }); return resolve(); }
+    const messages = systemPrompt?.trim() ? [{ role: 'system', content: systemPrompt.trim() }, ...history, user] : [...history, user];
+    const body = responses ? { model, input: messages, stream: true } : { model, messages, stream: true };
+    const client = target.protocol === 'https:' ? https : http;
+    const payload = JSON.stringify(body);
+    const request = client.request(target, { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (response) => {
+      let buffer = '', assistant = '', completed = false;
+      if (response.statusCode < 200 || response.statusCode >= 300) { response.setEncoding('utf8'); response.on('data', (chunk) => { buffer += chunk; }); response.on('end', () => { send('chat-error', `Provider request failed: ${buffer.slice(0, 300) || response.statusCode}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); }); return; }
+      const finish = () => { if (completed) return; completed = true; directChatSessions.set(sid, [...history, user, { role: 'assistant', content: assistant }].slice(-40)); send('chat-done', { sessionId: sid, ok: true }); resolve(); };
+      response.setEncoding('utf8'); response.on('data', (chunk) => {
+        buffer += chunk; let newline;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newline).trim(); buffer = buffer.slice(newline + 1);
+          if (!line || !line.startsWith('data:')) continue;
+          const data = line.slice(5).trim(); if (data === '[DONE]') { finish(); continue; }
+          let event; try { event = JSON.parse(data); } catch { continue; }
+          const text = responses ? (event.delta || event.text || '') : (event.choices?.[0]?.delta?.content || '');
+          if (typeof text === 'string' && text) { assistant += text; send('chat-delta', text); }
+          if (event.type === 'response.completed') finish();
+        }
+      });
+      response.on('end', finish); response.on('error', (error) => { send('chat-error', error.message); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
+    });
+    holder.child = request; request.on('error', (error) => { send('chat-error', `Provider request failed: ${error.message}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); }); request.end(payload);
+  });
 }
-// A refused action comes back as a normal tool_result carrying is_error, not as
-// a crash or a hang — verified against Claude Code in --permission-mode manual.
-// The renderer turns anything matching this into an Allow control.
-function permissionDenial(text) {
-  const value = String(text || '');
-  const claude = value.match(/requested permissions to (.+?), but you haven'?t granted it yet/i);
-  if (claude) return { what: claude[1].trim() };
-  if (/permission for this action was denied|Blocked by classifier/i.test(value)) return { what: 'this action' };
-  if (/permission denied by the user|rejected the tool/i.test(value)) return { what: 'this action' };
-  return null;
+function runLlamaCppChat(model, history, user, sessionId, send, systemPrompt, holder) {
+  return new Promise((resolve) => {
+    const sid = sessionId || crypto.randomUUID();
+    const messages = systemPrompt?.trim() ? [{ role: 'system', content: systemPrompt.trim() }, ...history, user] : [...history, user];
+    const payload = JSON.stringify({ model, messages, stream: true });
+    const target = new URL('/v1/chat/completions', `http://127.0.0.1:${llamaCppConfig.apiPort}`);
+    const request = http.request(target, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (response) => {
+      let buffer = '', assistant = '', completed = false;
+      const finish = (ok) => {
+        if (completed) return; completed = true;
+        if (assistant) directChatSessions.set(sid, [...history, user, { role: 'assistant', content: assistant }].slice(-40));
+        send('chat-done', { sessionId: sid, ok }); resolve();
+      };
+      if (response.statusCode !== 200) {
+        response.setEncoding('utf8'); response.on('data', (chunk) => { buffer += chunk; });
+        response.on('end', () => { send('chat-error', `llama.cpp request failed: ${buffer.slice(0, 300) || response.statusCode}`); finish(false); });
+        return;
+      }
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        buffer += chunk; let newline;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newline).trim(); buffer = buffer.slice(newline + 1);
+          if (!line.startsWith('data:')) continue;
+          const value = line.slice(5).trim(); if (value === '[DONE]') return finish(true);
+          let event; try { event = JSON.parse(value); } catch { continue; }
+          const text = event.choices?.[0]?.delta?.content;
+          if (typeof text === 'string' && text) { assistant += text; send('chat-delta', text); }
+        }
+      });
+      response.on('end', () => finish(!!assistant));
+      response.on('error', (error) => { send('chat-error', error.message); finish(false); });
+    });
+    holder.child = request;
+    request.on('error', (error) => { send('chat-error', `llama.cpp request failed: ${error.message}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
+    request.end(payload);
+  });
 }
-function runChat(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], recovered = false, mode = 'auto', grants = []) {
+function runDirectChat(model, prompt, sessionId, send, systemPrompt, holder, images = [], provider = null) {
   holder = holder || {};
   return new Promise((resolve) => {
-    const launch = findClaude();
-    if (!launch) {
-      send('chat-error', 'Claude Code is not installed. Select Codex CLI in Settings, or use Download missing dependencies to install Claude Code.');
-      send('chat-done', { sessionId, ok: false });
-      return resolve();
-    }
-    const newSession = !sessionId;
     const sid = sessionId || crypto.randomUUID();
-    const permission = normalizeMode(mode);
-    const granted = sanitizeGrants(grants);
-    // approve: read-only plus whatever the user has explicitly allowed this
-    // conversation. full: withhold nothing. auto: the curated set.
-    const tools = permission === 'approve' ? [...new Set([...READ_ONLY_TOOLS, ...granted])] : ALLOWED_TOOLS;
-    const args = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', '--model', model];
-    if (permission !== 'full') args.push('--allowedTools', ...tools);
-    // `manual` makes a withheld tool come back as a refusal instead of running.
-    // `bypassPermissions` is the flag that actually works here — plain
-    // --dangerously-skip-permissions is gated behind an auto-mode classifier.
-    if (permission === 'approve') args.push('--permission-mode', 'manual');
-    else if (permission === 'full') args.push('--permission-mode', 'bypassPermissions');
-    args.push(newSession ? '--session-id' : '--resume', sid);
-    args.push('--append-system-prompt', axonSystemPrompt(systemPrompt, permission, granted));
-    const child = spawn(launch.command, [...launch.prefix, ...args], {
-      env: { ...process.env, ANTHROPIC_BASE_URL: activeClaudeBase(), ANTHROPIC_AUTH_TOKEN: 'ollama' },
-      cwd: cwd || undefined,
-      windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    // Claude Code's stream-json input preserves Anthropic content blocks. Ollama
-    // vision models receive real base64 image blocks; text-only models can still
-    // explain that they cannot inspect an image.
-    const content = [{ type: 'text', text: prompt }];
-    for (const image of images) content.push({ type: 'image', source: { type: 'base64', media_type: image.type, data: image.data } });
-    child.stdin.end(JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n');
-    holder.child = child;
-    let buf = '';
-    let resultSid = sid;
-    let visionRejected = false;
-    const toolNames = new Map(); // tool_use id -> tool name, to label a refusal
-    child.stdout.on('data', (chunk) => {
-      buf += chunk;
-      let nl; while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
-        const ev = parseEvent(line);
-        if (!ev || !ev.flow) continue;
-        for (const f of ev.flow) {
-          // Tag a refused action so the renderer can offer to grant it. Only
-          // tools Axon is willing to grant become offers; the rest stay plain
-          // errors, so nothing unexpected can end up in --allowedTools.
-          if (f.act === 'step' && f.step?.type === 'tool_call' && f.step.id) toolNames.set(f.step.id, f.step.fn);
-          if (f.act === 'step' && f.step?.type === 'tool_result' && f.step.is_error !== false) {
-            const denial = permissionDenial(f.step.result);
-            if (denial) {
-              const tool = toolNames.get(f.step.id);
-              f.step.denied = { what: denial.what, tool: GRANTABLE_TOOLS.has(tool) ? tool : null };
-              f.step.is_error = true;
-            }
-          }
-          if (f.act === 'delta') send('chat-delta', f.text);
-          else if (f.act === 'step') send('chat-step', f.step);
-          else if (f.act === 'done') {
-            if (f.is_error) { visionRejected ||= isVisionRejection(f.result); if (!visionRejected) send('chat-error', f.result); }
-            if (f.session_id) resultSid = f.session_id;
+    const history = directChatSessions.get(sid) || [];
+    const user = { role: 'user', content: prompt };
+    if (images.length) user.images = images.map((image) => image.data);
+    const messages = systemPrompt?.trim()
+      ? [{ role: 'system', content: systemPrompt.trim() }, ...history, user]
+      : [...history, user];
+    if (provider?.kind && provider.kind !== 'ollama') return runApiChat(model, prompt, sid, send, systemPrompt, holder, provider, history, user).then(resolve);
+    if (runtimeKind === 'llamacpp') return runLlamaCppChat(model, history, user, sid, send, systemPrompt, holder).then(resolve);
+    const target = runtimeEndpoint('/api/chat');
+    const client = target.protocol === 'https:' ? https : http;
+    const payload = JSON.stringify({ model, messages, stream: true });
+    const request = client.request(target, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) },
+    }, (response) => {
+      if (response.statusCode !== 200) {
+        let body = ''; response.setEncoding('utf8'); response.on('data', (chunk) => { body += chunk; });
+        response.on('end', () => { send('chat-error', `Axon Chat could not reach ${target.origin}: ${body.slice(0, 300) || response.statusCode}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
+        return;
+      }
+      let buffer = '', assistant = '', completed = false;
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        buffer += chunk; let newline;
+        while ((newline = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, newline).trim(); buffer = buffer.slice(newline + 1);
+          if (!line) continue;
+          let event; try { event = JSON.parse(line); } catch { continue; }
+          const text = event.message?.content;
+          if (typeof text === 'string' && text) { assistant += text; send('chat-delta', text); }
+          if (event.done) {
+            completed = true;
+            directChatSessions.set(sid, [...history, user, { role: 'assistant', content: assistant }].slice(-40));
+            send('chat-done', { sessionId: sid, ok: true }); resolve();
           }
         }
-      }
+      });
+      response.on('end', () => {
+        if (completed) return;
+        if (assistant) directChatSessions.set(sid, [...history, user, { role: 'assistant', content: assistant }].slice(-40));
+        send('chat-done', { sessionId: sid, ok: !!assistant }); resolve();
+      });
+      response.on('error', (error) => { send('chat-error', error.message); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
     });
-    let stderrBuf = '';
-    child.stderr.on('data', (c) => { stderrBuf += c; });
-    child.on('exit', (code) => {
-      if (holder.child === child) holder.child = null;
-      if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
-      // A rejected image can become part of Claude's resumed session. Restart
-      // once with a clean session and no image blocks so later text messages do
-      // not keep receiving the same 400 from a non-vision model.
-      if (visionRejected && !recovered) {
-        send('chat-step', { type: 'tool_result', result: 'This model rejected an image/screenshot. Retrying this request in a clean text-only session.' });
-        return runChat(model, prompt, null, send, systemPrompt, cwd, holder, [], true, permission, granted).then(resolve);
-      }
-      if (code && !stderrBuf.includes('connectors')) send('chat-error', `claude exited ${code}${stderrBuf ? ': ' + stderrBuf.trim().slice(0, 300) : ''}`);
-      send('chat-done', { sessionId: resultSid, ok: !code });
-      resolve();
-    });
-    child.on('error', (e) => { if (holder.child === child) holder.child = null; send('chat-error', `failed to launch claude: ${e.message}`); send('chat-done', { sessionId: resultSid, ok: false }); resolve(); });
+    holder.child = request;
+    request.on('error', (error) => { send('chat-error', `Axon Chat request failed: ${error.message}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
+    request.end(payload);
   });
 }
 
-// Codex's supported noninteractive interface emits JSONL events. We map the
-// useful parts into Axon's existing streaming/text/tool-step protocol.
-function runCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], mode = 'auto') {
+function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], permissionMode = 'auto', productMode = 'code', provider = null) {
   holder = holder || {};
   return new Promise((resolve) => {
-    const launch = findCodex();
+    const launch = findAxonTerminal();
     if (!launch) {
-      send('chat-error', 'Codex CLI is not installed. Install the Codex desktop app or `@openai/codex`, then restart Axon.');
+      send('chat-error', 'Axon Terminal is not built yet. Build the bundled Axon Terminal before using Code or Agent mode.');
       send('chat-done', { sessionId, ok: false });
       return resolve();
     }
-    if (images.length) send('chat-step', { type: 'tool_result', result: 'Images are not yet supported by Axon’s Codex CLI bridge; this turn was sent as text only.' });
     const root = cwd || ensureDefaultWorkspace();
-    // Codex enforces the same three tiers through its own sandbox setting.
-    const sandbox = { approve: 'read-only', auto: 'workspace-write', full: 'danger-full-access' }[normalizeMode(mode)];
-    const common = ['--json', '--color', 'never', '--skip-git-repo-check', '--sandbox', sandbox, '-C', root];
+    const sandbox = { approve: 'read-only', auto: 'workspace-write', full: 'danger-full-access' }[normalizeMode(permissionMode)];
+    const instruction = [
+      systemPrompt?.trim(),
+      productMode === 'agent' ? 'You are Axon Agent. Delegate only concrete, independent workstreams when they materially help; keep all workers within the parent workspace and permission boundary.' : 'You are Axon Code. Work directly in the current workspace, verify your changes, and keep the user informed.',
+      prompt,
+    ].filter(Boolean).join('\n\n');
+    const providerKind = provider?.kind || 'ollama';
+    if (!['ollama', 'responses'].includes(providerKind)) {
+      send('chat-error', 'This API profile supports Axon Chat, but Code and Agent require a Responses-compatible provider for tool calling.');
+      send('chat-done', { sessionId, ok: false });
+      return resolve();
+    }
+    const axonHome = ensureAxonBrowserMcpConfig(provider);
+    const common = ['--json', '--color', 'never', '--skip-git-repo-check', '--profile', 'browser', '--sandbox', sandbox, '-C', root];
+    if (providerKind === 'ollama') common.push('--oss', '--local-provider', 'ollama');
     if (model) common.push('--model', model);
-    const instruction = (systemPrompt?.trim() ? systemPrompt.trim() + '\n\n' : '') + prompt;
+    if (productMode === 'agent') common.push('--enable', 'multi_agent_v2');
     const args = sessionId ? ['exec', 'resume', sessionId, ...common, instruction] : ['exec', ...common, instruction];
-    const child = spawn(launch.command, [...launch.prefix, ...args], { cwd: root, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    const env = {
+      ...process.env,
+      AXON_HOME: axonHome,
+      AXON_BROWSER_ENDPOINT: browserBridgeEndpoint,
+      AXON_BROWSER_TOKEN: browserBridgeToken,
+      AXON_PROVIDER_API_KEY: providerKind === 'responses' ? (readProviderSecret(provider?.credentialId) || '') : '',
+      // A screenshot is an image tool result. Do not feed one to an obviously
+      // text-only worker; structured browser_read remains available to all.
+      AXON_BROWSER_ALLOW_SCREENSHOT: /(?:vision|(?:^|[:._-])vl(?:[:._-]|$)|llava)/i.test(String(model || '')) ? '1' : '0',
+    };
+    delete env.CODEX_HOME;
+    const child = spawn(launch.command, [...launch.prefix, ...args], { cwd: root, env, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
     holder.child = child;
     let buffer = '', resultSid = sessionId || null, stderr = '', failed = false;
     const finish = (ok) => { if (holder.child === child) holder.child = null; send('chat-done', { sessionId: resultSid, ok }); resolve(); };
@@ -659,78 +666,19 @@ function runCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, ima
         const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
         let event; try { event = JSON.parse(line); } catch { continue; }
         if (event.type === 'thread.started' && event.thread_id) resultSid = event.thread_id;
-        if (event.type === 'item.started' && event.item?.type === 'command_execution') send('chat-step', { type: 'tool_call', fn: 'Codex', args: { command: event.item.command || 'Running tool' } });
+        if (event.type === 'item.started' && event.item?.type === 'command_execution') send('chat-step', { type: 'tool_call', fn: 'Axon Terminal', args: { command: event.item.command || 'Running tool' } });
         if (event.type === 'item.completed' && event.item?.type === 'command_execution') send('chat-step', { type: 'tool_result', result: event.item.aggregated_output || event.item.status || 'Command completed' });
         if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item.text) send('chat-delta', event.item.text);
-        if (event.type === 'turn.failed' || event.type === 'error') { failed = true; send('chat-error', event.error?.message || event.message || 'Codex failed to complete this turn.'); }
+        if (event.type === 'turn.failed' || event.type === 'error') { failed = true; send('chat-error', event.error?.message || event.message || 'Axon Terminal failed to complete this turn.'); }
       }
     });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.on('exit', (code) => {
       if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
-      if (code && !failed) send('chat-error', `Codex CLI exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
+      if (code && !failed) send('chat-error', `Axon Terminal exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
       finish(!code && !failed);
     });
-    child.on('error', (error) => { send('chat-error', `Could not start Codex CLI: ${error.message}`); finish(false); });
-  });
-}
-
-// opencode's `run --format json` prints one JSON object per line. Unlike Claude
-// Code it emits whole parts rather than token deltas, and a tool event arrives
-// already completed — input and output together — so each one becomes a
-// tool_call + tool_result pair keyed by callID. Events are deduped by part id
-// because a future opencode may stream a part cumulatively rather than once.
-function runOpencode(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], mode = 'auto') {
-  holder = holder || {};
-  return new Promise((resolve) => {
-    const launch = findOpencode();
-    if (!launch) {
-      send('chat-error', 'opencode is not installed. Install it with `npm i -g opencode-ai` (or from opencode.ai), then restart Axon.');
-      send('chat-done', { sessionId, ok: false });
-      return resolve();
-    }
-    if (images.length) send('chat-step', { type: 'tool_result', result: 'Images are not yet supported by Axon’s opencode bridge; this turn was sent as text only.' });
-    const root = cwd || ensureDefaultWorkspace();
-    const instruction = (systemPrompt?.trim() ? systemPrompt.trim() + '\n\n' : '') + prompt;
-    const args = ['run', '--format', 'json', '--thinking', '--dir', root];
-    // opencode only exposes one lever here: --auto blanket-approves anything not
-    // explicitly denied, so it maps to full and nothing else.
-    if (normalizeMode(mode) === 'full') args.push('--auto');
-    if (model) args.push('--model', model);
-    if (sessionId) args.push('--session', sessionId);
-    args.push(instruction);
-    const child = spawn(launch.command, [...launch.prefix, ...args], { cwd: root, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
-    holder.child = child;
-    let buffer = '', resultSid = sessionId || null, stderr = '', failed = false;
-    const state = newOpencodeState();
-    child.stdout.on('data', (chunk) => {
-      buffer += chunk; let newline;
-      while ((newline = buffer.indexOf('\n')) >= 0) {
-        const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
-        const ev = parseOpencodeEvent(line, state);
-        if (!ev) continue;
-        if (ev.sessionId) resultSid = ev.sessionId;
-        for (const f of ev.flow) {
-          if (f.act === 'delta') send('chat-delta', f.text);
-          else if (f.act === 'step') send('chat-step', f.step);
-          else if (f.act === 'error') { failed = true; send('chat-error', f.message); }
-        }
-      }
-    });
-    child.stderr.on('data', (chunk) => { stderr += chunk; });
-    child.on('exit', (code) => {
-      if (holder.child === child) holder.child = null;
-      if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
-      if (code && !failed) send('chat-error', `opencode exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
-      send('chat-done', { sessionId: resultSid, ok: !code && !failed });
-      resolve();
-    });
-    child.on('error', (error) => {
-      if (holder.child === child) holder.child = null;
-      send('chat-error', `Could not start opencode: ${error.message}`);
-      send('chat-done', { sessionId: resultSid, ok: false });
-      resolve();
-    });
+    child.on('error', (error) => { send('chat-error', `Could not start Axon Terminal: ${error.message}`); finish(false); });
   });
 }
 
@@ -744,7 +692,6 @@ ipcMain.handle('set-runtime', async (_e, runtime) => {
     if (next === 'exo') {
       const check = await checkExo(nextExo); if (!check.ok) return check;
     }
-    if (next === 'llamacpp') await ensureLlamaCppBridge(); else stopLlamaCppBridge();
     runtimeKind = next; exoBase = nextExo; config?.save({ oRuntime: runtimeKind, oExoUrl: exoBase });
     setTray(runtimeKind === 'exo' ? 'Axon: Exo runtime' : runtimeKind === 'llamacpp' ? 'Axon: llama.cpp RPC runtime' : 'Axon: local Ollama');
     return { ok: true, kind: runtimeKind, url: exoBase };
@@ -793,7 +740,6 @@ ipcMain.handle('llamacpp-start', async () => {
       return { ok: true };
     }
     if (llamaCppHostProc && !llamaCppHostProc.killed) return { ok: true, already: true };
-    await ensureLlamaCppBridge();
     llamaCppHostProc = llamacppRuntime.startHost({
       llamaServerPath: status.llamaServer, modelPath: llamaCppConfig.modelPath, apiPort: llamaCppConfig.apiPort,
       rpcPeers: llamaCppConfig.rpcPeers, contextSize: llamaCppConfig.contextSize,
@@ -813,7 +759,6 @@ ipcMain.handle('hardware-profile', async () => hardwareProfile());
 ipcMain.handle('pull-model', async (_e, model) => {
   try { return await pullOllamaModel(model); } catch (error) { return { error: error.message }; }
 });
-ipcMain.handle('list-commands', () => listCommands());
 function safeImages(value) {
   if (!Array.isArray(value)) return [];
   const types = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -824,30 +769,27 @@ function safeImages(value) {
   }
   return images;
 }
-ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, harness, mode, grants }) => {
+ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, productMode, provider, mode, grants }) => {
   if (!requestId || typeof requestId !== 'string') return { ok: false, error: 'Missing chat request ID.' };
-  const expanded = maybeExpandSlash(prompt);
+  const expanded = String(prompt || '').trim();
+  if (!expanded) return { ok: false, error: 'Enter a message first.' };
   const safe = safeImages(images);
   const send = (channel, value) => win?.webContents.send(channel, { requestId, ...(channel === 'chat-delta' ? { text: value } : channel === 'chat-step' ? { step: value } : channel === 'chat-error' ? { message: value } : value) });
   // ponytail: client mode forwards to the LAN server (cwd dropped -- the client's
   // project path is on the client device and doesn't map to the server's filesystem).
-  if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null }); return { ok: true }; }
+  if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null, productMode, provider, mode }); return { ok: true }; }
   const permission = normalizeMode(mode);
-  if (harness === 'codex' || harness === 'opencode') {
-    const holder = {}; localHolders.set(requestId, holder);
-    const run = harness === 'opencode' ? runOpencode : runCodex;
-    run(model, expanded, sessionId, send, systemPrompt, cwd, holder, safe, permission)
-      .catch((error) => send('chat-error', error.message))
-      .finally(() => localHolders.delete(requestId));
-    return { ok: true };
-  }
+  const selectedMode = ['chat', 'code', 'agent'].includes(productMode) ? productMode : 'chat';
   let usableImages = safe;
-  if (safe.length && await modelSupportsVision(model) === false) {
+  if (selectedMode === 'chat' && safe.length && await modelSupportsVision(model) === false) {
     usableImages = [];
     send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not advertise vision support.` });
   }
   const holder = {}; localHolders.set(requestId, holder);
-  runChat(model, expanded, sessionId, send, systemPrompt, cwd, holder, usableImages, false, permission, sanitizeGrants(grants))
+  const run = selectedMode === 'chat'
+    ? runDirectChat(model, expanded, sessionId, send, systemPrompt, holder, usableImages, provider)
+    : runAxonTerminal(model, expanded, sessionId, send, systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider);
+  run
     .catch((e) => send('chat-error', e.message))
     .finally(() => localHolders.delete(requestId));
   return { ok: true };
@@ -856,14 +798,22 @@ ipcMain.handle('chat-stop', (_e, requestId) => {
   if (!requestId) return false;
   if (lanClientConnected && lanClient) { lanClient.send({ type: 'stop', requestId }); return true; }
   const holder = localHolders.get(requestId);
-  if (holder?.child && !holder.child.killed) holder.child.kill();
+  if (holder?.child) {
+    if (typeof holder.child.kill === 'function' && !holder.child.killed) holder.child.kill();
+    else if (typeof holder.child.destroy === 'function') holder.child.destroy();
+  }
   return true;
 });
 ipcMain.handle('chat-steer', (_e, requestId) => {
   if (!requestId) return false;
   if (lanClientConnected && lanClient) { lanClient.send({ type: 'steer', requestId }); return true; }
   const holder = localHolders.get(requestId);
-  if (holder?.child && !holder.child.killed) { holder.steer = true; holder.child.kill(); return true; }
+  if (holder?.child) {
+    holder.steer = true;
+    if (typeof holder.child.kill === 'function' && !holder.child.killed) holder.child.kill();
+    else if (typeof holder.child.destroy === 'function') holder.child.destroy();
+    return true;
+  }
   return false;
 });
 ipcMain.handle('pick-folder', async () => {
@@ -906,9 +856,28 @@ ipcMain.handle('browser-action', (_e, action) => {
   else if (action === 'reload') view.reload();
   return true;
 });
+ipcMain.handle('provider-save', (_e, profile, apiKey) => {
+  const value = profile || {};
+  const kind = ['ollama', 'openai-compatible', 'responses'].includes(value.kind) ? value.kind : 'ollama';
+  const clean = {
+    id: typeof value.id === 'string' && /^[a-z0-9_-]{4,80}$/i.test(value.id) ? value.id : crypto.randomUUID(),
+    name: typeof value.name === 'string' ? value.name.trim().slice(0, 80) || 'Unnamed provider' : 'Unnamed provider',
+    kind,
+    endpoint: typeof value.endpoint === 'string' ? value.endpoint.trim().replace(/\/$/, '').slice(0, 500) : '',
+    model: typeof value.model === 'string' ? value.model.trim().slice(0, 160) : '',
+    credentialId: typeof value.credentialId === 'string' ? value.credentialId : '',
+  };
+  if (kind !== 'ollama') {
+    try { const endpoint = new URL(clean.endpoint); if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password) throw new Error(); } catch { throw new Error('Use an http(s) endpoint with no embedded credentials.'); }
+    if (typeof apiKey === 'string' && apiKey.trim()) {
+      clean.credentialId = `provider-${clean.id}`; saveProviderSecret(clean.credentialId, apiKey.trim());
+    }
+  } else { clean.endpoint = ''; clean.credentialId = ''; }
+  return clean;
+});
 
 // ---- LAN: same-WiFi link, one instance as server ----------------------------
-// ponytail: raw TCP + NDJSON (src/lan.js). Server runs claude locally and streams
+// ponytail: raw TCP + NDJSON (src/lan.js). Server runs Axon locally and streams
 // events back over the socket; client forwards chats and maps events to the renderer,
 // so the renderer UI is identical on either side. No HTTP, no web GUI.
 let lanServer = null, lanClient = null, lanClientConnected = false, lanDiscovery = null;
@@ -1138,7 +1107,10 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
           const images = safeImages(msg.images);
           const usableImages = images.length && await modelSupportsVision(msg.model) === false ? [] : images;
           if (images.length && !usableImages.length) send('chat-step', { type: 'tool_result', result: `Images were not sent: ${msg.model} does not advertise vision support.` });
-          return runChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, holder, usableImages);
+          const selectedMode = ['chat', 'code', 'agent'].includes(msg.productMode) ? msg.productMode : 'chat';
+          return selectedMode === 'chat'
+            ? runDirectChat(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, holder, usableImages, msg.provider)
+            : runAxonTerminal(msg.model, msg.prompt, msg.sessionId, send, msg.systemPrompt, null, holder, usableImages, normalizeMode(msg.mode), selectedMode, msg.provider);
         })().catch(() => {}).finally(() => st.holders.delete(msg.requestId));
       },
       onStatus: (state, info) => lanStatus({ server: state, ...info }),
@@ -1273,46 +1245,12 @@ ipcMain.handle('app-update-download', async () => {
 ipcMain.handle('app-info', async () => ({ version: app.getVersion(), dependencies: await dependencyStatus() }));
 ipcMain.handle('install-dependencies', async () => {
   const before = await dependencyStatus(); const steps = [];
-  if (process.platform !== 'win32') return { ok: true, steps: ['Install Ollama and Node.js through your Linux distribution, then install Claude Code with: npm install -g @anthropic-ai/claude-code'], status: before };
+  if (process.platform !== 'win32') return { ok: true, steps: ['Install Ollama through your Linux distribution. Axon Terminal is bundled with Axon releases.'], status: before };
   const run = async (command, args, label) => { const output = await runQuiet(command, args, 10 * 60 * 1000); steps.push(label + (output ? ': ' + output.split(/\r?\n/).pop() : ' started')); };
   if (!before.ollama) await run('winget.exe', ['install', '--id', 'Ollama.Ollama', '--exact', '--accept-package-agreements', '--accept-source-agreements'], 'Ollama');
-  if (!before.node) { await run('winget.exe', ['install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--accept-package-agreements', '--accept-source-agreements'], 'Node.js'); steps.push('Restart Axon, then run this once more to install Claude Code.'); }
-  else if (!before.claude) await run('cmd.exe', ['/d', '/s', '/c', 'npm install -g @anthropic-ai/claude-code'], 'Claude Code');
+  if (!before.node) await run('winget.exe', ['install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--accept-package-agreements', '--accept-source-agreements'], 'Node.js');
   return { ok: true, steps, status: await dependencyStatus() };
 });
-
-// Fetch the real Claude Code slash-command list (the same menu Claude shows on `/`).
-// Source: the `system/init` stream-json event fires at session start with a
-// `slash_commands` array (built-ins + plugins + skills + custom). We spawn a throwaway
-// `claude -p`, read only that event, then kill the child — no model call, ~2-3s, cached.
-let cachedCommands = null;
-function fetchCommands(model) {
-  return new Promise((resolve) => {
-    if (cachedCommands) return resolve(cachedCommands);
-    const launch = findClaude();
-    if (!launch) return resolve([]);
-    const child = spawn(launch.command, [...launch.prefix, '-p', '.', '--output-format', 'stream-json', '--verbose', '--model', model || 'qwen2.5:1.5b', '--allowedTools', 'Read'], {
-      env: { ...process.env, ANTHROPIC_BASE_URL: activeClaudeBase(), ANTHROPIC_AUTH_TOKEN: 'ollama' },
-      windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let buf = '', done = false;
-    const finish = (v) => { if (done) return; done = true; try { if (!child.killed) child.kill(); } catch {} resolve(v); };
-    child.stdout.on('data', (c) => {
-      if (done) return;
-      buf += c; let nl;
-      while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl); buf = buf.slice(nl + 1);
-        let ev; try { ev = JSON.parse(line); } catch { continue; }
-        if (ev.type === 'system' && ev.subtype === 'init') { cachedCommands = ev.slash_commands || []; finish(cachedCommands); }
-      }
-    });
-    child.on('exit', () => finish(cachedCommands || []));
-    child.on('error', () => finish([]));
-    setTimeout(() => finish(cachedCommands || []), 30000); // give up -> renderer falls back to custom-only
-  });
-}
-ipcMain.handle('fetch-commands', (_e, model) => fetchCommands(model));
-ipcMain.handle('refresh-commands', (_e, model) => { cachedCommands = null; return fetchCommands(model); });
 
 // ---- app lifecycle --------------------------------------------------------
 app.whenReady().then(async () => {
@@ -1336,6 +1274,7 @@ app.whenReady().then(async () => {
     try { Object.assign(merged, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch {}
   }
   config.save({ ...merged, ...state });
+  await startBrowserBridge();
   ensureCliCommand();
   createTray();
   createWindow();
@@ -1349,7 +1288,6 @@ app.on('before-quit', () => {
   if (ollamaProc && !ollamaProc.killed) ollamaProc.kill();
   if (llamaCppHostProc && !llamaCppHostProc.killed) llamaCppHostProc.kill();
   if (llamaCppWorkerProc && !llamaCppWorkerProc.killed) llamaCppWorkerProc.kill();
-  stopLlamaCppBridge();
   if (lanServer) lanServer.stop();
   if (lanClient) { try { lanClient.end(); } catch {} }
   lanDiscovery?.stop();
