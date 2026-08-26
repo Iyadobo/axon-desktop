@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "0.7.24",
+  "version": "0.7.25",
   "description": "Axon is a local-first Chat, Code, and Agent workspace powered by Ollama and Axon Terminal",
   "main": "src/main.js",
   "scripts": {
@@ -9,7 +9,8 @@
     "dist:win": "electron-builder --win nsis",
     "dist:linux": "electron-builder --linux AppImage deb",
     "dist:deb": "electron-builder --linux deb",
-    "publish:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1"
+    "publish:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_release.ps1",
+    "publish:deb": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_deb.ps1"
   },
   "build": {
     "appId": "io.axon.workspace",

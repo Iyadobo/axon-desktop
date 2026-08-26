@@ -2045,9 +2045,10 @@ function showAvailableUpdate(update) {
   availableAppUpdate = update;
   $('profileUpdateBadge').hidden = false;
   $('maintenanceInfo').textContent = 'Axon v' + update.version + ' is ready to download.';
-  showUpdateDialog('Axon ' + update.version + ' is ready', 'Download the verified Windows installer now? Axon checks its SHA-256 before it can open.', [
+  const packageLabel = update.packageLabel || 'installer';
+  showUpdateDialog('Axon ' + update.version + ' is ready', 'Download the verified ' + packageLabel + ' now? Axon checks its SHA-256 before it can open it.', [
     { label: 'Later', run: () => {} },
-    { label: 'Download and install', primary: true, onStart: () => { $('updateBody').textContent = 'Downloading Axon ' + update.version + '…\n\nThis can take a minute. The installer is verified before Windows is allowed to open it.'; }, run: async () => { const file = await window.ollama.downloadAppUpdate(); if (file?.error) return file; return window.ollama.openUpdateInstaller(file.path); } },
+    { label: 'Download and open', primary: true, onStart: () => { $('updateBody').textContent = 'Downloading Axon ' + update.version + '…\n\nThis can take a minute. The ' + packageLabel + ' is verified before Axon opens it.'; }, run: async () => { const file = await window.ollama.downloadAppUpdate(); if (file?.error) return file; return window.ollama.openUpdateInstaller(file.path); } },
   ]);
 }
 async function checkAppUpdate({ manual = false } = {}) {

@@ -56,6 +56,12 @@ the Linux `axon` binary into the app resources and fails clearly if it has not b
 built, so Code and Work cannot ship as empty shells. `npm run dist:linux` still emits
 both the `.deb` and AppImage variants.
 
+Linux updates use the separate `Iyadobo/Axon-Debian` release feed by default, while
+Windows continues to use `Iyadobo/Axon`. Axon checks the appropriate feed shortly
+after startup and then in the background every six hours. To publish a verified
+Debian release after building it, run `npm run publish:deb -- -Version <version>`
+with `AXON_DEB_RELEASE_REPOSITORY` set to the target GitHub repository.
+
 ## Runtime design
 
 ```text

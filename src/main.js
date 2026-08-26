@@ -59,8 +59,12 @@ async function listActiveModels() {
   }
   return await ollama('/api/tags');
 }
-// The official release feed. Maintainers can point a fork at its own feed.
-const UPDATE_REPOSITORY = process.env.AXON_UPDATE_REPOSITORY || 'Iyadobo/Axon';
+// Release feeds stay platform-specific so a Linux client never mistakes the
+// Windows installer for its update. AXON_UPDATE_REPOSITORY remains a useful
+// single-feed override for forks and local testing.
+const UPDATE_REPOSITORY = process.env.AXON_UPDATE_REPOSITORY
+  || (process.platform === 'linux' ? (process.env.AXON_LINUX_UPDATE_REPOSITORY || 'Iyadobo/Axon-Debian') : 'Iyadobo/Axon');
+const updatePackageLabel = () => process.platform === 'linux' ? 'Debian package' : 'Windows installer';
 
 let tray = null, win = null, ollamaProc = null, browserPanel = null, browserBridge = null, browserBridgeEndpoint = '', browserBridgeToken = '', isQuitting = false;
 let updateCheckTimer = null, announcedUpdateVersion = null;
@@ -68,7 +72,7 @@ let trayLabel = 'Axon: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
 const localHolders = new Map();
-let availableRelease = null;
+let availableRelease = null, updateCheckInFlight = null, cachedUpdateStatus = null, cachedUpdateAt = 0;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -1052,7 +1056,10 @@ async function readHttpsText(url) {
   for await (const chunk of res) { text += chunk; if (text.length > 1024 * 1024) throw new Error('Update metadata is unexpectedly large.'); }
   return text;
 }
-async function checkForAppUpdate() {
+async function checkForAppUpdate({ force = false } = {}) {
+  if (!force && cachedUpdateStatus && Date.now() - cachedUpdateAt < 5 * 60 * 1000) return cachedUpdateStatus;
+  if (updateCheckInFlight) return updateCheckInFlight;
+  updateCheckInFlight = (async () => {
   const current = app.getVersion();
   const body = await readHttpsText(`https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`);
   let release; try { release = JSON.parse(body); } catch { throw new Error('Update server sent invalid release metadata.'); }
@@ -1063,7 +1070,12 @@ async function checkForAppUpdate() {
   if (!version || !installer || !checksum) throw new Error('Latest Axon release is incomplete.');
   const available = compareVersions(version, current) > 0;
   availableRelease = available ? { version, installer: installer.browser_download_url, checksum: checksum.browser_download_url, name: installer.name, bytes: Number(installer.size) || 0 } : null;
-  return { current, version, available, bytes: Number(installer.size) || 0 };
+  cachedUpdateStatus = { current, version, available, bytes: Number(installer.size) || 0, packageLabel: updatePackageLabel(), repository: UPDATE_REPOSITORY };
+  cachedUpdateAt = Date.now();
+  return cachedUpdateStatus;
+  })();
+  try { return await updateCheckInFlight; }
+  finally { updateCheckInFlight = null; }
 }
 async function runBackgroundUpdateCheck() {
   try {
@@ -1390,7 +1402,7 @@ ipcMain.handle('update-open-installer', async (_e, file) => {
   } catch (e) { return { error: 'Could not open the verified installer: ' + e.message }; }
 });
 ipcMain.handle('app-update-check', async () => {
-  try { return await checkForAppUpdate(); } catch (error) { return { error: error.message }; }
+  try { return await checkForAppUpdate({ force: true }); } catch (error) { return { error: error.message }; }
 });
 ipcMain.handle('app-update-download', async () => {
   try { return await downloadAppUpdate(); } catch (error) { return { error: error.message }; }
