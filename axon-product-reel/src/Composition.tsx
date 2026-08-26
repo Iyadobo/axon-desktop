@@ -1,4 +1,5 @@
-import { AbsoluteFill, Composition, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Composition, Img, interpolate, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { uiSwitch, whoosh } from "@remotion/sfx";
 
 const PINK = "#f54d9a";
 const PINK_SOFT = "#ff9ac8";
@@ -84,11 +85,64 @@ const SimpleSwarm = ({ frame }: { frame: number }) => { const opacity = fade(fra
 
 const SimpleCode = ({ frame }: { frame: number }) => <div style={{ opacity: fade(frame, 315, 472) }}><ModeLabel>CODE</ModeLabel><div style={{ position: "absolute", left: 74, right: 74, top: 150, bottom: 82, background: "#0b0d10", border: `1px solid ${LINE}`, fontFamily: MONO, padding: 31 }}><div style={{ color: MUTED, fontSize: 13, marginBottom: 30 }}>AXON TERMINAL · CUSTOM FORK</div>{["$ axon code provider-audit","› reading workspace","› loading project MCP","✓ check passed","","const route = profile.selected;","await terminal.run(route);"].map((line,index) => <div key={`${line}-${index}`} style={{ fontSize: 21, lineHeight: 1.65, color: line.startsWith("✓") ? "#65cdaa" : line.startsWith("$") ? PINK_SOFT : line.startsWith("const") || line.startsWith("await") ? "#91a1ff" : PAPER, opacity: enter(frame, 340 + index * 9) }}>{line}</div>)}</div></div>;
 
-const SimpleWork = ({ frame }: { frame: number }) => <div style={{ opacity: fade(frame, 460, 608) }}><ModeLabel>WORK</ModeLabel><div style={{ position: "absolute", left: 74, right: 74, top: 250, display: "flex", alignItems: "center" }}>{[["Evidence","#7b8cff"],["Decision",PINK],["Action","#65cdaa"]].map(([label,color],index) => <div key={label} style={{ display: "flex", alignItems: "center", flex: 1, opacity: enter(frame, 478 + index * 15) }}><div><div style={{ color, font: "13px " + MONO, letterSpacing: ".13em" }}>{`0${index+1}`}</div><div style={{ fontSize: 35, marginTop: 18 }}>{label}</div></div>{index < 2 && <div style={{ height: 1, flex: 1, margin: "0 42px", background: color }} />}</div>)}</div></div>;
+const SimpleWork = ({ frame }: { frame: number }) => {
+  const opacity = fade(frame, 460, 608);
+  const browserIn = enter(frame, 476, 22);
+  const evidenceIn = enter(frame, 494, 20);
+  const actionIn = enter(frame, 515, 20);
+  return <div style={{ opacity }}>
+    <ModeLabel>WORK / BROWSER</ModeLabel>
+    <div style={{ position: "absolute", left: 74, right: 74, top: 142, bottom: 70, border: `1px solid ${LINE}`, borderRadius: 12, overflow: "hidden", background: "#101015", opacity: browserIn, scale: interpolate(browserIn, [0, 1], [.965, 1]) }}>
+      <div style={{ height: 50, padding: "0 17px", display: "flex", alignItems: "center", gap: 11, borderBottom: `1px solid ${LINE}`, fontFamily: MONO, color: MUTED, fontSize: 13 }}>
+        <span style={{ color: PAPER, fontSize: 21 }}>‹</span><span style={{ color: PAPER, fontSize: 21 }}>›</span><span style={{ fontSize: 17 }}>↻</span>
+        <div style={{ flex: 1, padding: "9px 13px", borderRadius: 6, background: "#19191f", color: PAPER }}><span style={{ color: "#65cdaa" }}>◉</span>&nbsp; research.axon.local / provider-brief</div>
+        <span style={{ color: PINK, letterSpacing: ".1em" }}>WEB</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 315px", height: "calc(100% - 50px)" }}>
+        <div style={{ padding: "42px 48px", borderRight: `1px solid ${LINE}` }}>
+          <div style={{ color: PINK, font: "13px " + MONO, letterSpacing: ".14em" }}>AXON RESEARCH BRIEF</div>
+          <div style={{ fontSize: 43, letterSpacing: "-.045em", marginTop: 18, lineHeight: 1.05 }}>Find the right route.<br />Keep the proof.</div>
+          <div style={{ marginTop: 34, width: "90%", height: 1, background: LINE }} />
+          {["Local runtime keeps sensitive work close.", "Connected providers expand the frontier.", "The decision stays attached to its evidence."].map((line, index) => <div key={line} style={{ display: "flex", gap: 17, alignItems: "center", marginTop: 23, opacity: enter(frame, 487 + index * 12) }}><Dot color={index === 1 ? PINK : "#7b8cff"} size={7} /><span style={{ fontSize: 20, color: index === 2 ? PAPER : MUTED }}>{line}</span></div>)}
+        </div>
+        <div style={{ padding: 23, background: "#121218" }}>
+          <div style={{ color: MUTED, font: "12px " + MONO, letterSpacing: ".12em" }}>EVIDENCE / LIVE</div>
+          <div style={{ marginTop: 16, padding: 15, border: `1px solid ${PINK}66`, background: "rgba(245,77,154,.07)", opacity: evidenceIn }}><div style={{ color: PINK_SOFT, font: "13px " + MONO }}>PROVIDER FIT</div><div style={{ fontSize: 22, marginTop: 9 }}>Two viable routes</div><div style={{ color: MUTED, fontSize: 15, marginTop: 8 }}>local + connected</div></div>
+          <div style={{ marginTop: 15, padding: 15, border: `1px solid ${LINE}`, opacity: actionIn }}><div style={{ color: "#65cdaa", font: "13px " + MONO }}>NEXT ACTION</div><div style={{ fontSize: 19, marginTop: 9 }}>Draft the release plan</div><div style={{ color: PINK, font: "13px " + MONO, marginTop: 14 }}>OPEN IN WORK →</div></div>
+        </div>
+      </div>
+    </div>
+  </div>;
+};
 
 const SimpleModels = ({ frame }: { frame: number }) => <div style={{ opacity: fade(frame, 590, 660) }}><ModeLabel>MODELS</ModeLabel><div style={{ position: "absolute", left: 74, top: 175, fontSize: 43, letterSpacing: "-.04em" }}>Choose the route.</div><div style={{ position: "absolute", left: 74, top: 272, width: 625, border: `1px solid ${LINE}`, borderRadius: 9, overflow: "hidden", fontFamily: MONO }}><div style={{ padding: "18px 20px", display: "flex", justifyContent: "space-between", borderBottom: `1px solid ${LINE}` }}><span><Dot color="#5edbb0" size={8}/>&nbsp; qwen3.5:397b-cloud</span><span style={{ color: PINK }}>⌄</span></div>{["Ollama · local runtime","OpenAI Responses · connected","OpenRouter · compatible API"].map((item,index) => <div key={item} style={{ padding: "16px 20px", color: index === 0 ? PAPER : MUTED, background: index === 0 ? "rgba(245,77,154,.1)" : "transparent", borderBottom: index < 2 ? `1px solid ${LINE}` : "none" }}>{item}</div>)}</div></div>;
 
-const NeuralSwarm = ({ frame }: { frame: number }) => { const opacity = fade(frame, 170, 326); const nodes = [[300,300,"#7b8cff","SCOUT","Maps the terrain"],[515,700,"#f5ba61","BUILDER","Makes the move"],[1080,665,"#65cdaa","SKEPTIC","Tests the edge"],[1230,300,PINK,"SENTRY","Holds the thread"]] as const; return <div style={{ opacity }}><ModeLabel>AXON SWARM</ModeLabel><svg viewBox="0 0 1560 1000" style={{ position:"absolute", inset:0, width:"100%", height:"100%" }}><g fill="none" stroke={PINK} strokeWidth="1" opacity=".26">{["M770 470C665 350 508 355 300 300","M770 470C700 560 600 630 515 700","M770 470C870 560 970 600 1080 665","M770 470C910 370 1060 340 1230 300","M630 412C575 430 530 400 470 430","M905 408C960 450 1020 420 1070 450","M650 530C600 560 575 610 525 615","M885 535C930 565 970 610 1018 620"].map(d=><path key={d} d={d}/>)}</g>{nodes.map(([x,y,color,name,detail],index)=><g key={name}><path d={`M770 470 Q ${(770+x)/2} ${420+index*65} ${x} ${y}`} fill="none" stroke={color} strokeWidth="1.6" opacity=".7"/><circle cx={770+(x-770)*(((frame*1.15+index*25)%100)/100)} cy={470+(y-470)*(((frame*1.15+index*25)%100)/100)} r="6" fill={color}/><circle cx={x} cy={y} r="16" fill="#111115" stroke={color} strokeWidth="2"/><text x={x+25} y={y-8} fill={color} fontFamily="Consolas" fontSize="14" letterSpacing="2">{name}</text><text x={x+25} y={y+16} fill="#aaa3ac" fontFamily="Georgia" fontSize="17">{detail}</text></g>)}<circle cx="770" cy="470" r="110" fill="none" stroke={PINK} strokeWidth="1" opacity=".22"/><circle cx="770" cy="470" r="76" fill="none" stroke={PINK} strokeWidth="1" opacity=".48"/></svg><Img src={staticFile("axon-assets/swarm.png")} style={{ position:"absolute", left:735, top:435, width:70, height:70, objectFit:"contain" }}/><div style={{ position:"absolute", left:705, top:550, color:PINK_SOFT, font:"13px "+MONO, letterSpacing:".14em" }}>SYNTHESIS CORE</div></div>; };
+const NeuralSwarm = ({ frame }: { frame: number }) => {
+  const opacity = fade(frame, 170, 326);
+  const workers = [[272,288,"#7b8cff","SCOUT","surfaces context"],[470,690,"#f5ba61","BUILDER","makes the move"],[1090,675,"#65cdaa","SKEPTIC","tests the edge"],[1260,295,"#d78cff","OBSERVER","keeps watch"]] as const;
+  const coreX = 770, coreY = 470;
+  return <div style={{ opacity }}>
+    <ModeLabel>AXON SWARM</ModeLabel>
+    <div style={{ position: "absolute", left: 74, top: 118, color: MUTED, fontSize: 19 }}>One Sentry brain. Workers as live branches.</div>
+    <svg viewBox="0 0 1560 1000" style={{ position:"absolute", inset:0, width:"100%", height:"100%" }}>
+      <defs><filter id="sentry-glow"><feGaussianBlur stdDeviation="6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      {[0,1,2].map(ring => <circle key={ring} cx={coreX} cy={coreY} r={70 + ring * 27 + Math.sin((frame + ring * 13) / 10) * 3} fill="none" stroke={PINK} strokeWidth={ring === 0 ? 1.8 : 1} opacity={.5 - ring * .12}/>) }
+      {workers.map(([x,y,color,name,detail], index) => { const t = ((frame * .82 + index * 27) % 100) / 100; const cx = coreX + (x - coreX) * t; const cy = coreY + (y - coreY) * t; return <g key={name} opacity={enter(frame, 188 + index * 12)}>
+        <path d={`M${coreX} ${coreY} C ${coreX + (x-coreX)*.22} ${coreY + (y-coreY)*.7}, ${coreX + (x-coreX)*.78} ${coreY + (y-coreY)*.1}, ${x} ${y}`} fill="none" stroke={color} strokeWidth="1.7" opacity=".68"/>
+        <path d={`M${coreX} ${coreY} C ${coreX + (x-coreX)*.16} ${coreY + (y-coreY)*.42}, ${coreX + (x-coreX)*.62} ${coreY + (y-coreY)*.88}, ${x} ${y}`} fill="none" stroke={color} strokeWidth=".8" opacity=".28"/>
+        <circle cx={cx} cy={cy} r="6" fill={color} filter="url(#sentry-glow)"/><circle cx={x} cy={y} r="20" fill="#121217" stroke={color} strokeWidth="1.8"/><circle cx={x} cy={y} r="5" fill={color}/>
+        <text x={x + 30} y={y - 8} fill={color} fontFamily="Consolas" fontSize="14" letterSpacing="2">{name}</text><text x={x + 30} y={y + 17} fill="#aaa3ac" fontFamily="Georgia" fontSize="17">{detail}</text>
+      </g>; })}
+      {[[-145,-55],[142,-50],[-115,105],[120,112],[-32,-150],[36,148]].map(([x,y]) => <g key={`${x}-${y}`} opacity=".5"><path d={`M${coreX + x*.32} ${coreY + y*.32} Q ${coreX+x*.8} ${coreY+y*.18} ${coreX+x} ${coreY+y}`} stroke={PINK_SOFT} strokeWidth="1" fill="none"/><circle cx={coreX+x} cy={coreY+y} r="4" fill={PINK_SOFT}/></g>)}
+    </svg>
+    <div style={{ position:"absolute", left:coreX-58, top:coreY-58, width:116, height:116, borderRadius:"50%", background:"radial-gradient(circle, #321625 0%, #171116 58%, transparent 62%)", border:`2px solid ${PINK}`, display:"grid", placeItems:"center", boxShadow:"0 0 52px rgba(245,77,154,.33)" }}><Img src={staticFile("axon-assets/swarm.png")} style={{ width:74, height:74, objectFit:"contain" }}/></div>
+    <div style={{ position:"absolute", left:coreX-63, top:coreY+76, width:126, textAlign:"center", color:PINK_SOFT, font:"13px "+MONO, letterSpacing:".13em" }}>SENTRY BRAIN</div>
+  </div>;
+};
+const ReelSfx = () => <>
+  {[16,170,315,460,592].map((start) => <Sequence key={start} from={start} durationInFrames={18}><Audio src={uiSwitch} volume={0.2} /></Sequence>)}
+  {[94,248,393,538].map((start) => <Sequence key={start} from={start} durationInFrames={28}><Audio src={whoosh} volume={0.13} /></Sequence>)}
+</>;
 export { SimpleSwarm };
-export const AxonProductReel: React.FC = () => { const frame = useCurrentFrame(); const mode: "Chat" | "Swarm" | "Code" | "Work" = frame < 185 ? "Chat" : frame < 330 ? "Swarm" : frame < 475 ? "Code" : "Work"; const orb = frame < 185 ? [16,"chat.png","CHAT"] as const : frame < 330 ? [170,"swarm.png","SWARM"] as const : frame < 475 ? [315,"code.png","CODE"] as const : frame < 610 ? [460,"work.png","WORK"] as const : [592,"icon.png","MODELS"] as const; return <AppShell mode={mode} frame={frame}><ModeOrb frame={frame} start={orb[0]} asset={orb[1]} label={orb[2]} /><SimpleChat frame={frame} /><NeuralSwarm frame={frame} /><SimpleCode frame={frame} /><SimpleWork frame={frame} /><SimpleModels frame={frame} /></AppShell>; };
+export const AxonProductReel: React.FC = () => { const frame = useCurrentFrame(); const mode: "Chat" | "Swarm" | "Code" | "Work" = frame < 185 ? "Chat" : frame < 330 ? "Swarm" : frame < 475 ? "Code" : "Work"; const orb = frame < 185 ? [16,"chat.png","CHAT"] as const : frame < 330 ? [170,"swarm.png","SWARM"] as const : frame < 475 ? [315,"code.png","CODE"] as const : frame < 610 ? [460,"work.png","WORK"] as const : [592,"icon.png","MODELS"] as const; return <AppShell mode={mode} frame={frame}><ReelSfx /><ModeOrb frame={frame} start={orb[0]} asset={orb[1]} label={orb[2]} /><SimpleChat frame={frame} /><NeuralSwarm frame={frame} /><SimpleCode frame={frame} /><SimpleWork frame={frame} /><SimpleModels frame={frame} /></AppShell>; };
 export const MyComposition = () => <Composition id="AxonProductReel" component={AxonProductReel} durationInFrames={660} fps={30} width={1920} height={1080} />;
