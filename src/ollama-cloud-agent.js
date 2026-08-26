@@ -27,6 +27,16 @@ function request(url, body, holder) {
   });
 }
 
+// Heuristic guard for Swarm's read-only workers. run_command is a raw shell,
+// so there is no true sandbox here -- this blocks the shapes of command that
+// write, delete, or move things, on both Windows (cmd.exe) and POSIX shells.
+// It is a denylist, not a proof: treat it as a real backstop, not a sandbox.
+const MUTATING_COMMAND = /(^|[;&|\n]|&&|\|\|)\s*(rm|rmdir|rd|del|erase|mv|move|ren|rename|cp\b.*-r|xcopy|robocopy|mkdir|md|touch|chmod|chown|attrib|icacls|sed\s+-i|git\s+(add|commit|push|reset|checkout|rm|clean|stash|merge|rebase|apply|cherry-pick)|npm\s+(install|i\b|uninstall|ci|link)|pip\s+install|pip3\s+install|yarn\s+add|yarn\s+remove|pnpm\s+(add|remove|install)|winget\s+install|choco\s+install)\b/i;
+const WRITE_REDIRECT = />>?[^&|]|(?:^|\s)tee\s/;
+function isMutatingCommand(cmd) {
+  return MUTATING_COMMAND.test(cmd) || WRITE_REDIRECT.test(cmd);
+}
+
 function command(command, cwd) {
   return new Promise((resolve) => {
     const child = process.platform === 'win32'
@@ -40,7 +50,7 @@ function command(command, cwd) {
   });
 }
 
-async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history = [], systemPrompt, cwd, permissionMode, productMode, send, holder, browser, allowDelegation = productMode === 'agent', onSubagent }) {
+async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history = [], systemPrompt, cwd, permissionMode, productMode, send, holder, browser, allowDelegation = productMode === 'agent', onSubagent, readOnly = false }) {
   const sid = sessionId || crypto.randomUUID();
   const previous = sessions.get(sid);
   const recovered = Array.isArray(history) ? history.filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string').slice(-40) : [];
@@ -57,14 +67,19 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history
       send('chat-step', { type: 'tool_call', fn, args });
       let result;
       try {
-        if (fn === 'run_command') result = permissionMode === 'approve' ? { error: 'Command execution needs Auto or Full permission in Axon.' } : await command(String(args.command || ''), cwd);
+        if (fn === 'run_command') {
+          const cmd = String(args.command || '');
+          if (permissionMode === 'approve') result = { error: 'Command execution needs Auto or Full permission in Axon.' };
+          else if (readOnly && isMutatingCommand(cmd)) result = { error: 'This Swarm worker is read-only: write/delete/move commands are blocked. Report the proposed change instead of applying it.' };
+          else result = await command(cmd, cwd);
+        }
         else if (fn === 'browser_open') result = browser.open(args.url);
         else if (fn === 'browser_read') result = await browser.read();
         else if (fn === 'delegate_task') {
           const childModel = typeof args.model === 'string' && args.model.trim() ? args.model.trim().slice(0, 160) : model;
           const childId = crypto.randomUUID(); onSubagent?.({ id: childId, status: 'working', task: String(args.task || '').slice(0, 240), model: childModel, startedAt: Date.now() });
           let response = '';
-          try { await runOllamaCloudAgent({ endpoint, model: childModel, prompt: String(args.task || '').slice(0, 12000), systemPrompt: `${systemPrompt || ''}\n\nYou are a focused Axon subagent. Return concise findings to your parent.`, cwd, permissionMode, productMode: 'code', send: (kind, value) => { if (kind === 'chat-delta') response += value; }, holder: {}, browser, allowDelegation: false }); result = { model: childModel, response: response.slice(0, 16000) || '(subagent completed without a text summary)' }; onSubagent?.({ id: childId, status: 'completed', result: result.response, finishedAt: Date.now() }); }
+          try { await runOllamaCloudAgent({ endpoint, model: childModel, prompt: String(args.task || '').slice(0, 12000), systemPrompt: `${systemPrompt || ''}\n\nYou are a focused Axon subagent. Return concise findings to your parent.`, cwd, permissionMode, productMode: 'code', send: (kind, value) => { if (kind === 'chat-delta') response += value; }, holder: {}, browser, allowDelegation: false, readOnly }); result = { model: childModel, response: response.slice(0, 16000) || '(subagent completed without a text summary)' }; onSubagent?.({ id: childId, status: 'completed', result: result.response, finishedAt: Date.now() }); }
           catch (error) { onSubagent?.({ id: childId, status: 'failed', result: error.message, finishedAt: Date.now() }); throw error; }
         }
         else result = { error: `Unknown tool: ${fn}` };

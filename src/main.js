@@ -737,66 +737,94 @@ function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, hold
   });
 }
 
-// Swarm is deliberately a fan-out of independent, read-only workers. Parallel
-// writes in one checkout would be a race, so each worker investigates, plans,
-// or reviews and reports back through the existing live Agents panel.
+// Swarm is a Sentry-directed fan-out: the Sentry first reasons about the
+// outcome and writes each worker's role and brief, workers then investigate
+// under a technically-enforced read-only sandbox (not just a prompt
+// instruction -- see runAxonTerminal's sandbox map and isMutatingCommand in
+// ollama-cloud-agent.js), and finally the Sentry reconciles every worker's
+// findings, including any code they propose, into one final result.
 const activeSwarms = new Map();
 function swarmLimit(provider) { return (provider?.kind || 'ollama') === 'ollama' ? 3 : Infinity; }
-const SWARM_WORKER_LANES = [
-  'Scout: map the problem, unknowns, relevant evidence, and constraints.',
-  'Builder: develop a concrete implementation or execution approach.',
-  'Skeptic: look for risks, counterexamples, and verification steps.',
+// Fallback only, used if the Sentry's planning call returns unusable JSON.
+const SWARM_FALLBACK_LANES = [
+  { role: 'Scout', brief: 'Map the problem, unknowns, relevant evidence, and constraints.' },
+  { role: 'Builder', brief: 'Develop a concrete implementation or execution approach.' },
+  { role: 'Skeptic', brief: 'Look for risks, counterexamples, and verification steps.' },
 ];
+async function planSwarmRoles({ sentryModel, prompt, count, provider }) {
+  const ask = `You are the Axon Swarm Sentry. Before any worker runs, reason about how to best split the outcome below into ${count} independent, non-overlapping investigation roles that will each report back to you.\n\nOutcome:\n${prompt}\n\nRespond with ONLY a JSON array of exactly ${count} objects: [{"role": "<2-4 word role name>", "brief": "<specific instructions for this worker, tailored to this outcome, 1-3 sentences>"}]. No markdown fences, no commentary -- JSON only.`;
+  let text = '';
+  const holder = {};
+  const send = (channel, value) => { if (channel === 'chat-delta') text += String(value || ''); };
+  try { await runDirectChat(sentryModel, ask, null, send, 'You plan Swarm worker roles. Respond with strict JSON only, no other text.', holder, [], provider); } catch { /* fall through to fallback lanes */ }
+  let roles = [];
+  const match = text.match(/\[[\s\S]*\]/);
+  if (match) { try { roles = JSON.parse(match[0]); } catch { roles = []; } }
+  roles = roles.filter((r) => r && typeof r.role === 'string' && typeof r.brief === 'string').map((r) => ({ role: r.role.slice(0, 60), brief: r.brief.slice(0, 800) })).slice(0, count);
+  for (let i = roles.length; i < count; i++) roles.push(SWARM_FALLBACK_LANES[i % SWARM_FALLBACK_LANES.length]);
+  return roles;
+}
 async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = [], workers, systemPrompt, cwd, provider, permissionMode }) {
   const cap = swarmLimit(provider);
   const count = Math.min(workers, cap);
   const root = cwd || ensureDefaultWorkspace();
   const mode = normalizeMode(permissionMode);
-  // Swarm workers only investigate and report -- they're explicitly instructed
-  // never to modify files -- so Approve's "block run_command entirely" rule for
-  // Ollama Cloud models (see runOllamaCloudAgent) doesn't need to apply to them.
-  // Give cloud-routed swarm workers Auto's execution floor even when the
-  // composer itself is set to Approve, so they can actually inspect the workspace
-  // instead of coming back with "run_command is blocked at my tier."
+  // Cloud-routed workers still need run_command reachable to investigate at
+  // all (Approve hard-blocks it in runOllamaCloudAgent), so give them Auto's
+  // execution floor -- but readOnly:true below is what actually stops writes.
   const cloudExecMode = mode === 'approve' ? 'auto' : mode;
-  const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'agent', provider);
+  // productMode is 'code' for the actual run below, so the bound system
+  // prompt must claim 'code' capabilities too -- claiming 'agent' here
+  // previously told the model about tools it was then never given.
+  const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'code', provider);
   const group = { holders: new Map() }; activeSwarms.set(swarmId, group);
   const emit = (update) => win?.webContents.send('subagent-update', { swarmId, ...update });
+  emit({ id: swarmId, status: 'planning', task: 'Sentry · reasoning about the outcome', model: sentryModel, startedAt: Date.now() });
+  const roles = await planSwarmRoles({ sentryModel, prompt, count, provider });
   const runWorker = async (index) => {
     const id = crypto.randomUUID(); const holder = {}; group.holders.set(id, holder);
-    const lane = SWARM_WORKER_LANES[index % SWARM_WORKER_LANES.length];
-    const task = `Axon Swarm worker ${index + 1} of ${count}. ${lane} Independently investigate this outcome. Use the workspace and browser tools available under Axon's selected permission mode to inspect the real context, then return concise actionable findings for the Sentry. Do not delegate. Parallel workers must not modify files; report a proposed change instead.\n\nOutcome:\n${prompt}`;
-    let result = '', failure = '';
-    emit({ id, status: 'working', task: `Worker ${index + 1} · ${lane.split(':')[0]}`, model: workerModel, startedAt: Date.now() });
+    const { role, brief: roleBrief } = roles[index];
+    const task = `Axon Swarm worker ${index + 1} of ${count}. Role: ${role}. ${roleBrief} Independently investigate this outcome. Use the workspace and browser tools available to inspect the real context, then return concise actionable findings -- including any code, diffs, or commands you'd propose -- for the Sentry. Do not delegate. You are running read-only: you cannot modify files, so report a proposed change instead of applying it.\n\nOutcome:\n${prompt}`;
+    let result = '', failure = ''; const steps = [];
+    emit({ id, status: 'working', task: `Worker ${index + 1} · ${role}`, role, brief: roleBrief, model: workerModel, startedAt: Date.now() });
     const send = (channel, value) => {
       if (channel === 'chat-delta') result = (result + String(value || '')).slice(-16000);
-      if (channel === 'chat-error') failure = String(value || 'Worker failed.');
+      else if (channel === 'chat-error') failure = String(value || 'Worker failed.');
+      else if (channel === 'chat-step') {
+        const v = value || {};
+        steps.push(v.type === 'tool_call' ? `-> ${v.fn || 'tool'}${v.args?.command ? ': ' + String(v.args.command).slice(0, 140) : ''}` : `<- ${String(v.result || '').slice(0, 140)}`);
+        if (steps.length > 40) steps.shift();
+        emit({ id, status: 'working', task: `Worker ${index + 1} · ${role}`, role, brief: roleBrief, model: workerModel, steps: steps.slice(-8) });
+      }
     };
     try {
       if (isOllamaCloudModel(workerModel, provider)) {
-        await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: workerModel, prompt: task, systemPrompt: workerBound.systemPrompt, cwd: root, permissionMode: cloudExecMode, productMode: 'code', send, holder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
+        await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: workerModel, prompt: task, systemPrompt: workerBound.systemPrompt, cwd: root, permissionMode: cloudExecMode, productMode: 'code', send, holder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false, readOnly: true });
       } else {
-        await runAxonTerminal(workerModel, task, null, send, workerBound.systemPrompt, root, holder, images, mode, 'code', provider, workerBound.report);
+        // 'approve' always maps to Axon Terminal's read-only sandbox below --
+        // workers get this regardless of the app's global permission mode,
+        // so read-only is enforced here, not merely requested in the prompt.
+        await runAxonTerminal(workerModel, task, null, send, workerBound.systemPrompt, root, holder, images, 'approve', 'code', provider, workerBound.report);
       }
       const summary = failure || result || '(worker completed without a text summary)';
       emit({ id, status: failure ? 'failed' : 'completed', result: summary, finishedAt: Date.now() });
-      return { lane, summary, failed: !!failure };
+      return { role, brief: roleBrief, summary, failed: !!failure };
     } catch (error) {
-      const summary = error.message; emit({ id, status: 'failed', result: summary, finishedAt: Date.now() }); return { lane, summary, failed: true };
+      const summary = error.message; emit({ id, status: 'failed', result: summary, finishedAt: Date.now() }); return { role, brief: roleBrief, summary, failed: true };
     } finally { group.holders.delete(id); }
   };
   emit({ id: swarmId, status: 'launching', task: `Axon Swarm · Sentry + ${count} workers`, model: sentryModel, startedAt: Date.now() });
   const reports = await Promise.all(Array.from({ length: count }, (_, index) => runWorker(index)));
   const sentryId = crypto.randomUUID(); const sentryHolder = {}; group.holders.set(sentryId, sentryHolder);
-  const sentryBound = await capabilityBoundPrompt(systemPrompt, sentryModel, 'agent', provider);
-  const brief = reports.map((report, index) => `Worker ${index + 1} (${report.lane}):\n${report.summary.slice(0, 6000)}`).join('\n\n');
-  const sentryTask = `You are the Axon Swarm Sentry. You manage the worker reports below. Reconcile disagreements, inspect the workspace when it would resolve uncertainty, identify the strongest evidence, state remaining uncertainty, and return one concise, decision-ready plan for the original outcome. Do not delegate or modify files.\n\nOriginal outcome:\n${prompt}\n\nWorker reports:\n${brief}`;
+  const sentryBound = await capabilityBoundPrompt(systemPrompt, sentryModel, 'code', provider);
+  const brief = reports.map((report, index) => `Worker ${index + 1} -- ${report.role} (${report.brief}):\n${report.summary.slice(0, 6000)}`).join('\n\n');
+  const sentryTask = `You are the Axon Swarm Sentry. You planned the roles below and dispatched these workers; now reconcile their reports into one final result. Preserve and present any code, diffs, commands, or concrete artifacts a worker proposed -- don't summarize code away. Reconcile disagreements, identify the strongest evidence, state remaining uncertainty, and return one complete, decision-ready final result for the original outcome. Do not delegate or modify files.\n\nOriginal outcome:\n${prompt}\n\nWorker reports:\n${brief}`;
   let sentryResult = '', sentryFailure = '';
   emit({ id: sentryId, status: 'working', task: 'Sentry · synthesize worker reports', model: sentryModel, startedAt: Date.now() });
   const sentrySend = (channel, value) => { if (channel === 'chat-delta') sentryResult = (sentryResult + String(value || '')).slice(-24000); if (channel === 'chat-error') sentryFailure = String(value || 'Sentry failed.'); };
   try {
-    if (isOllamaCloudModel(sentryModel, provider)) await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: sentryModel, prompt: sentryTask, systemPrompt: sentryBound.systemPrompt, cwd: root, permissionMode: cloudExecMode, productMode: 'code', send: sentrySend, holder: sentryHolder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
-    else await runAxonTerminal(sentryModel, sentryTask, null, sentrySend, sentryBound.systemPrompt, root, sentryHolder, [], mode, 'code', provider, sentryBound.report);
+    if (isOllamaCloudModel(sentryModel, provider)) await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: sentryModel, prompt: sentryTask, systemPrompt: sentryBound.systemPrompt, cwd: root, permissionMode: cloudExecMode, productMode: 'code', send: sentrySend, holder: sentryHolder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false, readOnly: true });
+    else await runAxonTerminal(sentryModel, sentryTask, null, sentrySend, sentryBound.systemPrompt, root, sentryHolder, [], 'approve', 'code', provider, sentryBound.report);
     emit({ id: sentryId, status: sentryFailure ? 'failed' : 'completed', result: sentryFailure || sentryResult || '(Sentry completed without a text summary)', finishedAt: Date.now() });
   } catch (error) { emit({ id: sentryId, status: 'failed', result: error.message, finishedAt: Date.now() }); }
   finally { group.holders.delete(sentryId); }
@@ -805,35 +833,40 @@ async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = []
 }
 
 // Re-runs exactly one Swarm worker (from the Sentry console's "Retry" action)
-// under the same reduced-block rule as runSwarm: Approve is treated as Auto
-// for cloud-routed models, since a lone worker still only investigates and
-// reports, never writes. Updates stream back on the same agent id so the
+// under the same technically-enforced read-only sandbox as runSwarm (see
+// there for why 'approve'/readOnly:true is forced regardless of the app's
+// global permission mode). Updates stream back on the same agent id so the
 // Sentry console's card refreshes in place instead of creating a new one.
 async function runSwarmWorkerRetry({ swarmId, agentId, lane, workerModel, prompt, systemPrompt, cwd, provider, mode, images = [] }) {
   const root = cwd || ensureDefaultWorkspace();
-  const baseMode = normalizeMode(mode);
-  const execMode = baseMode === 'approve' ? 'auto' : baseMode;
-  const laneText = lane || SWARM_WORKER_LANES[0];
-  const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'agent', provider);
-  const task = `Axon Swarm worker retry. ${laneText} Independently investigate this outcome. Use the workspace and browser tools available under Axon's selected permission mode to inspect the real context, then return concise actionable findings for the Sentry. Do not delegate. Parallel workers must not modify files; report a proposed change instead.\n\nOutcome:\n${prompt}`;
+  const cloudExecMode = normalizeMode(mode) === 'approve' ? 'auto' : normalizeMode(mode);
+  const briefText = lane || SWARM_FALLBACK_LANES[0].brief;
+  const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'code', provider);
+  const task = `Axon Swarm worker retry. ${briefText} Independently investigate this outcome. Use the workspace and browser tools available to inspect the real context, then return concise actionable findings -- including any code, diffs, or commands you'd propose -- for the Sentry. Do not delegate. You are running read-only: you cannot modify files, so report a proposed change instead of applying it.\n\nOutcome:\n${prompt}`;
   const holder = {};
-  let result = '', failure = '';
+  let result = '', failure = ''; const steps = [];
+  const label = 'Retry';
   const send = (channel, value) => {
     if (channel === 'chat-delta') result = (result + String(value || '')).slice(-16000);
-    if (channel === 'chat-error') failure = String(value || 'Worker failed.');
+    else if (channel === 'chat-error') failure = String(value || 'Worker failed.');
+    else if (channel === 'chat-step') {
+      const v = value || {};
+      steps.push(v.type === 'tool_call' ? `-> ${v.fn || 'tool'}${v.args?.command ? ': ' + String(v.args.command).slice(0, 140) : ''}` : `<- ${String(v.result || '').slice(0, 140)}`);
+      if (steps.length > 40) steps.shift();
+      win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'working', task: label, brief: briefText, model: workerModel, steps: steps.slice(-8) });
+    }
   };
-  const label = `Retry \u00b7 ${laneText.split(':')[0]}`;
-  win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'working', task: label, model: workerModel, startedAt: Date.now() });
+  win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'working', task: label, brief: briefText, model: workerModel, startedAt: Date.now() });
   try {
     if (isOllamaCloudModel(workerModel, provider)) {
-      await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: workerModel, prompt: task, systemPrompt: workerBound.systemPrompt, cwd: root, permissionMode: execMode, productMode: 'code', send, holder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
+      await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: workerModel, prompt: task, systemPrompt: workerBound.systemPrompt, cwd: root, permissionMode: cloudExecMode, productMode: 'code', send, holder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false, readOnly: true });
     } else {
-      await runAxonTerminal(workerModel, task, null, send, workerBound.systemPrompt, root, holder, images, baseMode, 'code', provider, workerBound.report);
+      await runAxonTerminal(workerModel, task, null, send, workerBound.systemPrompt, root, holder, images, 'approve', 'code', provider, workerBound.report);
     }
     const summary = failure || result || '(worker completed without a text summary)';
-    win?.webContents.send('subagent-update', { swarmId, id: agentId, status: failure ? 'failed' : 'completed', task: label, model: workerModel, result: summary, finishedAt: Date.now() });
+    win?.webContents.send('subagent-update', { swarmId, id: agentId, status: failure ? 'failed' : 'completed', task: label, brief: briefText, model: workerModel, result: summary, finishedAt: Date.now() });
   } catch (error) {
-    win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'failed', task: label, model: workerModel, result: error.message, finishedAt: Date.now() });
+    win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'failed', task: label, brief: briefText, model: workerModel, result: error.message, finishedAt: Date.now() });
   }
 }
 
@@ -974,7 +1007,7 @@ ipcMain.handle('swarm-retry-worker', async (_e, { swarmId, agentId, lane, model,
   if (!outcome) return { ok: false, error: "This session's original task isn't available to retry -- launch a new swarm instead." };
   const workerModel = String(model || '').slice(0, 160);
   if (!workerModel) return { ok: false, error: 'Missing worker model.' };
-  runSwarmWorkerRetry({ swarmId, agentId, lane: typeof lane === 'string' ? lane.slice(0, 200) : '', workerModel, prompt: outcome.slice(0, 12000), systemPrompt, cwd, provider, mode, images: safeImages(images) })
+  runSwarmWorkerRetry({ swarmId, agentId, lane: typeof lane === 'string' ? lane.slice(0, 800) : '', workerModel, prompt: outcome.slice(0, 12000), systemPrompt, cwd, provider, mode, images: safeImages(images) })
     .catch((error) => win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'failed', result: error.message, finishedAt: Date.now() }));
   return { ok: true };
 });
