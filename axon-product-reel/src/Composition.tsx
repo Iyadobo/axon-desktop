@@ -18,7 +18,7 @@ const Pill = ({ children, active = false }: { children: React.ReactNode; active?
 const AppShell = ({ mode, children, frame }: { mode: "Chat" | "Swarm" | "Code" | "Work"; children: React.ReactNode; frame: number }) => {
   const { height } = useVideoConfig();
   const inScale = interpolate(enter(frame, 0), [0, 1], [0.985, 1]);
-  const tabs = [["Chat", "chat.png"], ["Work", "work.png"], ["Code", "code.png"]] as const;
+  const tabs = [["Chat", "chat-dendrite-v5.png"], ["Work", "work-axon-v5.png"], ["Code", "code-terminal-v5.png"]] as const;
   return <AbsoluteFill style={{ background: "#0d0d10", fontFamily: FONT, color: PAPER, scale: inScale }}>
     <header style={{ height: 76, borderBottom: `1px solid ${LINE}`, display: "flex", alignItems: "center", padding: "0 26px", fontFamily: MONO, background: "#0c0c0f" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>{[["▢", "Chat"], ["□", "Projects"], ["☼", "Models"], ["⚙", "Settings"]].map(([icon, label], index) => <div key={label} style={{ padding: "13px 15px", borderRadius: 7, border: index === 0 ? `1px solid ${LINE}` : "1px solid transparent", borderBottom: index === 0 ? `3px solid ${PINK}` : "1px solid transparent", color: index === 0 ? PAPER : MUTED, fontSize: 17, fontWeight: 700 }}><span style={{ marginRight: 9, color: index === 0 ? PAPER : "#77717a" }}>{icon}</span>{label}</div>)}</div>
@@ -119,11 +119,13 @@ const SimpleModels = ({ frame }: { frame: number }) => <div style={{ opacity: fa
 
 const NeuralSwarm = ({ frame }: { frame: number }) => {
   const opacity = fade(frame, 170, 326);
-  const workers = [[272,288,"#7b8cff","SCOUT","surfaces context"],[470,690,"#f5ba61","BUILDER","makes the move"],[1090,675,"#65cdaa","SKEPTIC","tests the edge"],[1260,295,"#d78cff","OBSERVER","keeps watch"]] as const;
+  const workers = [[272,288,"#7b8cff","MAPS","searches nearby"],[470,690,"#f5ba61","DIRECTORIES","checks listings"],[1090,675,"#65cdaa","VERIFY","tests domains"],[1260,295,"#d78cff","SOCIAL","finds local signals"]] as const;
   const coreX = 770, coreY = 470;
+  const leads = Math.floor(interpolate(frame, [205, 292], [0, 30], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
   return <div style={{ opacity }}>
     <ModeLabel>AXON SWARM</ModeLabel>
-    <div style={{ position: "absolute", left: 74, top: 118, color: MUTED, fontSize: 19 }}>One Sentry brain. Workers as live branches.</div>
+    <div style={{ position: "absolute", left: 74, top: 128, width: 590, border: `1px solid ${LINE}`, borderRadius: 10, background: "#151519", padding: "18px 21px", boxSizing: "border-box" }}><div style={{ color: MUTED, font: "12px " + MONO, letterSpacing: ".12em", marginBottom: 10 }}>SENTRY BRIEF</div><div style={{ fontSize: 24, lineHeight: 1.28 }}>Find 30 businesses in this area with no website.</div></div>
+    <div style={{ position: "absolute", right: 74, top: 130, width: 254, borderLeft: `2px solid ${PINK}`, paddingLeft: 17, opacity: enter(frame, 215) }}><div style={{ color: PINK_SOFT, font: "12px " + MONO, letterSpacing: ".12em" }}>LIVE DISCOVERY</div><div style={{ fontSize: 38, marginTop: 6 }}>{leads}<span style={{ color: MUTED, fontSize: 18 }}> / 30 leads</span></div><div style={{ color: MUTED, fontSize: 15, marginTop: 5 }}>domain checks running</div></div>
     <svg viewBox="0 0 1560 1000" style={{ position:"absolute", inset:0, width:"100%", height:"100%" }}>
       <defs><filter id="sentry-glow"><feGaussianBlur stdDeviation="6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
       {[0,1,2].map(ring => <circle key={ring} cx={coreX} cy={coreY} r={70 + ring * 27 + Math.sin((frame + ring * 13) / 10) * 3} fill="none" stroke={PINK} strokeWidth={ring === 0 ? 1.8 : 1} opacity={.5 - ring * .12}/>) }
@@ -136,7 +138,7 @@ const NeuralSwarm = ({ frame }: { frame: number }) => {
       {[[-145,-55],[142,-50],[-115,105],[120,112],[-32,-150],[36,148]].map(([x,y]) => <g key={`${x}-${y}`} opacity=".5"><path d={`M${coreX + x*.32} ${coreY + y*.32} Q ${coreX+x*.8} ${coreY+y*.18} ${coreX+x} ${coreY+y}`} stroke={PINK_SOFT} strokeWidth="1" fill="none"/><circle cx={coreX+x} cy={coreY+y} r="4" fill={PINK_SOFT}/></g>)}
     </svg>
     <div style={{ position:"absolute", left:coreX-58, top:coreY-58, width:116, height:116, borderRadius:"50%", background:"radial-gradient(circle, #321625 0%, #171116 58%, transparent 62%)", border:`2px solid ${PINK}`, display:"grid", placeItems:"center", boxShadow:"0 0 52px rgba(245,77,154,.33)" }}><Img src={staticFile("axon-assets/swarm.png")} style={{ width:74, height:74, objectFit:"contain" }}/></div>
-    <div style={{ position:"absolute", left:coreX-63, top:coreY+76, width:126, textAlign:"center", color:PINK_SOFT, font:"13px "+MONO, letterSpacing:".13em" }}>SENTRY BRAIN</div>
+    <div style={{ position:"absolute", left:coreX-63, top:coreY+76, width:126, textAlign:"center", color:PINK_SOFT, font:"13px "+MONO, letterSpacing:".13em" }}>SENTRY / ROUTING</div>
   </div>;
 };
 const ReelSfx = () => <>
@@ -144,5 +146,5 @@ const ReelSfx = () => <>
   {[94,248,393,538].map((start) => <Sequence key={start} from={start} durationInFrames={28}><Audio src={whoosh} volume={0.13} /></Sequence>)}
 </>;
 export { SimpleSwarm };
-export const AxonProductReel: React.FC = () => { const frame = useCurrentFrame(); const mode: "Chat" | "Swarm" | "Code" | "Work" = frame < 185 ? "Chat" : frame < 330 ? "Swarm" : frame < 475 ? "Code" : "Work"; const orb = frame < 185 ? [16,"chat.png","CHAT"] as const : frame < 330 ? [170,"swarm.png","SWARM"] as const : frame < 475 ? [315,"code.png","CODE"] as const : frame < 610 ? [460,"work.png","WORK"] as const : [592,"icon.png","MODELS"] as const; return <AppShell mode={mode} frame={frame}><ReelSfx /><ModeOrb frame={frame} start={orb[0]} asset={orb[1]} label={orb[2]} /><SimpleChat frame={frame} /><NeuralSwarm frame={frame} /><SimpleCode frame={frame} /><SimpleWork frame={frame} /><SimpleModels frame={frame} /></AppShell>; };
+export const AxonProductReel: React.FC = () => { const frame = useCurrentFrame(); const mode: "Chat" | "Swarm" | "Code" | "Work" = frame < 185 ? "Chat" : frame < 330 ? "Swarm" : frame < 475 ? "Code" : "Work"; const orb = frame < 185 ? [16,"chat-dendrite-v5.png","CHAT"] as const : frame < 330 ? [170,"swarm.png","SWARM"] as const : frame < 475 ? [315,"code-terminal-v5.png","CODE"] as const : frame < 610 ? [460,"work-axon-v5.png","WORK"] as const : [592,"icon.png","MODELS"] as const; return <AppShell mode={mode} frame={frame}><ReelSfx /><ModeOrb frame={frame} start={orb[0]} asset={orb[1]} label={orb[2]} /><SimpleChat frame={frame} /><NeuralSwarm frame={frame} /><SimpleCode frame={frame} /><SimpleWork frame={frame} /><SimpleModels frame={frame} /></AppShell>; };
 export const MyComposition = () => <Composition id="AxonProductReel" component={AxonProductReel} durationInFrames={660} fps={30} width={1920} height={1080} />;
