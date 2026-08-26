@@ -941,13 +941,33 @@
   .sentry-workers { margin-top:24px; }
   .sentry-workers-head { padding:0 0 11px; }
   .sentry-agent-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:10px; }
-  .sentry-agent { min-width:0; min-height:154px; padding:15px; border:1px solid var(--axon-rule); border-radius:7px; background:var(--axon-soft); }
+  .sentry-agent { min-width:0; min-height:154px; padding:15px; border:1px solid var(--axon-rule); border-radius:7px; background:var(--axon-soft); cursor:pointer; text-align:left; transition:border-color .12s ease; }
+  .sentry-agent:hover, .sentry-agent:focus-visible { border-color:color-mix(in srgb, var(--color-accent) 60%, var(--axon-rule)); outline:none; }
   .sentry-agent[data-status="working"], .sentry-agent[data-status="launching"] { border-color:color-mix(in srgb, var(--color-accent) 46%, var(--axon-rule)); }
   .sentry-agent-head { display:flex; justify-content:space-between; gap:10px; }
   .sentry-agent strong { overflow:hidden; font-size:13px; text-overflow:ellipsis; white-space:nowrap; }
   .sentry-agent-status { flex:none; color:var(--color-accent); font-size:10px; font-weight:800; letter-spacing:.055em; text-transform:uppercase; }
   .sentry-agent-meta { margin:6px 0 12px; color:var(--axon-muted); font-size:11px; }
-  .sentry-agent-result { display:-webkit-box; overflow:hidden; color:var(--color-text); font-size:12px; line-height:1.48; white-space:pre-wrap; -webkit-box-orient:vertical; -webkit-line-clamp:7; }
+  .sentry-agent-result { display:-webkit-box; overflow:hidden; color:var(--color-text); font-size:12px; line-height:1.48; white-space:pre-wrap; -webkit-box-orient:vertical; -webkit-line-clamp:5; }
+  .sentry-agent-expand { display:block; margin-top:8px; font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--color-accent); }
+  .sentry-lead[onclick], .sentry-lead { cursor:pointer; }
+  .sentry-agent-actions { display:flex; gap:6px; margin-top:10px; }
+  .sentry-agent-actions button { padding:4px 9px; font-size:10px; font-weight:700; border:1px solid var(--axon-rule); border-radius:4px; background:var(--axon-raised); color:var(--color-text); }
+  .sentry-agent-actions button:hover { border-color:var(--color-accent); color:var(--color-accent); }
+  .sentry-mode-badge { align-self:center; margin-right:2px; padding:5px 10px; border:1px solid var(--axon-rule); border-radius:20px; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--axon-muted); }
+  .sentry-modal[hidden] { display:none; }
+  .sentry-modal { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; }
+  .sentry-modal-backdrop { position:absolute; inset:0; background:color-mix(in srgb, black 55%, transparent); }
+  .sentry-modal-panel { position:relative; width:min(720px, calc(100% - 48px)); max-height:min(78vh, 720px); display:flex; flex-direction:column; border:1px solid var(--axon-rule); border-radius:10px; background:var(--color-bg); box-shadow:0 24px 60px rgba(0,0,0,.4); overflow:hidden; }
+  .sentry-modal-head { display:flex; align-items:start; justify-content:space-between; gap:16px; padding:20px 22px 14px; border-bottom:1px solid var(--axon-rule); }
+  .sentry-modal-head h3 { margin:6px 0 4px; font-size:19px; letter-spacing:-.02em; }
+  .sentry-modal-head small { display:block; color:var(--axon-muted); font-size:11px; }
+  .sentry-modal-head button { flex:none; width:30px; height:30px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font-size:15px; line-height:1; }
+  .sentry-modal-body { flex:1; min-height:0; overflow:auto; padding:20px 22px; }
+  .sentry-modal-body pre { margin:0; white-space:pre-wrap; word-break:break-word; font:12.5px/1.6 inherit; color:var(--color-text); }
+  .sentry-modal-actions { display:flex; justify-content:flex-end; gap:8px; padding:14px 22px; border-top:1px solid var(--axon-rule); }
+  .sentry-modal-actions button { padding:0 14px; min-height:34px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font:700 12px inherit; }
+  #sentryModalRetry { border-color:var(--color-accent); background:var(--color-accent); color:var(--color-on-accent); }
   .sentry-empty { padding:18px; border:1px dashed var(--axon-rule); border-radius:7px; color:var(--axon-muted); font-size:13px; }
 
   .ops-page-header { display:flex; align-items:end; justify-content:space-between; gap:22px; margin-bottom:30px; padding-bottom:18px; border-bottom:1px solid var(--axon-rule); }
@@ -1142,7 +1162,7 @@
     <section id="sentryConsole" hidden aria-label="Axon Swarm Sentry console">
       <header class="sentry-topbar">
         <div><span class="sentry-kicker">Axon Swarm</span><h2 id="sentryTitle">Sentry console</h2><p id="sentrySubtitle">Choose a Swarm session to inspect its agents.</p></div>
-        <div class="sentry-actions"><button id="sentryNewSwarm" type="button">New swarm</button><button id="sentryBackToChat" type="button">Return to chat</button></div>
+        <div class="sentry-actions"><span id="sentryModeBadge" class="sentry-mode-badge"></span><button id="sentryNewSwarm" type="button">New swarm</button><button id="sentryBackToChat" type="button">Return to chat</button></div>
       </header>
       <div class="sentry-layout">
         <aside class="sentry-session-rail" aria-label="Swarm sessions"><div class="sentry-rail-head"><span>Swarm sessions</span><span id="sentrySessionCount">0</span></div><div id="sentrySessions"></div></aside>
@@ -1152,6 +1172,20 @@
         </main>
       </div>
     </section>
+    <div id="sentryAgentModal" class="sentry-modal" hidden>
+      <div class="sentry-modal-backdrop" id="sentryModalBackdrop"></div>
+      <div class="sentry-modal-panel" role="dialog" aria-modal="true" aria-label="Agent report">
+        <header class="sentry-modal-head">
+          <div><span class="sentry-kicker" id="sentryModalKicker">Agent</span><h3 id="sentryModalTitle">Report</h3><small id="sentryModalMeta"></small></div>
+          <button type="button" id="sentryModalClose" aria-label="Close">×</button>
+        </header>
+        <div class="sentry-modal-body"><pre id="sentryModalText"></pre></div>
+        <footer class="sentry-modal-actions">
+          <button type="button" id="sentryModalCopy">Copy report</button>
+          <button type="button" id="sentryModalRetry" hidden>Retry this worker</button>
+        </footer>
+      </div>
+    </div>
     <aside id="browserPanel" aria-label="Agent browser">
       <div class="browserbar"><div class="browser-nav"><button id="browserBack" title="Back" aria-label="Back">←</button><button id="browserForward" title="Forward" aria-label="Forward">→</button><button id="browserReload" title="Reload" aria-label="Reload">↻</button></div><input id="browserUrl" aria-label="Browser address" placeholder="Search or enter an address" /><button id="browserClose" title="Close browser" aria-label="Close browser">×</button></div>
       <div class="browser-context"><span class="browser-context-kicker">Agent browser</span><span id="browserPageTitle">Ready for a focused lookup</span><span id="browserContextHint">Agents can open pages here; you remain in control of navigation.</span></div>

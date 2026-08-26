@@ -15,6 +15,17 @@ const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
 let conversations = [];   // [{id, sessionId, title, model, ts, projectId}]
 let swarmSessions = [];   // Dedicated Sentry sessions; never mixed into normal chat history.
 let activeSwarmId = null;
+// In-memory only (never persisted): what a swarm session needs to retry a
+// single worker later -- the raw outcome prompt, cwd, provider and system
+// prompt used at launch. Retry is unavailable for sessions recovered from a
+// previous app run, since none of this was ever written to disk.
+const swarmContext = new Map();
+let sentryModalTarget = null; // { session, agent } for the currently open Sentry console modal
+const SWARM_LANES = {
+  Scout: 'Scout: map the problem, unknowns, relevant evidence, and constraints.',
+  Builder: 'Builder: develop a concrete implementation or execution approach.',
+  Skeptic: 'Skeptic: look for risks, counterexamples, and verification steps.',
+};
 let activeId = null;      // current conversation id (null = home/fresh)
 let localConversationBackup = null;
 // Many chats may generate at once. Keep their DOM + persistence context by
@@ -179,6 +190,7 @@ async function launchSwarm(entry) {
     const existing = swarmSessions.find((session) => session.id === result.swarmId);
     const session = normalizeSwarmSession({ id: result.swarmId, title: entry.combined.replace(/\s+/g, ' ').slice(0, 120), sentryModel, workerModel, providerName: provider?.name || 'Current provider', mode: settings.permissionMode, status: 'launching', ts: Date.now(), updatedAt: Date.now(), agents: existing?.agents || [] });
     if (existing) Object.assign(existing, session); else swarmSessions.unshift(session);
+    swarmContext.set(result.swarmId, { outcome: entry.combined, images: entry.images || [], cwd: projectCwd(), systemPrompt: projectSystemPrompt(), provider, mode: settings.permissionMode });
     saveSwarmSessions(); showSentryConsole();
   } catch (error) { $('swarmStatus').textContent = error.message || 'Could not launch the swarm.'; }
   finally { swarmLaunching = false; syncComposerState(); }
@@ -979,6 +991,34 @@ function loadSwarmSessions() {
 function saveSwarmSessions() { saveState('oswarmSessions', swarmSessions.slice(0, 40).map((session) => ({ ...session, agents: session.agents.slice(-16) }))); }
 function swarmSessionOrder() { return [...swarmSessions].sort((a, b) => Number(b.updatedAt || b.ts) - Number(a.updatedAt || a.ts)); }
 function activeSwarmSession() { return swarmSessions.find((session) => session.id === activeSwarmId) || null; }
+function copyToClipboard(text, btn) {
+  navigator.clipboard?.writeText(String(text || '')).catch(() => {});
+  if (btn) { const label = btn.textContent; btn.textContent = 'copied'; setTimeout(() => { btn.textContent = label === 'copied' ? 'copy' : label; }, 1200); }
+}
+function laneTextForAgent(agent) {
+  const label = String(agent?.task || '').split('·').pop().trim();
+  return SWARM_LANES[label] || SWARM_LANES.Scout;
+}
+async function retrySwarmWorker(session, agent) {
+  if (!session || !agent) return;
+  const ctx = swarmContext.get(session.id);
+  if (!ctx) { agent.result = "This session's original task isn't available to retry (it predates this app session) -- launch a new swarm instead."; agent.status = 'failed'; renderSentryConsole(); return; }
+  agent.status = 'working'; agent.result = 'Retrying…'; renderSentryConsole();
+  if (sentryModalTarget?.agent?.id === agent.id) openSentryModal({ kind: 'Worker', title: agent.task, meta: (agent.model || session.workerModel || '') + ' · working', text: agent.result, session, agent });
+  const result = await window.ollama.swarmRetryWorker({ swarmId: session.id, agentId: agent.id, lane: laneTextForAgent(agent), model: agent.model, prompt: ctx.outcome, systemPrompt: ctx.systemPrompt, cwd: ctx.cwd, provider: ctx.provider, mode: ctx.mode, images: ctx.images });
+  if (!result?.ok) { agent.status = 'failed'; agent.result = result?.error || 'Could not retry this worker.'; renderSentryConsole(); }
+}
+function openSentryModal({ kind, title, meta, text, session, agent }) {
+  sentryModalTarget = session && agent ? { session, agent } : null;
+  $('sentryModalKicker').textContent = kind;
+  $('sentryModalTitle').textContent = title || '(untitled)';
+  $('sentryModalMeta').textContent = meta || '';
+  $('sentryModalText').textContent = text || '(no report yet)';
+  const canRetry = !!(sentryModalTarget && !/^Sentry\b/.test(agent?.task || '') && ['completed', 'failed'].includes(agent?.status));
+  $('sentryModalRetry').hidden = !canRetry;
+  $('sentryAgentModal').hidden = false;
+}
+function closeSentryModal() { $('sentryAgentModal').hidden = true; sentryModalTarget = null; }
 function renderSentryConsole() {
   const sessions = swarmSessionOrder(); const rail = $('sentrySessions'); if (!rail) return;
   $('sentrySessionCount').textContent = String(sessions.length);
@@ -990,17 +1030,36 @@ function renderSentryConsole() {
     button.onclick = () => { activeSwarmId = session.id; showSentryConsole(); }; rail.appendChild(button);
   }
   const session = activeSwarmSession(); const lead = $('sentryLead'); const grid = $('sentryAgentGrid');
-  if (!session) { lead.innerHTML = '<span class="sentry-kicker">Sentry</span><h3>Awaiting a session</h3><p>The Sentry will consolidate each worker\'s findings here.</p>'; grid.innerHTML = '<div class="sentry-empty">Launch a Swarm to begin a dedicated Sentry session.</div>'; $('sentryAgentSummary').textContent = 'No active agents'; return; }
+  const modeBadge = $('sentryModeBadge');
+  if (modeBadge) modeBadge.textContent = session ? ({ approve: 'Approve', auto: 'Auto', full: 'Full' }[session.mode] || '') : '';
+  if (!session) { lead.onclick = null; lead.innerHTML = '<span class="sentry-kicker">Sentry</span><h3>Awaiting a session</h3><p>The Sentry will consolidate each worker\'s findings here.</p>'; grid.innerHTML = '<div class="sentry-empty">Launch a Swarm to begin a dedicated Sentry session.</div>'; $('sentryAgentSummary').textContent = 'No active agents'; return; }
   const agents = session.agents || []; const sentry = agents.find((agent) => /^Sentry\b/.test(agent.task)); const workers = agents.filter((agent) => agent.id !== session.id && agent !== sentry);
-  lead.innerHTML = '<span class="sentry-kicker">Sentry · ' + esc(sentry?.status || session.status || 'waiting') + '</span><h3>' + esc(sentry?.task || session.sentryModel || 'Sentry preparing the brief') + '</h3><p>' + esc(sentry?.result || 'Workers are investigating. Their reports will arrive here for synthesis.') + '</p>';
+  lead.innerHTML = '<span class="sentry-kicker">Sentry · ' + esc(sentry?.status || session.status || 'waiting') + '</span><h3>' + esc(sentry?.task || session.sentryModel || 'Sentry preparing the brief') + '</h3><p>' + esc(sentry?.result || 'Workers are investigating. Their reports will arrive here for synthesis.') + '</p>' + (sentry?.result ? '<span class="sentry-agent-expand">View full synthesis →</span>' : '');
+  lead.onclick = sentry?.result ? (() => openSentryModal({ kind: 'Sentry', title: sentry.task || 'Synthesis', meta: (sentry.model || session.sentryModel || '') + ' · ' + (sentry.status || ''), text: sentry.result })) : null;
   const running = workers.filter((agent) => !['completed', 'failed'].includes(agent.status)).length;
   $('sentryAgentSummary').textContent = workers.length ? `${running ? running + ' active · ' : ''}${workers.length} worker${workers.length === 1 ? '' : 's'}` : 'Waiting for workers';
   grid.innerHTML = '';
   if (!workers.length) { grid.innerHTML = '<div class="sentry-empty">Worker lanes will appear as soon as the swarm starts.</div>'; return; }
   for (const agent of workers) {
-    const card = document.createElement('article'); card.className = 'sentry-agent'; card.dataset.status = agent.status || 'working';
-    card.innerHTML = '<div class="sentry-agent-head"><strong>' + esc(agent.task) + '</strong><span class="sentry-agent-status">' + esc(agent.status || 'working') + '</span></div><div class="sentry-agent-meta">' + esc(agent.model || session.workerModel || 'selected model') + '</div><div class="sentry-agent-result">' + esc(agent.result || 'Investigating the workspace…') + '</div>';
+    const card = document.createElement('article'); card.className = 'sentry-agent'; card.dataset.status = agent.status || 'working'; card.tabIndex = 0; card.setAttribute('role', 'button'); card.setAttribute('aria-label', 'Open full report for ' + agent.task);
+    card.innerHTML = '<div class="sentry-agent-head"><strong>' + esc(agent.task) + '</strong><span class="sentry-agent-status">' + esc(agent.status || 'working') + '</span></div><div class="sentry-agent-meta">' + esc(agent.model || session.workerModel || 'selected model') + '</div><div class="sentry-agent-result">' + esc(agent.result || 'Investigating the workspace…') + '</div><span class="sentry-agent-expand">View full report →</span><div class="sentry-agent-actions"></div>';
+    const actions = card.querySelector('.sentry-agent-actions');
+    const copyBtn = document.createElement('button'); copyBtn.type = 'button'; copyBtn.textContent = 'copy';
+    copyBtn.onclick = (event) => { event.stopPropagation(); copyToClipboard(agent.result || '', copyBtn); };
+    actions.appendChild(copyBtn);
+    if (['completed', 'failed'].includes(agent.status)) {
+      const retryBtn = document.createElement('button'); retryBtn.type = 'button'; retryBtn.textContent = 'retry';
+      retryBtn.onclick = (event) => { event.stopPropagation(); retrySwarmWorker(session, agent); };
+      actions.appendChild(retryBtn);
+    }
+    const openModal = () => openSentryModal({ kind: 'Worker', title: agent.task, meta: (agent.model || session.workerModel || '') + ' · ' + (agent.status || ''), text: agent.result || '(no report yet)', session, agent });
+    card.addEventListener('click', openModal);
+    card.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openModal(); } });
     grid.appendChild(card);
+  }
+  if (sentryModalTarget?.session?.id === session.id) {
+    const fresh = workers.find((agent) => agent.id === sentryModalTarget.agent.id);
+    if (fresh) openSentryModal({ kind: 'Worker', title: fresh.task, meta: (fresh.model || session.workerModel || '') + ' · ' + (fresh.status || ''), text: fresh.result || '(no report yet)', session, agent: fresh });
   }
 }
 function showSentryConsole() {
@@ -1847,6 +1906,11 @@ $('browserToggle').onclick = () => setBrowserOpen(!browserOpen);
 $('subagentsToggle').onclick = () => setSubagentsOpen(!subagentsOpen); $('subagentsClose').onclick = () => setSubagentsOpen(false);
 $('sentryNewSwarm').onclick = () => openSwarm(true);
 $('sentryBackToChat').onclick = () => { swarmMode = false; $('main').removeAttribute('data-swarm'); $('swarmLaunch').classList.remove('active'); newChat(); };
+$('sentryModalClose').onclick = closeSentryModal;
+$('sentryModalBackdrop').onclick = closeSentryModal;
+$('sentryModalCopy').onclick = () => copyToClipboard($('sentryModalText').textContent || '', $('sentryModalCopy'));
+$('sentryModalRetry').onclick = () => { if (sentryModalTarget) retrySwarmWorker(sentryModalTarget.session, sentryModalTarget.agent); };
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('sentryAgentModal').hidden) closeSentryModal(); });
 $('windowMinimize').onclick = () => window.ollama.windowControl('minimize');
 $('windowMaximize').onclick = () => window.ollama.windowControl('maximize');
 $('windowClose').onclick = () => window.ollama.windowControl('close');

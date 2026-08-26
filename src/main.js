@@ -752,6 +752,13 @@ async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = []
   const count = Math.min(workers, cap);
   const root = cwd || ensureDefaultWorkspace();
   const mode = normalizeMode(permissionMode);
+  // Swarm workers only investigate and report -- they're explicitly instructed
+  // never to modify files -- so Approve's "block run_command entirely" rule for
+  // Ollama Cloud models (see runOllamaCloudAgent) doesn't need to apply to them.
+  // Give cloud-routed swarm workers Auto's execution floor even when the
+  // composer itself is set to Approve, so they can actually inspect the workspace
+  // instead of coming back with "run_command is blocked at my tier."
+  const cloudExecMode = mode === 'approve' ? 'auto' : mode;
   const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'agent', provider);
   const group = { holders: new Map() }; activeSwarms.set(swarmId, group);
   const emit = (update) => win?.webContents.send('subagent-update', { swarmId, ...update });
@@ -767,7 +774,7 @@ async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = []
     };
     try {
       if (isOllamaCloudModel(workerModel, provider)) {
-        await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: workerModel, prompt: task, systemPrompt: workerBound.systemPrompt, cwd: root, permissionMode: mode, productMode: 'code', send, holder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
+        await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: workerModel, prompt: task, systemPrompt: workerBound.systemPrompt, cwd: root, permissionMode: cloudExecMode, productMode: 'code', send, holder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
       } else {
         await runAxonTerminal(workerModel, task, null, send, workerBound.systemPrompt, root, holder, images, mode, 'code', provider, workerBound.report);
       }
@@ -788,13 +795,46 @@ async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = []
   emit({ id: sentryId, status: 'working', task: 'Sentry · synthesize worker reports', model: sentryModel, startedAt: Date.now() });
   const sentrySend = (channel, value) => { if (channel === 'chat-delta') sentryResult = (sentryResult + String(value || '')).slice(-24000); if (channel === 'chat-error') sentryFailure = String(value || 'Sentry failed.'); };
   try {
-    if (isOllamaCloudModel(sentryModel, provider)) await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: sentryModel, prompt: sentryTask, systemPrompt: sentryBound.systemPrompt, cwd: root, permissionMode: mode, productMode: 'code', send: sentrySend, holder: sentryHolder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
+    if (isOllamaCloudModel(sentryModel, provider)) await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: sentryModel, prompt: sentryTask, systemPrompt: sentryBound.systemPrompt, cwd: root, permissionMode: cloudExecMode, productMode: 'code', send: sentrySend, holder: sentryHolder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
     else await runAxonTerminal(sentryModel, sentryTask, null, sentrySend, sentryBound.systemPrompt, root, sentryHolder, [], mode, 'code', provider, sentryBound.report);
     emit({ id: sentryId, status: sentryFailure ? 'failed' : 'completed', result: sentryFailure || sentryResult || '(Sentry completed without a text summary)', finishedAt: Date.now() });
   } catch (error) { emit({ id: sentryId, status: 'failed', result: error.message, finishedAt: Date.now() }); }
   finally { group.holders.delete(sentryId); }
   emit({ id: swarmId, status: 'completed', result: `Sentry and ${count} worker${count === 1 ? '' : 's'} finished. Open Agents to review the synthesis.`, finishedAt: Date.now() });
   activeSwarms.delete(swarmId);
+}
+
+// Re-runs exactly one Swarm worker (from the Sentry console's "Retry" action)
+// under the same reduced-block rule as runSwarm: Approve is treated as Auto
+// for cloud-routed models, since a lone worker still only investigates and
+// reports, never writes. Updates stream back on the same agent id so the
+// Sentry console's card refreshes in place instead of creating a new one.
+async function runSwarmWorkerRetry({ swarmId, agentId, lane, workerModel, prompt, systemPrompt, cwd, provider, mode, images = [] }) {
+  const root = cwd || ensureDefaultWorkspace();
+  const baseMode = normalizeMode(mode);
+  const execMode = baseMode === 'approve' ? 'auto' : baseMode;
+  const laneText = lane || SWARM_WORKER_LANES[0];
+  const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'agent', provider);
+  const task = `Axon Swarm worker retry. ${laneText} Independently investigate this outcome. Use the workspace and browser tools available under Axon's selected permission mode to inspect the real context, then return concise actionable findings for the Sentry. Do not delegate. Parallel workers must not modify files; report a proposed change instead.\n\nOutcome:\n${prompt}`;
+  const holder = {};
+  let result = '', failure = '';
+  const send = (channel, value) => {
+    if (channel === 'chat-delta') result = (result + String(value || '')).slice(-16000);
+    if (channel === 'chat-error') failure = String(value || 'Worker failed.');
+  };
+  const label = `Retry \u00b7 ${laneText.split(':')[0]}`;
+  win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'working', task: label, model: workerModel, startedAt: Date.now() });
+  try {
+    if (isOllamaCloudModel(workerModel, provider)) {
+      await runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model: workerModel, prompt: task, systemPrompt: workerBound.systemPrompt, cwd: root, permissionMode: execMode, productMode: 'code', send, holder, browser: { open: revealBrowser, read: readBrowser }, allowDelegation: false });
+    } else {
+      await runAxonTerminal(workerModel, task, null, send, workerBound.systemPrompt, root, holder, images, baseMode, 'code', provider, workerBound.report);
+    }
+    const summary = failure || result || '(worker completed without a text summary)';
+    win?.webContents.send('subagent-update', { swarmId, id: agentId, status: failure ? 'failed' : 'completed', task: label, model: workerModel, result: summary, finishedAt: Date.now() });
+  } catch (error) {
+    win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'failed', task: label, model: workerModel, result: error.message, finishedAt: Date.now() });
+  }
 }
 
 // ---- IPC ------------------------------------------------------------------
@@ -927,6 +967,16 @@ ipcMain.handle('swarm-start', async (_e, { sentryModel, workerModel, prompt, ima
   runSwarm({ swarmId, sentryModel: String(sentryModel || fallbackModel).slice(0, 160), workerModel: fallbackModel, prompt: outcome.slice(0, 12000), images: safeImages(images), workers: count, systemPrompt, cwd, provider, permissionMode: mode })
     .catch((error) => win?.webContents.send('subagent-update', { id: swarmId, swarmId, status: 'failed', task: 'Axon Swarm', result: error.message, finishedAt: Date.now() }));
   return { ok: true, swarmId, requested, count, capped: count !== requested, cap: Number.isFinite(swarmLimit(provider)) ? swarmLimit(provider) : null };
+});
+ipcMain.handle('swarm-retry-worker', async (_e, { swarmId, agentId, lane, model, prompt, systemPrompt, cwd, provider, mode, images }) => {
+  const outcome = String(prompt || '').trim();
+  if (!swarmId || !agentId) return { ok: false, error: 'Missing swarm/agent id.' };
+  if (!outcome) return { ok: false, error: "This session's original task isn't available to retry -- launch a new swarm instead." };
+  const workerModel = String(model || '').slice(0, 160);
+  if (!workerModel) return { ok: false, error: 'Missing worker model.' };
+  runSwarmWorkerRetry({ swarmId, agentId, lane: typeof lane === 'string' ? lane.slice(0, 200) : '', workerModel, prompt: outcome.slice(0, 12000), systemPrompt, cwd, provider, mode, images: safeImages(images) })
+    .catch((error) => win?.webContents.send('subagent-update', { swarmId, id: agentId, status: 'failed', result: error.message, finishedAt: Date.now() }));
+  return { ok: true };
 });
 ipcMain.handle('chat-stop', (_e, requestId) => {
   if (!requestId) return false;
