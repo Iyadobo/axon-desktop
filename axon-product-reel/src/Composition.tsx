@@ -119,26 +119,27 @@ const SimpleModels = ({ frame }: { frame: number }) => <div style={{ opacity: fa
 
 const NeuralSwarm = ({ frame }: { frame: number }) => {
   const opacity = fade(frame, 170, 326);
-  const workers = [[272,288,"#7b8cff","MAPS","searches nearby"],[470,690,"#f5ba61","DIRECTORIES","checks listings"],[1090,675,"#65cdaa","VERIFY","tests domains"],[1260,295,"#d78cff","SOCIAL","finds local signals"]] as const;
-  const coreX = 770, coreY = 470;
-  const leads = Math.floor(interpolate(frame, [205, 292], [0, 30], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
+  const coreX = 790, coreY = 492;
+  const leads = Math.floor(interpolate(frame, [205, 298], [0, 30], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }));
+  const field = Array.from({ length: 30 }, (_, index) => {
+    const angle = index * 2.399 + 0.16;
+    const radius = 142 + (index % 5) * 42 + Math.sin(index * 1.8) * 16;
+    return { x: coreX + Math.cos(angle) * radius * 1.27, y: coreY + Math.sin(angle) * radius * .78, index };
+  });
   return <div style={{ opacity }}>
     <ModeLabel>AXON SWARM</ModeLabel>
-    <div style={{ position: "absolute", left: 74, top: 128, width: 590, border: `1px solid ${LINE}`, borderRadius: 10, background: "#151519", padding: "18px 21px", boxSizing: "border-box" }}><div style={{ color: MUTED, font: "12px " + MONO, letterSpacing: ".12em", marginBottom: 10 }}>SENTRY BRIEF</div><div style={{ fontSize: 24, lineHeight: 1.28 }}>Find 30 businesses in this area with no website.</div></div>
-    <div style={{ position: "absolute", right: 74, top: 130, width: 254, borderLeft: `2px solid ${PINK}`, paddingLeft: 17, opacity: enter(frame, 215) }}><div style={{ color: PINK_SOFT, font: "12px " + MONO, letterSpacing: ".12em" }}>LIVE DISCOVERY</div><div style={{ fontSize: 38, marginTop: 6 }}>{leads}<span style={{ color: MUTED, fontSize: 18 }}> / 30 leads</span></div><div style={{ color: MUTED, fontSize: 15, marginTop: 5 }}>domain checks running</div></div>
+    <div style={{ position: "absolute", left: 74, top: 126, width: 575, borderBottom: `1px solid ${LINE}`, paddingBottom: 18 }}><div style={{ color: PINK, font: "12px " + MONO, letterSpacing: ".14em", marginBottom: 10 }}>SENTRY / LOCAL DISCOVERY</div><div style={{ fontSize: 29, lineHeight: 1.2 }}>Find 30 businesses in this area<br />with no website.</div></div>
+    <div style={{ position: "absolute", right: 75, top: 128, width: 255, textAlign: "right", opacity: enter(frame, 207) }}><div style={{ color: MUTED, font: "12px " + MONO, letterSpacing: ".13em" }}>SIGNALS CAPTURED</div><div style={{ color: PINK_SOFT, fontSize: 50, marginTop: 3, letterSpacing: "-.07em" }}>{leads}<span style={{ color: MUTED, fontSize: 17, letterSpacing: 0 }}> / 30</span></div></div>
     <svg viewBox="0 0 1560 1000" style={{ position:"absolute", inset:0, width:"100%", height:"100%" }}>
-      <defs><filter id="sentry-glow"><feGaussianBlur stdDeviation="6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
-      {[0,1,2].map(ring => <circle key={ring} cx={coreX} cy={coreY} r={70 + ring * 27 + Math.sin((frame + ring * 13) / 10) * 3} fill="none" stroke={PINK} strokeWidth={ring === 0 ? 1.8 : 1} opacity={.5 - ring * .12}/>) }
-      {workers.map(([x,y,color,name,detail], index) => { const t = ((frame * .82 + index * 27) % 100) / 100; const cx = coreX + (x - coreX) * t; const cy = coreY + (y - coreY) * t; return <g key={name} opacity={enter(frame, 188 + index * 12)}>
-        <path d={`M${coreX} ${coreY} C ${coreX + (x-coreX)*.22} ${coreY + (y-coreY)*.7}, ${coreX + (x-coreX)*.78} ${coreY + (y-coreY)*.1}, ${x} ${y}`} fill="none" stroke={color} strokeWidth="1.7" opacity=".68"/>
-        <path d={`M${coreX} ${coreY} C ${coreX + (x-coreX)*.16} ${coreY + (y-coreY)*.42}, ${coreX + (x-coreX)*.62} ${coreY + (y-coreY)*.88}, ${x} ${y}`} fill="none" stroke={color} strokeWidth=".8" opacity=".28"/>
-        <circle cx={cx} cy={cy} r="6" fill={color} filter="url(#sentry-glow)"/><circle cx={x} cy={y} r="20" fill="#121217" stroke={color} strokeWidth="1.8"/><circle cx={x} cy={y} r="5" fill={color}/>
-        <text x={x + 30} y={y - 8} fill={color} fontFamily="Consolas" fontSize="14" letterSpacing="2">{name}</text><text x={x + 30} y={y + 17} fill="#aaa3ac" fontFamily="Georgia" fontSize="17">{detail}</text>
-      </g>; })}
-      {[[-145,-55],[142,-50],[-115,105],[120,112],[-32,-150],[36,148]].map(([x,y]) => <g key={`${x}-${y}`} opacity=".5"><path d={`M${coreX + x*.32} ${coreY + y*.32} Q ${coreX+x*.8} ${coreY+y*.18} ${coreX+x} ${coreY+y}`} stroke={PINK_SOFT} strokeWidth="1" fill="none"/><circle cx={coreX+x} cy={coreY+y} r="4" fill={PINK_SOFT}/></g>)}
+      <defs><filter id="sentry-glow"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter><radialGradient id="sentry-field"><stop stopColor="#f54d9a" stopOpacity=".15"/><stop offset="1" stopColor="#f54d9a" stopOpacity="0"/></radialGradient></defs>
+      <ellipse cx={coreX} cy={coreY} rx="505" ry="310" fill="url(#sentry-field)" opacity=".72"/>
+      {[0,1,2,3].map((ring) => <ellipse key={ring} cx={coreX} cy={coreY} rx={105 + ring * 94 + Math.sin((frame + ring * 19) / 9) * 3} ry={72 + ring * 57 + Math.sin((frame + ring * 19) / 9) * 2} fill="none" stroke={ring === 0 ? PINK : PINK_SOFT} strokeWidth={ring === 0 ? 1.6 : .8} opacity={.47 - ring * .08}/>) }
+      {[0, 1, 2].map((pulse) => <ellipse key={pulse} cx={coreX} cy={coreY} rx={interpolate((frame - 190 - pulse * 28 + 160) % 160, [0, 160], [70, 490])} ry={interpolate((frame - 190 - pulse * 28 + 160) % 160, [0, 160], [48, 300])} fill="none" stroke={PINK} strokeWidth="1.3" opacity={interpolate((frame - 190 - pulse * 28 + 160) % 160, [0, 160], [.38, 0])}/>) }
+      {field.map(({ x, y, index }) => { const on = index < leads; const rise = enter(frame, 195 + index * 3, 12); const pulse = 1 + Math.max(0, Math.sin((frame - 200 - index * 2) / 5)) * .22; return <g key={index} opacity={rise * (on ? 1 : .2)}><line x1={coreX} y1={coreY} x2={x} y2={y} stroke={index % 3 === 0 ? PINK : "#b77de0"} strokeWidth={on ? "1" : ".55"} opacity={on ? ".28" : ".12"}/><circle cx={x} cy={y} r={on ? 8 * pulse : 4} fill={on ? (index % 3 === 0 ? PINK : PINK_SOFT) : "#5e5860"} filter={on ? "url(#sentry-glow)" : undefined}/><circle cx={x} cy={y} r={on ? 15 : 10} fill="none" stroke={on ? PINK : "#5e5860"} strokeWidth=".8" opacity={on ? ".42" : ".22"}/>{index % 8 === 1 && on ? <text x={x + 16} y={y - 14} fill="#d4c8d0" fontFamily="Consolas" fontSize="12" letterSpacing="1.4">NO SITE</text> : null}</g>; })}
     </svg>
-    <div style={{ position:"absolute", left:coreX-58, top:coreY-58, width:116, height:116, borderRadius:"50%", background:"radial-gradient(circle, #321625 0%, #171116 58%, transparent 62%)", border:`2px solid ${PINK}`, display:"grid", placeItems:"center", boxShadow:"0 0 52px rgba(245,77,154,.33)" }}><Img src={staticFile("axon-assets/swarm.png")} style={{ width:74, height:74, objectFit:"contain" }}/></div>
-    <div style={{ position:"absolute", left:coreX-63, top:coreY+76, width:126, textAlign:"center", color:PINK_SOFT, font:"13px "+MONO, letterSpacing:".13em" }}>SENTRY / ROUTING</div>
+    <div style={{ position:"absolute", left:coreX-66, top:coreY-66, width:132, height:132, borderRadius:"50%", background:"radial-gradient(circle, #461c34 0%, #191116 64%, transparent 65%)", border:`2px solid ${PINK}`, display:"grid", placeItems:"center", boxShadow:"0 0 64px rgba(245,77,154,.38)" }}><Img src={staticFile("axon-assets/swarm.png")} style={{ width:79, height:79, objectFit:"contain" }}/></div>
+    <div style={{ position:"absolute", left:coreX-89, top:coreY+90, width:178, textAlign:"center", color:PINK_SOFT, font:"12px "+MONO, letterSpacing:".15em" }}>SENTRY / SIGNAL BLOOM</div>
+    <div style={{ position:"absolute", left:90, bottom:88, display:"flex", gap:26, color:MUTED, font:"12px "+MONO, letterSpacing:".1em" }}><span><b style={{ color:"#7b8cff" }}>MAPS</b>&nbsp; 12</span><span><b style={{ color:"#f5ba61" }}>LISTINGS</b>&nbsp; 09</span><span><b style={{ color:"#65cdaa" }}>DOMAIN CHECK</b>&nbsp; 09</span></div>
   </div>;
 };
 const ReelSfx = () => <>
