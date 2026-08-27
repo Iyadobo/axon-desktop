@@ -33,7 +33,7 @@ function currentTurn() { return activeId ? [...activeTurns.values()].find((turn)
 
 // ---- view switching --------------------------------------------------------
 let activeView = 'chat';
-let swarmMode = false, swarmLaunching = false;
+let swarmMode = false, swarmLaunching = false, swarmLogOpen = false;
 function switchView(viewName) {
   if (viewName === 'settings') { openSettings(); return; }
   activeView = viewName;
@@ -81,7 +81,7 @@ function syncWorkspaceShell() {
   chips.forEach((chip, index) => { chip.textContent = labels[index] || chip.textContent; });
 }
 function setWorkspace(group) {
-  swarmMode = false; $('main')?.removeAttribute('data-swarm'); $('swarmControls').hidden = true; $('swarmLimitInfo').hidden = true; $('swarmStatus').hidden = true; $('swarmLaunch')?.classList.remove('active');
+  swarmMode = false; swarmLogOpen = false; $('main')?.removeAttribute('data-swarm'); $('swarmControls').hidden = true; $('swarmLimitInfo').hidden = true; $('swarmStatus').hidden = true; $('swarmLaunch')?.classList.remove('active');
   settings.productMode = group === 'work' ? 'agent' : group === 'code' ? 'code' : 'chat';
   syncProductMode();
   const remembered = settings.activeConversationIds?.[group];
@@ -164,9 +164,11 @@ function syncSwarmLimit() {
   if (limit) { input.max = String(limit); if (Number(input.value) > limit) input.value = String(limit); $('swarmLimitInfo').textContent = 'Ollama routes allow up to 3 concurrent workers.'; }
   else { input.removeAttribute('max'); $('swarmLimitInfo').textContent = 'This provider has no Axon concurrency cap; its API limits still apply.'; }
 }
-function openSwarm(create = false) {
-  if (!create && swarmSessions.length) { activeSwarmId ||= swarmSessionOrder()[0]?.id || null; showSentryConsole(); return; }
-  swarmMode = true; activeId = null; $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = false; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
+// Starts a fresh swarm config screen -- to reopen a past swarm, use the
+// entry it gets in the sidebar's chat list instead (see openSwarmSession).
+function openSwarm() {
+  swarmMode = true; activeId = null; activeSwarmId = null; swarmLogOpen = false;
+  $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = false; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
   showHomeView(); $('greet').textContent = 'What should the swarm take on?'; document.querySelector('#home .sub')?.replaceChildren('Give Axon one outcome. Independent workers will investigate it in parallel.'); document.querySelector('.home-hint')?.replaceChildren('Choose a model and attach the relevant files, then launch the swarm with the normal composer. Workers are read-only so they cannot collide in your workspace.');
   const chips = [...document.querySelectorAll('#chips .chip')]; ['Explore approaches', 'Review a codebase', 'Research a topic', 'Compare options'].forEach((label, index) => { if (chips[index]) chips[index].textContent = label; });
   syncSwarmRoles(); $('prompt').focus();
@@ -186,7 +188,9 @@ async function launchSwarm(entry) {
     const session = normalizeSwarmSession({ id: result.swarmId, title: entry.combined.replace(/\s+/g, ' ').slice(0, 120), sentryModel, workerModel, providerName: provider?.name || 'Current provider', mode: settings.permissionMode, status: 'launching', ts: Date.now(), updatedAt: Date.now(), agents: existing?.agents || [] });
     if (existing) Object.assign(existing, session); else swarmSessions.unshift(session);
     swarmContext.set(result.swarmId, { outcome: entry.combined, images: entry.images || [], cwd: projectCwd(), systemPrompt: projectSystemPrompt(), provider, mode: settings.permissionMode });
-    saveSwarmSessions(); showSentryConsole();
+    saveSwarmSessions();
+    swarmLogOpen = true; activeId = null;
+    showChatView(); $('log').innerHTML = ''; renderSwarmTurn(session); renderRecents();
   } catch (error) { $('swarmStatus').textContent = error.message || 'Could not launch the swarm.'; }
   finally { swarmLaunching = false; syncComposerState(); }
 }
@@ -987,7 +991,6 @@ function loadSwarmSessions() {
 }
 function saveSwarmSessions() { saveState('oswarmSessions', swarmSessions.slice(0, 40).map((session) => ({ ...session, agents: session.agents.slice(-16) }))); }
 function swarmSessionOrder() { return [...swarmSessions].sort((a, b) => Number(b.updatedAt || b.ts) - Number(a.updatedAt || a.ts)); }
-function activeSwarmSession() { return swarmSessions.find((session) => session.id === activeSwarmId) || null; }
 function copyToClipboard(text, btn) {
   navigator.clipboard?.writeText(String(text || '')).catch(() => {});
   if (btn) { const label = btn.textContent; btn.textContent = 'copied'; setTimeout(() => { btn.textContent = label === 'copied' ? 'copy' : label; }, 1200); }
@@ -995,11 +998,11 @@ function copyToClipboard(text, btn) {
 async function retrySwarmWorker(session, agent) {
   if (!session || !agent) return;
   const ctx = swarmContext.get(session.id);
-  if (!ctx) { agent.result = "This session's original task isn't available to retry (it predates this app session) -- launch a new swarm instead."; agent.status = 'failed'; renderSentryConsole(); return; }
-  agent.status = 'working'; agent.result = 'Retrying…'; renderSentryConsole();
+  if (!ctx) { agent.result = "This session's original task isn't available to retry (it predates this app session) -- launch a new swarm instead."; agent.status = 'failed'; renderSwarmTurn(session); return; }
+  agent.status = 'working'; agent.result = 'Retrying…'; renderSwarmTurn(session);
   if (sentryModalTarget?.agent?.id === agent.id) openSentryModal({ kind: 'Worker', title: agent.task, meta: (agent.model || session.workerModel || '') + ' · working', text: agent.result, session, agent });
   const result = await window.ollama.swarmRetryWorker({ swarmId: session.id, agentId: agent.id, lane: agent.brief || agent.task, model: agent.model, prompt: ctx.outcome, systemPrompt: ctx.systemPrompt, cwd: ctx.cwd, provider: ctx.provider, mode: ctx.mode, images: ctx.images });
-  if (!result?.ok) { agent.status = 'failed'; agent.result = result?.error || 'Could not retry this worker.'; renderSentryConsole(); }
+  if (!result?.ok) { agent.status = 'failed'; agent.result = result?.error || 'Could not retry this worker.'; renderSwarmTurn(session); }
 }
 function openSentryModal({ kind, title, meta, text, session, agent }) {
   sentryModalTarget = session && agent ? { session, agent } : null;
@@ -1012,54 +1015,63 @@ function openSentryModal({ kind, title, meta, text, session, agent }) {
   $('sentryAgentModal').hidden = false;
 }
 function closeSentryModal() { $('sentryAgentModal').hidden = true; sentryModalTarget = null; }
-function renderSentryConsole() {
-  const sessions = swarmSessionOrder(); const rail = $('sentrySessions'); if (!rail) return;
-  $('sentrySessionCount').textContent = String(sessions.length);
-  rail.innerHTML = '';
-  if (!sessions.length) rail.innerHTML = '<div class="sentry-empty">No Swarm sessions yet.</div>';
-  for (const session of sessions) {
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'sentry-session' + (session.id === activeSwarmId ? ' active' : '');
-    button.innerHTML = '<strong>' + esc(session.title) + '</strong><small>' + esc(session.sentryModel || 'Sentry') + ' · ' + esc(session.status || 'working') + '</small>';
-    button.onclick = () => { activeSwarmId = session.id; showSentryConsole(); }; rail.appendChild(button);
+// Swarm renders as a turn inside the normal chat log -- same window, same
+// composer, same bubble styling as a regular message -- instead of a
+// separate full-page console. One turn per session; re-running this just
+// updates that turn's contents in place.
+function renderSwarmTurn(session) {
+  if (!session) return;
+  let el = $('log').querySelector('.swarm-turn[data-swarm-id="' + session.id + '"]');
+  if (!el) {
+    el = document.createElement('div'); el.className = 'turn ai swarm-turn'; el.dataset.swarmId = session.id;
+    const head = document.createElement('div'); head.className = 'turnhead'; head.textContent = 'Axon Swarm · ' + (session.sentryModel || '');
+    const bubble = document.createElement('div'); bubble.className = 'bubble swarm-bubble';
+    el.append(head, bubble);
+    $('log').appendChild(el);
   }
-  const session = activeSwarmSession(); const lead = $('sentryLead'); const grid = $('sentryAgentGrid');
-  const modeBadge = $('sentryModeBadge');
-  if (modeBadge) modeBadge.textContent = session ? ({ approve: 'Approve', auto: 'Auto', full: 'Full' }[session.mode] || '') : '';
-  if (!session) { lead.onclick = null; lead.innerHTML = '<span class="sentry-kicker">Sentry</span><h3>Awaiting a session</h3><p>The Sentry will consolidate each worker\'s findings here.</p>'; grid.innerHTML = '<div class="sentry-empty">Launch a Swarm to begin a dedicated Sentry session.</div>'; $('sentryAgentSummary').textContent = 'No active agents'; return; }
-  const agents = session.agents || []; const sentry = agents.find((agent) => /^Sentry\b/.test(agent.task)); const workers = agents.filter((agent) => agent.id !== session.id && agent !== sentry);
-  const leadBody = sentry?.result || (session.status === 'planning' ? 'Sentry is reasoning about your request and writing each worker’s role before dispatch…' : 'Workers are investigating. Their reports will arrive here for synthesis.');
-  lead.innerHTML = '<span class="sentry-kicker">Sentry · ' + esc(sentry?.status || session.status || 'waiting') + '</span><h3>' + esc(sentry?.task || session.sentryModel || 'Sentry preparing the brief') + '</h3><p>' + esc(leadBody) + '</p>' + (sentry?.result ? '<span class="sentry-agent-expand">View full synthesis →</span>' : '');
-  lead.onclick = sentry?.result ? (() => openSentryModal({ kind: 'Sentry', title: sentry.task || 'Synthesis', meta: (sentry.model || session.sentryModel || '') + ' · ' + (sentry.status || ''), text: sentry.result })) : null;
-  const running = workers.filter((agent) => !['completed', 'failed'].includes(agent.status)).length;
-  $('sentryAgentSummary').textContent = workers.length ? `${running ? running + ' active · ' : ''}${workers.length} worker${workers.length === 1 ? '' : 's'}` : 'Waiting for workers';
-  grid.innerHTML = '';
-  if (!workers.length) { grid.innerHTML = '<div class="sentry-empty">Worker lanes will appear as soon as the swarm starts.</div>'; return; }
+  const bubble = el.querySelector('.swarm-bubble');
+  const agents = session.agents || [];
+  const sentry = agents.find((agent) => /^Sentry\b/.test(agent.task));
+  const workers = agents.filter((agent) => agent.id !== session.id && agent !== sentry);
+  const sentryStatus = sentry?.status || session.status || 'planning';
+  const sentryText = sentry?.result || 'Sentry is reasoning about your request…';
+  bubble.innerHTML =
+    '<div class="swarm-sentry-block"><div class="swarm-sentry-head"><strong>Sentry</strong><span class="swarm-status-pill" data-status="' + esc(sentryStatus) + '">' + esc(sentryStatus) + '</span></div><div class="swarm-sentry-text"></div></div>' +
+    '<div class="swarm-workers-row"></div>';
+  renderMarkdown(bubble.querySelector('.swarm-sentry-text'), sentryText);
+  const sentryBlock = bubble.querySelector('.swarm-sentry-block');
+  if (sentry?.result) { sentryBlock.classList.add('clickable'); sentryBlock.onclick = () => openSentryModal({ kind: 'Sentry', title: sentry.task || 'Synthesis', meta: (sentry.model || session.sentryModel || '') + ' · ' + (sentry.status || ''), text: sentry.result }); }
+  const row = bubble.querySelector('.swarm-workers-row');
   for (const agent of workers) {
-    const card = document.createElement('article'); card.className = 'sentry-agent'; card.dataset.status = agent.status || 'working'; card.tabIndex = 0; card.setAttribute('role', 'button'); card.setAttribute('aria-label', 'Open full report for ' + agent.task);
-    const liveSteps = agent.status === 'working' && agent.steps?.length
-      ? '<div class="sentry-agent-steps">' + agent.steps.slice(-4).map((s) => '<code>' + esc(s) + '</code>').join('') + '</div>' : '';
-    card.innerHTML = '<div class="sentry-agent-head"><strong>' + esc(agent.task) + '</strong><span class="sentry-agent-status">' + esc(agent.status || 'working') + '</span></div><div class="sentry-agent-meta">' + esc(agent.model || session.workerModel || 'selected model') + '</div>' + liveSteps + '<div class="sentry-agent-result">' + esc(agent.result || 'Investigating the workspace (read-only)…') + '</div><span class="sentry-agent-expand">View full report →</span><div class="sentry-agent-actions"></div>';
-    const actions = card.querySelector('.sentry-agent-actions');
-    const copyBtn = document.createElement('button'); copyBtn.type = 'button'; copyBtn.textContent = 'copy';
-    copyBtn.onclick = (event) => { event.stopPropagation(); copyToClipboard(agent.result || '', copyBtn); };
-    actions.appendChild(copyBtn);
-    if (['completed', 'failed'].includes(agent.status)) {
-      const retryBtn = document.createElement('button'); retryBtn.type = 'button'; retryBtn.textContent = 'retry';
-      retryBtn.onclick = (event) => { event.stopPropagation(); retrySwarmWorker(session, agent); };
-      actions.appendChild(retryBtn);
-    }
-    const openModal = () => openSentryModal({ kind: 'Worker', title: agent.task, meta: (agent.model || session.workerModel || '') + ' · ' + (agent.status || ''), text: agent.result || '(no report yet)', session, agent });
-    card.addEventListener('click', openModal);
-    card.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openModal(); } });
-    grid.appendChild(card);
+    const chip = document.createElement('button'); chip.type = 'button'; chip.className = 'swarm-worker-chip'; chip.dataset.status = agent.status || 'working';
+    const roleName = (agent.role || String(agent.task || '').split('·').pop() || 'Worker').trim();
+    chip.innerHTML = '<span class="chip-role">' + esc(roleName) + '</span><span class="chip-status">' + esc(agent.status || 'working') + '</span>';
+    if (agent.status === 'working' && agent.steps?.length) chip.title = agent.steps[agent.steps.length - 1];
+    chip.onclick = () => openSentryModal({ kind: 'Worker', title: agent.task, meta: (agent.model || session.workerModel || '') + ' · ' + (agent.status || ''), text: agent.result || '(no report yet)', session, agent });
+    row.appendChild(chip);
   }
   if (sentryModalTarget?.session?.id === session.id) {
-    const fresh = workers.find((agent) => agent.id === sentryModalTarget.agent.id);
-    if (fresh) openSentryModal({ kind: 'Worker', title: fresh.task, meta: (fresh.model || session.workerModel || '') + ' · ' + (fresh.status || ''), text: fresh.result || '(no report yet)', session, agent: fresh });
+    const fresh = sentryModalTarget.agent.id === sentry?.id ? sentry : workers.find((agent) => agent.id === sentryModalTarget.agent.id);
+    if (fresh) openSentryModal({ kind: fresh === sentry ? 'Sentry' : 'Worker', title: fresh.task, meta: (fresh.model || session.workerModel || '') + ' · ' + (fresh.status || ''), text: fresh.result || '(no report yet)', session, agent: fresh });
   }
+  scrollBottom();
 }
-function showSentryConsole() {
-  $('home').style.display = 'none'; $('chat').classList.remove('show'); $('sentryConsole').hidden = false; renderSentryConsole();
+// Reopens a past swarm session the same way openConv reopens a past chat.
+function openSwarmSession(id) {
+  const session = swarmSessions.find((item) => item.id === id);
+  if (!session) return;
+  activeSwarmId = id; activeId = null; swarmLogOpen = true;
+  showChatView();
+  $('log').innerHTML = '';
+  renderSwarmTurn(session);
+  renderRecents();
+}
+function deleteSwarmSession(id) {
+  swarmSessions = swarmSessions.filter((session) => session.id !== id);
+  swarmContext.delete(id);
+  saveSwarmSessions();
+  if (activeSwarmId === id) { activeSwarmId = null; swarmLogOpen = false; newChat(); }
+  renderRecents();
 }
 function upsertSwarmAgent(agent) {
   if (!agent?.swarmId) return;
@@ -1069,7 +1081,8 @@ function upsertSwarmAgent(agent) {
   const next = { ...(index >= 0 ? session.agents[index] : {}), ...agent, id: String(agent.id || agent.swarmId), task: String(agent.task || '').slice(0, 240), model: String(agent.model || '').slice(0, 160), status: String(agent.status || 'working'), result: String(agent.result || '').slice(0, 24000) };
   if (index >= 0) session.agents[index] = next; else session.agents.push(next);
   if (agent.id === agent.swarmId) session.status = next.status;
-  session.updatedAt = Date.now(); saveSwarmSessions(); if (activeSwarmId === session.id) renderSentryConsole();
+  session.updatedAt = Date.now(); saveSwarmSessions();
+  if (activeSwarmId === session.id && swarmLogOpen) renderSwarmTurn(session);
 }
 function loadConvs() {
   try { conversations = (Array.isArray(persisted.oconvs) ? persisted.oconvs : []).map(normalizeConversation).filter(Boolean); }
@@ -1158,7 +1171,8 @@ function renderRecents() {
   const workspace = workspaceGroup();
   const workspaceConversations = conversations.filter((chat) => workspaceGroup(chat.productMode || 'chat') === workspace);
   const visible = (lanServerOn || lanClientConnected || !activeProjectId) ? workspaceConversations : workspaceConversations.filter((c) => c.projectId === activeProjectId);
-  if (!visible.length) {
+  const swarms = swarmSessionOrder();
+  if (!visible.length && !swarms.length) {
     const e = document.createElement('div'); e.style.cssText = 'font-size:12px;opacity:.4;padding:7px 8px';
     e.textContent = activeProjectId ? (workspace === 'work' ? 'No work sessions in this workspace yet.' : workspace === 'code' ? 'No code sessions in this project yet.' : 'No chats in this project yet.') : (workspace === 'work' ? 'No work sessions yet.' : workspace === 'code' ? 'No code sessions yet.' : 'No chats yet.'); box.appendChild(e);
   }
@@ -1174,11 +1188,25 @@ function renderRecents() {
     del.onclick = (e) => { e.stopPropagation(); deleteConversation(c.id); };
     d.append(pin, del); box.appendChild(d);
   }
+  if (swarms.length) {
+    const label = document.createElement('div'); label.className = 'recents-label'; label.textContent = 'Swarms'; box.appendChild(label);
+    for (const s of swarms) {
+      const d = document.createElement('div');
+      d.className = 'recent swarm-recent' + (s.id === activeSwarmId && swarmLogOpen ? ' active' : '');
+      d.innerHTML = '<img class="recent-swarm-mark" src="../assets/axon-swarm-terminal.png" alt="" />' + esc(s.title || '(untitled swarm)');
+      d.title = s.title || '';
+      d.onclick = () => openSwarmSession(s.id);
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'rdel'; del.textContent = '×'; del.title = 'Delete swarm session';
+      del.onclick = (e) => { e.stopPropagation(); deleteSwarmSession(s.id); };
+      d.appendChild(del); box.appendChild(d);
+    }
+  }
   renderRecentPopup();
 }
 function openConv(id) {
   const conv = conversations.find((c) => c.id === id);
   if (!conv) return;
+  swarmLogOpen = false;
   activeId = id;
   settings.activeConversationIds[workspaceGroup(conv.productMode || 'chat')] = id; saveSettings();
   const convMode = ['chat', 'code', 'agent'].includes(conv.productMode) ? conv.productMode : 'chat';
@@ -1209,17 +1237,17 @@ function openConv(id) {
 function showHomeView() {
   $('home').style.display = '';
   $('chat').classList.remove('show');
-  $('sentryConsole').hidden = true;
+  $('scroller').hidden = false;
   $('home').querySelector('.wrap').insertBefore($('composerCard'), $('chips'));
   $('prompt').focus();
 }
 function showChatView() {
   $('home').style.display = 'none';
   $('chat').classList.add('show');
-  $('sentryConsole').hidden = true;
+  $('scroller').hidden = false;
   $('composerSlot').appendChild($('composerCard'));
 }
-function newChat() { activeId = null; settings.activeConversationIds[workspaceGroup()] = null; saveSettings(); $('log').innerHTML = ''; showHomeView(); renderRecents(); syncComposerState(); switchView('chat'); }
+function newChat() { activeId = null; swarmLogOpen = false; settings.activeConversationIds[workspaceGroup()] = null; saveSettings(); $('log').innerHTML = ''; showHomeView(); renderRecents(); syncComposerState(); switchView('chat'); }
 
 // ---- log helpers -----------------------------------------------------------
 function addUserTurn(text, images = [], persist = true) {
@@ -1900,8 +1928,6 @@ function openBrowserAt(url) {
 }
 $('browserToggle').onclick = () => setBrowserOpen(!browserOpen);
 $('subagentsToggle').onclick = () => setSubagentsOpen(!subagentsOpen); $('subagentsClose').onclick = () => setSubagentsOpen(false);
-$('sentryNewSwarm').onclick = () => openSwarm(true);
-$('sentryBackToChat').onclick = () => { swarmMode = false; $('main').removeAttribute('data-swarm'); $('swarmLaunch').classList.remove('active'); newChat(); };
 $('sentryModalClose').onclick = closeSentryModal;
 $('sentryModalBackdrop').onclick = closeSentryModal;
 $('sentryModalCopy').onclick = () => copyToClipboard($('sentryModalText').textContent || '', $('sentryModalCopy'));

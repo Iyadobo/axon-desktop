@@ -752,17 +752,20 @@ const SWARM_FALLBACK_LANES = [
   { role: 'Skeptic', brief: 'Look for risks, counterexamples, and verification steps.' },
 ];
 async function planSwarmRoles({ sentryModel, prompt, count, provider }) {
-  const ask = `You are the Axon Swarm Sentry. Before any worker runs, reason about how to best split the outcome below into ${count} independent, non-overlapping investigation roles that will each report back to you.\n\nOutcome:\n${prompt}\n\nRespond with ONLY a JSON array of exactly ${count} objects: [{"role": "<2-4 word role name>", "brief": "<specific instructions for this worker, tailored to this outcome, 1-3 sentences>"}]. No markdown fences, no commentary -- JSON only.`;
+  const ask = `You are the Axon Swarm Sentry. Before any worker runs, reason about how to best split the outcome below into ${count} independent, non-overlapping investigation roles that will each report back to you.\n\nOutcome:\n${prompt}\n\nFirst, in 2-4 sentences, explain your reasoning: what needs investigating, and how you're dividing it. Then on its own line write exactly ---ROLES--- and after that ONLY a JSON array of exactly ${count} objects: [{"role": "<2-4 word role name>", "brief": "<specific instructions for this worker, tailored to this outcome, 1-3 sentences>"}]. Nothing after the JSON.`;
   let text = '';
   const holder = {};
   const send = (channel, value) => { if (channel === 'chat-delta') text += String(value || ''); };
-  try { await runDirectChat(sentryModel, ask, null, send, 'You plan Swarm worker roles. Respond with strict JSON only, no other text.', holder, [], provider); } catch { /* fall through to fallback lanes */ }
+  try { await runDirectChat(sentryModel, ask, null, send, 'You plan Swarm worker roles. Explain your reasoning briefly, then the JSON plan after ---ROLES---.', holder, [], provider); } catch { /* fall through to fallback lanes */ }
+  const split = text.split('---ROLES---');
+  const reasoning = (split[0] || '').trim().slice(0, 2000);
+  const jsonSource = split.length > 1 ? split.slice(1).join('---ROLES---') : text;
   let roles = [];
-  const match = text.match(/\[[\s\S]*\]/);
+  const match = jsonSource.match(/\[[\s\S]*\]/);
   if (match) { try { roles = JSON.parse(match[0]); } catch { roles = []; } }
   roles = roles.filter((r) => r && typeof r.role === 'string' && typeof r.brief === 'string').map((r) => ({ role: r.role.slice(0, 60), brief: r.brief.slice(0, 800) })).slice(0, count);
   for (let i = roles.length; i < count; i++) roles.push(SWARM_FALLBACK_LANES[i % SWARM_FALLBACK_LANES.length]);
-  return roles;
+  return { roles, reasoning: reasoning || `Splitting this into ${count} roles: ${roles.map((r) => r.role).join(', ')}.` };
 }
 async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = [], workers, systemPrompt, cwd, provider, permissionMode }) {
   const cap = swarmLimit(provider);
@@ -779,8 +782,11 @@ async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = []
   const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'code', provider);
   const group = { holders: new Map() }; activeSwarms.set(swarmId, group);
   const emit = (update) => win?.webContents.send('subagent-update', { swarmId, ...update });
+  const sentryId = crypto.randomUUID(); const sentryHolder = {}; group.holders.set(sentryId, sentryHolder);
   emit({ id: swarmId, status: 'planning', task: 'Sentry · reasoning about the outcome', model: sentryModel, startedAt: Date.now() });
-  const roles = await planSwarmRoles({ sentryModel, prompt, count, provider });
+  emit({ id: sentryId, status: 'planning', task: 'Sentry · planning worker roles', model: sentryModel, startedAt: Date.now() });
+  const { roles, reasoning } = await planSwarmRoles({ sentryModel, prompt, count, provider });
+  emit({ id: sentryId, status: 'working', task: 'Sentry · planning worker roles', model: sentryModel, result: reasoning });
   const runWorker = async (index) => {
     const id = crypto.randomUUID(); const holder = {}; group.holders.set(id, holder);
     const { role, brief: roleBrief } = roles[index];
@@ -815,7 +821,6 @@ async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = []
   };
   emit({ id: swarmId, status: 'launching', task: `Axon Swarm · Sentry + ${count} workers`, model: sentryModel, startedAt: Date.now() });
   const reports = await Promise.all(Array.from({ length: count }, (_, index) => runWorker(index)));
-  const sentryId = crypto.randomUUID(); const sentryHolder = {}; group.holders.set(sentryId, sentryHolder);
   const sentryBound = await capabilityBoundPrompt(systemPrompt, sentryModel, 'code', provider);
   const brief = reports.map((report, index) => `Worker ${index + 1} -- ${report.role} (${report.brief}):\n${report.summary.slice(0, 6000)}`).join('\n\n');
   const sentryTask = `You are the Axon Swarm Sentry. You planned the roles below and dispatched these workers; now reconcile their reports into one final result. Preserve and present any code, diffs, commands, or concrete artifacts a worker proposed -- don't summarize code away. Reconcile disagreements, identify the strongest evidence, state remaining uncertainty, and return one complete, decision-ready final result for the original outcome. Do not delegate or modify files.\n\nOriginal outcome:\n${prompt}\n\nWorker reports:\n${brief}`;
