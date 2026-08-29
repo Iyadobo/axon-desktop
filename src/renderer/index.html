@@ -46,6 +46,7 @@
   .density-compact    { --font-size:13.5px; --pad:8px; }
   .density-comfortable { --font-size:16.5px; --pad:13px; }
   * { box-sizing:border-box; }
+  .sr-only { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
   html, body { margin:0; height:100%; background:var(--color-bg); color:var(--color-text);
     font-family:var(--font-body); font-size:var(--font-size); line-height:1.5; overflow:hidden; }
   #app { display:flex; height:calc(100vh - 40px); position:relative; z-index:1; }
@@ -1016,8 +1017,163 @@
   .swarm-controls-head { margin-bottom:9px; }
   .swarm-roles { gap:7px; }
   .swarm-role, .swarm-worker-field { min-height:116px; padding:10px; border-radius:5px; background:var(--color-bg); }
-  @media (max-width:1050px) { #side { width:278px; } .window-brand { min-width:248px; } .title-nav { padding:0 7px; } .top-nav-btn { padding:0 7px; } .view-scroll { padding:38px 34px; } #home .wrap { width:min(850px, calc(100% - 64px)); } }
-  @media (max-width:760px) { .title-recent, .top-nav-btn[data-view="projects"], .top-nav-btn[data-view="models"] { display:none; } #side { width:244px; padding:13px 10px; } .window-brand { min-width:auto; } .window-title { display:none; } .title-nav { padding:0 4px; } #home .wrap { width:calc(100% - 40px); padding-top:48px; } #browserPanel { width:min(100%,520px); } .swarm-roles { grid-template-columns:1fr; } .swarm-role, .swarm-worker-field { min-height:auto; } .model-row { grid-template-columns:1fr auto; } .model-row .model-meta { display:none; } }
+  /* Ultra polish pass: resolve distribution and interaction defects before
+     adding decoration. Axon's pink remains a signal for state and location. */
+  :root {
+    --font-body:"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --font-display:"Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --font-mono:"Cascadia Code", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+    --t-sm:13px;
+    --t-xs:12px;
+    --t-mono:12px;
+    --axon-muted:color-mix(in srgb, var(--color-text) 70%, var(--color-bg));
+  }
+  #greet, .ops-page-header h2, .modal-head h3 { font-family:var(--font-display); }
+  code, pre, .turnhead, .cmditem .cmdname, .tool-head .summary, .tool-args, .tool-out pre { font-family:var(--font-mono); }
+
+  .titlebar { height:54px; }
+  #app { height:calc(100vh - 54px); }
+  .top-nav-btn { min-height:44px; padding:0 12px; font-size:12px; }
+  .title-recent, #subagentsToggle, #browserToggle, .window-control { min-height:44px; }
+  .title-recent { padding:0 9px; font-size:12px; }
+  #subagentsToggle, #browserToggle { padding:0 11px; font-size:12px; }
+  .window-control { width:44px; }
+
+  #side { width:clamp(252px,16.5vw,296px); padding:15px 16px 16px; }
+  .brand { min-height:40px; padding:0 6px 9px; }
+  .workspace-tab { min-height:44px; }
+  .workspace-tab.active::after { display:none; }
+  .swarm-launch, .newchat, .local-profile { min-height:44px; }
+  .newchat { font-family:inherit; text-align:left; }
+  #side .newchat { width:100%; }
+  .ops-page-header .newchat { width:auto; align-self:end; }
+  .recents-label { width:100%; min-height:44px; border:0; background:transparent; color:var(--axon-muted); font-family:inherit; text-align:left; cursor:pointer; }
+  .recents-label:hover { color:var(--color-text); }
+  .recent { min-height:48px; padding-right:96px; }
+  .rpin, .rdel { width:44px; height:44px; }
+  .rpin { right:48px; }
+  .rdel { right:3px; }
+  .sidebar-project { min-height:44px; padding-right:50px; }
+  .project-manage { right:3px; width:44px; height:44px; }
+  .recent-popover-item { padding-right:96px; }
+  .recent-popover-pin, .recent-popover-delete { width:44px; height:44px; }
+  .recent-popover-pin { right:49px; }
+  .recent-popover-delete { right:4px; }
+  .local-profile { min-height:50px; }
+
+  #home { padding:0; }
+  #home .wrap { width:min(1040px,calc(100% - 80px)); padding:clamp(54px,8vh,82px) 0 48px; }
+  #home #greet { max-width:820px; font-size:clamp(36px,3.2vw,52px); }
+  #home .sub { margin:12px 0 30px; font-size:17px; }
+  #home #prompt { min-height:84px; }
+  #composerCard { border-radius:8px; }
+  .composer-foot { min-height:62px; }
+  .iconbtn, .model-btn, .composer-mode, #send { min-height:44px; }
+  .iconbtn { width:44px; }
+  .model-btn { padding-inline:13px; }
+  .composer-mode { padding-inline:12px; }
+  #send { width:44px; height:44px; }
+  .chip { min-height:44px; padding:9px 13px; font-size:13px; }
+  .home-hint { margin-top:18px; color:var(--axon-muted); font-size:14px; line-height:1.55; }
+  .swarm-controls { background:var(--axon-soft); }
+  .swarm-launch.active { border-color:color-mix(in srgb,var(--color-accent) 64%,var(--axon-rule)); background:color-mix(in srgb,var(--color-accent) 10%,var(--axon-soft)); box-shadow:inset 2px 0 0 var(--color-accent); }
+  .swarm-controls-copy small, .swarm-limit, .swarm-role-notice, .swarm-role small { font-size:12px; }
+  .swarm-role select, .swarm-worker-field input { min-height:44px; }
+  .browser-toggle-kicker { font-size:10px; }
+  .turnhead { font-size:12px; }
+
+  .view-scroll { max-width:1280px; padding:52px 64px; }
+  .ops-page-header { margin-bottom:34px; }
+  .ops-page-copy, .ops-section-head p, .ops-card-path, .ops-card-note { font-size:13px; }
+  .ops-card { min-height:132px; }
+  .ops-tag { min-height:26px; font-size:11px; }
+  .ops-empty { display:grid; justify-items:start; gap:9px; max-width:620px; padding:30px; border:1px solid var(--axon-rule); border-left:2px solid var(--color-accent); border-radius:7px; background:var(--axon-soft); }
+  .ops-empty-kicker { color:var(--color-accent); font-size:11px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
+  .ops-empty h3 { margin:0; font-size:20px; letter-spacing:-.02em; }
+  .ops-empty p { max-width:58ch; margin:0; color:var(--axon-muted); font-size:14px; line-height:1.55; }
+  .ops-empty button { min-height:44px; margin-top:6px; padding:0 14px; border:1px solid var(--color-accent); border-radius:5px; background:var(--color-accent); color:var(--color-on-accent); font:750 13px var(--font-body); cursor:pointer; }
+  .ops-empty button:hover { background:var(--color-accent-600); }
+
+  #settings .modal-card { width:min(780px,calc(100vw - 40px)); border-radius:10px; }
+  #settings .modal-head { padding:16px 20px; z-index:2; }
+  #settings .modal-head h3 { font-size:18px; }
+  #settings .modal-head .x { width:44px; height:44px; padding:0; border:1px solid transparent; border-radius:5px; }
+  #settings .modal-head .x:hover { border-color:var(--axon-rule); background:var(--axon-soft); }
+  #settings .modal-body { gap:24px; padding:22px 24px 28px; }
+  #settings .fld { font-size:14px; }
+  #settings .lan-info, #settings .settings-copy, #settings .provider-import-status { font-size:13px; line-height:1.55; }
+  #settings .settings-action, #settings .proj-row button, #settings .update-actions button, #settings .palette-reset { min-height:44px; }
+  .browserbar { min-height:62px; }
+  .browserbar button { width:44px; height:44px; }
+  .browserbar input { height:44px; }
+
+  @media (max-width:1050px) {
+    #side { width:252px; }
+    .title-nav { padding:0 4px; }
+    .top-nav-btn { padding:0 9px; }
+    .view-scroll { padding:42px 36px; }
+    #home .wrap { width:min(900px,calc(100% - 56px)); }
+  }
+  @media (max-width:760px) {
+    .titlebar { height:52px; padding:0 7px; }
+    #app { height:calc(100vh - 52px); }
+    .title-recent, .top-nav-btn[data-view="projects"], .top-nav-btn[data-view="models"] { display:none; }
+    .top-nav-btn { width:44px; padding:0; justify-content:center; }
+    .top-nav-btn span { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+    .title-nav { flex:none; padding:0; border-right:0; }
+    .window-spacer { min-width:4px; }
+    .title-actions { gap:2px; }
+    #subagentsToggle { width:54px; padding:0 5px; font-size:12px; }
+    #browserToggle { width:70px; padding:0 6px; gap:5px; font-size:12px; }
+    .browser-toggle-kicker { display:none; }
+    .window-control { width:44px; }
+
+    #side { width:80px; padding:10px 8px; }
+    .brand { justify-content:center; min-height:44px; padding:0; }
+    .brand > span, .side-section-head, .workspace-note, .swarm-launch-copy, .swarm-arrow, #chatSidebar, .local-profile-copy, .profile-update-badge { display:none; }
+    .brand .logo { width:27px; height:32px; }
+    .workspace-switch { grid-template-columns:1fr; margin:8px 0; border:0; }
+    .workspace-tab { min-height:58px; flex-direction:column; gap:3px; border-radius:5px; box-shadow:none; font-size:10px; }
+    .workspace-tab.active { background:var(--axon-raised); box-shadow:inset 2px 0 0 var(--color-accent); }
+    .workspace-tab .workspace-mark { width:24px; height:20px; }
+    .swarm-launch { justify-content:center; min-height:52px; margin-top:4px; padding:0; }
+    .swarm-launch img { width:28px; height:28px; }
+    .newchat { justify-content:center; min-height:48px; padding:0; font-size:15px; text-align:center; }
+    .newchat #newChatLabel { display:none; }
+    .sidefoot { margin-top:auto; padding:10px 0 0; }
+    .local-profile { justify-content:center; min-height:50px; padding:0; }
+    .local-avatar { width:32px; height:32px; }
+
+    #home .wrap { width:calc(100% - 28px); padding:28px 0 32px; }
+    .hero-emblem { width:29px; height:34px; margin-bottom:12px; }
+    #home #greet, #main[data-workspace="work"] #home #greet, #main[data-swarm="true"] #home #greet { font-size:clamp(28px,9vw,36px); }
+    #home .sub { margin:8px 0 20px; font-size:14px; line-height:1.5; }
+    #prompt { min-height:96px; padding:15px 14px 10px; font-size:14px; }
+    .composer-foot { display:grid; grid-template-columns:minmax(0,1fr) 44px; gap:8px; min-height:60px; padding:8px; }
+    .composer-foot .left { display:grid; grid-template-columns:44px minmax(0,1fr) 56px; gap:4px; min-width:0; }
+    .model-btn { min-width:0; width:100%; padding:0 8px; overflow:hidden; }
+    .model-btn .model-mark, .model-btn .model-dot, .model-btn .model-capability, .model-btn svg { display:none; }
+    .model-btn #modelBtnName { display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .composer-mode { min-width:0; padding:0 7px; }
+    .chips { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .chip { min-width:0; text-align:left; }
+    .home-hint { margin-top:16px; font-size:14px; }
+
+    .view-scroll { padding:28px 20px; }
+    .ops-page-header { align-items:start; flex-direction:column; margin-bottom:24px; }
+    .ops-page-header .newchat { align-self:start; }
+    .ops-page-header h2 { font-size:27px; }
+    .project-grid { grid-template-columns:1fr; }
+    .swarm-roles { grid-template-columns:1fr; }
+    .swarm-role, .swarm-worker-field { min-height:auto; }
+    .model-row { grid-template-columns:1fr auto; }
+    .model-row .model-meta { display:none; }
+    #browserPanel, #subagentsPanel { width:100%; }
+    #settings .modal-card { width:calc(100vw - 16px); max-height:calc(100vh - 16px); }
+    #settings .modal-body { padding:18px; }
+    #settings .row { flex-direction:column; gap:10px; }
+    #settings .modes { grid-template-columns:1fr; }
+  }
 </style>
 </head>
 <body>
@@ -1047,13 +1203,13 @@
         <span>Code</span>
       </button>
     </div>
-    <button id="swarmLaunch" class="swarm-launch" type="button">
+    <button id="swarmLaunch" class="swarm-launch" type="button" aria-label="Open Axon Swarm">
       <img src="../assets/axon-swarm-terminal.png" alt="" /><span class="swarm-launch-copy"><strong>Axon Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
     </button>
     <div class="workspace-note" id="workspaceNote">Direct conversation · no tools</div>
-    <div class="newchat" id="newchat"><span style="opacity:.6">+</span><span id="newChatLabel">New chat</span></div>
+    <button class="newchat" id="newchat" type="button"><span aria-hidden="true" style="opacity:.6">+</span><span id="newChatLabel">New chat</span></button>
     <div id="chatSidebar" class="sidebar-view active">
-      <div class="recents-label" id="recents-label">Recent chats</div>
+      <button class="recents-label" id="recents-label" type="button">Recent chats</button>
       <div id="recents"></div>
     </div>
     <div class="sidefoot">
@@ -1088,7 +1244,8 @@
         <div id="composerCard" class="card">
           <div id="cmdlist"></div>
           <div id="attachRow"></div>
-          <textarea id="prompt" placeholder="Message Axon…  (Enter to send, Shift+Enter for newline; /help for commands)" rows="1"></textarea>
+          <textarea id="prompt" placeholder="Message Axon…" rows="1" aria-describedby="composerHelp"></textarea>
+          <span id="composerHelp" class="sr-only">Enter sends. Shift plus Enter adds a new line. Type slash help for commands.</span>
           <div class="composer-foot">
             <span class="left">
               <button class="iconbtn" id="attachBtn" title="Attach files" aria-label="Attach files"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10.5 19a2 2 0 0 1-3-3l8-8"/></svg></button>
@@ -1169,9 +1326,9 @@
 <div id="recentPopup" class="recent-popover" role="dialog" aria-label="Recent chats"></div>
 
 <!-- settings modal -->
-<div class="modal" id="settings">
+<div class="modal" id="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
   <div class="modal-card">
-    <div class="modal-head"><h3>Settings</h3><button class="x" id="settingsClose">×</button></div>
+    <div class="modal-head"><h3 id="settingsTitle">Settings</h3><button class="x" id="settingsClose" type="button" aria-label="Close settings">×</button></div>
     <div class="modal-body">
       <label class="fld"><span>Axon instructions</span>
         <textarea id="sysPrompt" placeholder="Define the assistant's behavior, tone, identity, and constraints…"></textarea>

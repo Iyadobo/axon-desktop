@@ -34,12 +34,18 @@ function currentTurn() { return activeId ? [...activeTurns.values()].find((turn)
 // ---- view switching --------------------------------------------------------
 let activeView = 'chat';
 let swarmMode = false, swarmLaunching = false, swarmLogOpen = false;
+let settingsOpener = null;
+function syncTopNav(viewName) {
+  document.querySelectorAll('[data-view]').forEach((item) => {
+    const active = item.dataset.view === viewName;
+    item.classList.toggle('active', active);
+    item.setAttribute('aria-current', active ? 'page' : 'false');
+  });
+}
 function switchView(viewName) {
   if (viewName === 'settings') { openSettings(); return; }
   activeView = viewName;
-  document.querySelectorAll('[data-view]').forEach((item) => {
-    item.classList.toggle('active', item.dataset.view === viewName);
-  });
+  syncTopNav(viewName);
   document.querySelectorAll('.view').forEach((view) => {
     view.classList.toggle('active', view.id === 'view-' + viewName);
   });
@@ -49,6 +55,10 @@ function switchView(viewName) {
   saveState('oactiveView', viewName);
 }
 function workspaceGroup(mode = settings?.productMode) { return mode === 'agent' ? 'work' : mode === 'code' ? 'code' : 'chat'; }
+function greetingForTime() {
+  const hour = new Date().getHours();
+  return hour < 12 ? 'Good morning.' : hour < 18 ? 'Good afternoon.' : 'Good evening.';
+}
 function syncWorkspaceShell() {
   const workspace = workspaceGroup();
   const tabs = { chat: $('chatWorkspace'), code: $('codeWorkspace'), work: $('workWorkspace') };
@@ -59,13 +69,14 @@ function syncWorkspaceShell() {
     ? 'Autonomous tasks · browser and delegation'
     : workspace === 'code' ? 'Repository work · Axon Terminal tools' : 'Direct conversation · no tools';
   $('newChatLabel').textContent = workspace === 'work' ? 'New task' : workspace === 'code' ? 'New code session' : 'New chat';
+  $('newchat').setAttribute('aria-label', $('newChatLabel').textContent);
   $('recents-label').textContent = workspace === 'work' ? 'Recent work' : workspace === 'code' ? 'Recent code' : 'Recent chats';
   $('main')?.setAttribute('data-workspace', workspace);
   const copy = workspace === 'work'
     ? { greet: 'What should Axon take on?', sub: 'Describe the outcome. Axon can plan, browse, and carry the task through.' }
     : workspace === 'code'
       ? { greet: 'What are we building?', sub: 'Work directly in a repository with Axon Terminal at your side.' }
-      : { greet: 'Good afternoon.', sub: 'What are we working on?' };
+      : { greet: greetingForTime(), sub: 'What are we working on?' };
   if ($('greet')) $('greet').textContent = copy.greet;
   document.querySelector('#home .sub')?.replaceChildren(copy.sub);
   const hint = document.querySelector('.home-hint');
@@ -240,6 +251,7 @@ function syncPaletteInputs() {
   updateAccentContrast();
 }
 function openSettings() {
+  settingsOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   $('sysPrompt').value = settings.systemPrompt;
   $('themeSel').value = settings.theme;
   $('densitySel').value = settings.density;
@@ -255,8 +267,18 @@ function openSettings() {
   syncModes();
   syncPaletteInputs(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
+  $('settings').setAttribute('aria-hidden', 'false');
+  syncTopNav('settings');
+  requestAnimationFrame(() => $('settingsClose')?.focus());
 }
-function closeSettings() { $('settings').classList.remove('show'); }
+function closeSettings() {
+  if (!$('settings').classList.contains('show')) return;
+  $('settings').classList.remove('show');
+  $('settings').setAttribute('aria-hidden', 'true');
+  syncTopNav(activeView);
+  settingsOpener?.focus?.();
+  settingsOpener = null;
+}
 function syncRuntimeFields() {
   const kind = $('runtimeSel').value; const exo = kind === 'exo'; const llamaCpp = kind === 'llamacpp';
   $('exoUrl').parentElement.style.display = exo ? '' : 'none'; $('exoCheck').style.display = exo ? '' : 'none';
@@ -432,7 +454,8 @@ function renderProjectsPage() {
   const box = $('projectsPageContent'); if (!box) return;
   box.innerHTML = '';
   if (!projects.length) {
-    box.innerHTML = '<div class="empty-state">No projects yet. Create one to organize chats by folder and keep its instructions close.</div>';
+    box.innerHTML = '<div class="ops-empty"><span class="ops-empty-kicker">First workspace</span><h3>Give Axon a place to work</h3><p>Connect a folder once, then keep its chats, instructions, and repository context together.</p><button id="projectsEmptyAdd" type="button">Create a project</button></div>';
+    $('projectsEmptyAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
     return;
   }
   const grid = document.createElement('div');
@@ -440,6 +463,9 @@ function renderProjectsPage() {
   for (const p of projects) {
     const card = document.createElement('div');
     card.className = 'ops-card project-card';
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', 'Open project ' + p.name);
     const count = conversations.filter((c) => c.projectId === p.id).length;
     card.innerHTML = '<h3 class="ops-card-title">' + esc(p.name) + '</h3>'
       + '<div class="ops-card-path" title="' + esc(p.path) + '">' + esc(p.path) + '</div>'
@@ -455,6 +481,7 @@ function renderProjectsPage() {
       saveProjects(); renderProjects(); renderRecents(); updateProjectLabel(); renderProjectsPage();
     };
     card.onclick = () => { selectProject(p.id); switchView('chat'); };
+    card.onkeydown = (event) => { if (event.target === card && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); selectProject(p.id); switchView('chat'); } };
     grid.appendChild(card);
   }
   box.appendChild(grid);
@@ -1173,7 +1200,7 @@ function renderRecents() {
   const visible = (lanServerOn || lanClientConnected || !activeProjectId) ? workspaceConversations : workspaceConversations.filter((c) => c.projectId === activeProjectId);
   const swarms = swarmSessionOrder();
   if (!visible.length && !swarms.length) {
-    const e = document.createElement('div'); e.style.cssText = 'font-size:12px;opacity:.4;padding:7px 8px';
+    const e = document.createElement('div'); e.style.cssText = 'font-size:13px;color:var(--axon-muted);padding:9px 8px';
     e.textContent = activeProjectId ? (workspace === 'work' ? 'No work sessions in this workspace yet.' : workspace === 'code' ? 'No code sessions in this project yet.' : 'No chats in this project yet.') : (workspace === 'work' ? 'No work sessions yet.' : workspace === 'code' ? 'No code sessions yet.' : 'No chats yet.'); box.appendChild(e);
   }
   for (const c of conversationOrder(visible)) {
@@ -1181,7 +1208,9 @@ function renderRecents() {
     d.className = 'recent' + (c.id === activeId ? ' active' : '') + (c.pinned ? ' pinned' : '');
     d.textContent = (c.title || '(empty)') + ([...activeTurns.values()].some((turn) => turn.conversationId === c.id) ? ' · running' : '');
     d.title = c.title || '';
+    d.tabIndex = 0; d.setAttribute('role', 'button');
     d.onclick = () => openConv(c.id);
+    d.onkeydown = (event) => { if (event.target === d && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openConv(c.id); } };
     const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'rpin'; pin.textContent = c.pinned ? '★' : '☆'; pin.title = c.pinned ? 'Unpin chat' : 'Pin chat';
     pin.onclick = (e) => { e.stopPropagation(); toggleConversationPin(c.id); };
     const del = document.createElement('button'); del.type = 'button'; del.className = 'rdel'; del.textContent = '×'; del.title = 'Delete chat';
@@ -1195,7 +1224,9 @@ function renderRecents() {
       d.className = 'recent swarm-recent' + (s.id === activeSwarmId && swarmLogOpen ? ' active' : '');
       d.innerHTML = '<img class="recent-swarm-mark" src="../assets/axon-swarm-terminal.png" alt="" />' + esc(s.title || '(untitled swarm)');
       d.title = s.title || '';
+      d.tabIndex = 0; d.setAttribute('role', 'button');
       d.onclick = () => openSwarmSession(s.id);
+      d.onkeydown = (event) => { if (event.target === d && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openSwarmSession(s.id); } };
       const del = document.createElement('button'); del.type = 'button'; del.className = 'rdel'; del.textContent = '×'; del.title = 'Delete swarm session';
       del.onclick = (e) => { e.stopPropagation(); deleteSwarmSession(s.id); };
       d.appendChild(del); box.appendChild(d);
@@ -2316,8 +2347,7 @@ window.ollama.on('lan-update-ready', (update) => {
 
 // greeting by time of day
 (function () {
-  const h = new Date().getHours();
-  $('greet').textContent = (h < 12 ? 'Good morning.' : h < 18 ? 'Good afternoon.' : 'Good evening.');
+  $('greet').textContent = greetingForTime();
 })();
 
 // cursor-proximity particle grid — subtle dots that brighten near the cursor.
@@ -2386,6 +2416,8 @@ function refreshGridColor() {
   $('prompt').value = typeof persisted.odraft === 'string' ? persisted.odraft : '';
   autosize();
   applyAppearance();
+  syncProductMode();
+  syncModes();
   renderRecents();
   updateProjectLabel();
   refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
