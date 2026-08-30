@@ -666,6 +666,117 @@ function runDirectChat(model, prompt, sessionId, send, systemPrompt, holder, ima
   });
 }
 
+const DESIGN_DIRECTION_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['status', 'question', 'directions'],
+  properties: {
+    status: { type: 'string', enum: ['ready', 'needs_context'] },
+    question: { type: 'string', maxLength: 180 },
+    directions: {
+      type: 'array', minItems: 0, maxItems: 3,
+      items: {
+        type: 'object', additionalProperties: false, required: ['name', 'summary'],
+        properties: {
+          name: { type: 'string', minLength: 2, maxLength: 40 },
+          summary: { type: 'string', minLength: 20, maxLength: 360 },
+        },
+      },
+    },
+  },
+};
+const DESIGN_SYSTEM_PROMPT = `You are Axon Design. Turn the user's exact product brief into three genuinely different interface directions.
+Return JSON only, matching the supplied schema.
+If the brief does not name the product's primary user task or workflow, return status "needs_context", one concise question asking for that missing task, and an empty directions array. Never guess the task.
+Only return status "ready" when the brief names a primary task or workflow. Then return an empty question and exactly three directions. Each direction needs a short specific name and one polished sentence of 25 to 45 words covering hierarchy, primary interaction, and visual character. Do not use field-label prose, slash shorthand, fragments, or semicolons.
+Derive every product noun and claim from the brief. When the brief is sparse, stay at the level of composition, navigation depth, interaction density, typography, color behavior, and motion—do not fill the missing product spec yourself.
+Do not invent users, businesses, metrics, screens, records, dates, features, workflows, accounts, dashboards, feeds, timelines, classes, sessions, goals, progress tracking, social behavior, or sample data unless the user explicitly names them.
+Do not use generic archetype names such as Direct, Guided, Expressive, Clarity, Focus, or Approachable.`;
+
+function postJson(target, body, headers = {}, timeoutMs = 90000) {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const client = target.protocol === 'https:' ? https : http;
+    const request = client.request(target, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload), ...headers },
+    }, (response) => {
+      let text = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { text += chunk; if (text.length > 2 * 1024 * 1024) request.destroy(new Error('Design response was too large.')); });
+      response.on('end', () => {
+        if (response.statusCode < 200 || response.statusCode >= 300) return reject(new Error(`Design request failed: ${text.slice(0, 300) || response.statusCode}`));
+        try { resolve(JSON.parse(text)); } catch { reject(new Error('The design model returned an unreadable response.')); }
+      });
+    });
+    request.setTimeout(timeoutMs, () => request.destroy(new Error('Design generation timed out.')));
+    request.on('error', reject);
+    request.end(payload);
+  });
+}
+
+function parseDesignResult(value) {
+  let raw = value;
+  if (typeof raw === 'string') {
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    try { raw = JSON.parse(cleaned); } catch {
+      const start = cleaned.indexOf('{'); const end = cleaned.lastIndexOf('}');
+      if (start < 0 || end <= start) throw new Error('The design model did not return structured directions.');
+      try { raw = JSON.parse(cleaned.slice(start, end + 1)); } catch { throw new Error('The design model returned invalid direction JSON.'); }
+    }
+  }
+  const status = raw?.status === 'needs_context' ? 'needs_context' : raw?.status === 'ready' ? 'ready' : '';
+  const question = String(raw?.question || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+  const directions = Array.isArray(raw?.directions) ? raw.directions : [];
+  if (status === 'needs_context') {
+    if (question.length < 8) throw new Error('The design model did not ask a useful clarification question.');
+    return { status, question, directions: [] };
+  }
+  if (status !== 'ready') throw new Error('The design model returned an unknown result state.');
+  if (directions.length !== 3) throw new Error('The design model must return exactly three directions.');
+  return { status, question: '', directions: directions.map((direction) => {
+    const name = String(direction?.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    const summary = String(direction?.summary || '').replace(/\s+/g, ' ').trim().slice(0, 360);
+    if (name.length < 2 || summary.length < 20) throw new Error('The design model returned an incomplete direction.');
+    return { name, summary };
+  }) };
+}
+
+async function generateDesignDirections(prompt, model, provider) {
+  const user = String(prompt || '').replace(/\s+/g, ' ').trim().slice(0, 4000);
+  const selectedModel = String(model || '').trim().slice(0, 160);
+  if (!user) throw new Error('Describe what you want to design.');
+  if (!selectedModel) throw new Error('Choose a model before generating a design.');
+  let response;
+  if (provider?.kind && provider.kind !== 'ollama') {
+    const key = readProviderSecret(provider.credentialId);
+    if (!key) throw new Error('This provider has no saved API key. Add one in Settings.');
+    const responses = provider.kind === 'responses';
+    const target = apiEndpoint(provider.endpoint, responses ? 'responses' : 'chat/completions');
+    const body = responses
+      ? { model: selectedModel, input: [{ role: 'system', content: DESIGN_SYSTEM_PROMPT }, { role: 'user', content: user }], max_output_tokens: 900 }
+      : { model: selectedModel, messages: [{ role: 'system', content: DESIGN_SYSTEM_PROMPT }, { role: 'user', content: user }], stream: false };
+    response = await postJson(target, body, { authorization: `Bearer ${key}` });
+    const content = responses
+      ? (response.output_text || response.output?.flatMap((item) => item.content || []).find((item) => item.type === 'output_text')?.text)
+      : response.choices?.[0]?.message?.content;
+    return parseDesignResult(content);
+  }
+  if (runtimeKind === 'llamacpp') {
+    const target = new URL('/v1/chat/completions', `http://127.0.0.1:${llamaCppConfig.apiPort}`);
+    response = await postJson(target, { model: selectedModel, messages: [{ role: 'system', content: DESIGN_SYSTEM_PROMPT }, { role: 'user', content: user }], stream: false, response_format: { type: 'json_object' } });
+    return parseDesignResult(response.choices?.[0]?.message?.content);
+  }
+  response = await postJson(runtimeEndpoint('/api/chat'), {
+    model: selectedModel,
+    messages: [{ role: 'system', content: DESIGN_SYSTEM_PROMPT }, { role: 'user', content: user }],
+    stream: false,
+    format: DESIGN_DIRECTION_SCHEMA,
+    options: { temperature: 0.7 },
+  });
+  return parseDesignResult(response.message?.content);
+}
+
 function runAxonTerminal(model, prompt, sessionId, send, systemPrompt, cwd, holder, images = [], permissionMode = 'auto', productMode = 'code', provider = null, capabilities = null) {
   holder = holder || {};
   return new Promise((resolve) => {
@@ -975,6 +1086,16 @@ function safeImages(value) {
   }
   return images;
 }
+ipcMain.handle('design-generate', async (_e, { prompt, model, provider } = {}) => {
+  const kind = provider?.kind || 'ollama';
+  if (!['ollama', 'responses', 'openai-compatible'].includes(kind)) return { ok: false, error: 'Choose a supported model provider first.' };
+  try {
+    const result = await generateDesignDirections(prompt, model, provider);
+    return { ok: true, model: String(model || ''), ...result };
+  } catch (error) {
+    return { ok: false, error: error?.message || 'Axon could not generate design directions.' };
+  }
+});
 ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, productMode, provider, mode, grants, history }) => {
   if (!requestId || typeof requestId !== 'string') return { ok: false, error: 'Missing chat request ID.' };
   const expanded = String(prompt || '').trim();

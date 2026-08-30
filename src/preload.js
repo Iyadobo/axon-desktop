@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('ollama', {
   llamaCppStart: () => ipcRenderer.invoke('llamacpp-start'),
   llamaCppStop: () => ipcRenderer.invoke('llamacpp-stop'),
   chat: (model, prompt, sessionId, opts) => ipcRenderer.invoke('chat', { model, prompt, sessionId, ...opts }),
+  designGenerate: (opts) => ipcRenderer.invoke('design-generate', opts),
   swarmStart: (opts) => ipcRenderer.invoke('swarm-start', opts),
   swarmRetryWorker: (opts) => ipcRenderer.invoke('swarm-retry-worker', opts),
   stop: (requestId) => ipcRenderer.invoke('chat-stop', requestId),

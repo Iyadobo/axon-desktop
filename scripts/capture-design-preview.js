@@ -121,22 +121,53 @@ async function main() {
     await capture(send, '01-empty.png');
 
     await evaluate(send, `(() => {
+      const model = document.querySelector('#model');
+      if ([...model.options].some((option) => option.value === 'qwen3:4b')) { model.value = 'qwen3:4b'; syncModelButton(); }
       const input = document.querySelector('#designPrompt');
       input.value = 'Make a gym app prototype';
       document.querySelector('#designPromptForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       return true;
     })()`);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      const done = await evaluate(send, "!document.querySelector('#designResults').hidden || !document.querySelector('#designError').hidden");
+      if (done) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const questionState = await evaluate(send, `JSON.stringify({
+      promptPreserved: document.querySelector('#designPrompt').value === 'Make a gym app prototype',
+      question: document.querySelector('#designError').dataset.tone === 'question' ? document.querySelector('#designError').textContent : '',
+      cards: document.querySelectorAll('.direction-card').length,
+      resultsHidden: document.querySelector('#designResults').hidden
+    })`);
+    console.log(`CLARIFICATION ${questionState}`);
+    const clarification = JSON.parse(questionState);
+    if (!clarification.question || clarification.cards || !clarification.resultsHidden) throw new Error('A sparse brief did not produce an honest clarification state.');
+    await capture(send, '02-clarification.png');
+
+    await evaluate(send, `(() => {
+      const input = document.querySelector('#designPrompt');
+      input.value = 'Design a gym workout logging app whose main task is recording sets, reps, and weight during a workout. Keep one-handed input fast and keep the current exercise visually dominant.';
+      document.querySelector('#designPromptForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    for (let attempt = 0; attempt < 900; attempt += 1) {
+      const done = await evaluate(send, "!document.querySelector('#designResults').hidden || (!document.querySelector('#designError').hidden && document.querySelector('#designError').dataset.tone === 'error')");
+      if (done) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     const generatedState = await evaluate(send, `JSON.stringify({
       promptCleared: document.querySelector('#designPrompt').value === '',
       brief: document.querySelector('#designBriefText').textContent,
       cards: document.querySelectorAll('.direction-card').length,
       names: [...document.querySelectorAll('.direction-card h3')].map((item) => item.textContent),
+      cannedNames: [...document.querySelectorAll('.direction-card h3')].map((item) => item.textContent).filter((name) => ['Direct','Guided','Expressive','Clarity','Focus','Approachable'].includes(name)),
+      error: document.querySelector('#designError').hidden ? '' : document.querySelector('#designError').textContent,
       selectionHidden: document.querySelector('#designSelectionActions').hidden,
       hasFakeScreen: document.querySelectorAll('.mini-screen').length,
       forbiddenVisible: ['Local Services CRM', 'Kitchen remodel', 'Components', 'Screens', 'Tokens', 'Scenes'].filter((term) => document.querySelector('#view-design').innerText.includes(term))
     })`);
     console.log(`GENERATED ${generatedState}`);
+    if (JSON.parse(generatedState).error) throw new Error(`Design generation failed: ${JSON.parse(generatedState).error}`);
     await evaluate(send, "document.querySelectorAll('.direction-card')[0].click(); true");
     const selectedState = await evaluate(send, `JSON.stringify({
       selected: document.querySelector('.direction-card.selected h3')?.textContent,
@@ -144,21 +175,15 @@ async function main() {
       actionCount: document.querySelectorAll('#designSelectionActions button').length
     })`);
     console.log(`SELECTED ${selectedState}`);
-    await capture(send, '02-directions-selected.png');
+    await capture(send, '03-directions-selected.png');
 
-    await evaluate(send, "document.querySelector('#designPrototype').click(); true");
-    const prototypeState = await evaluate(send, `JSON.stringify({
-      active: document.querySelector('#view-design').classList.contains('prototype-mode'),
-      label: document.querySelector('#designPrototype').textContent
-    })`);
-    console.log(`PROTOTYPE ${prototypeState}`);
-    await evaluate(send, "document.querySelector('#designPrototype').click(); true");
+    const selectedDirection = await evaluate(send, "document.querySelector('.direction-card.selected h3')?.textContent || ''");
     await evaluate(send, "document.querySelector('#designToCode').click(); true");
     const handoffState = await evaluate(send, `JSON.stringify({
       workspace: settings.productMode,
       view: activeView,
-      includesBrief: document.querySelector('#prompt').value.includes('Make a gym app prototype'),
-      includesDirection: document.querySelector('#prompt').value.includes('Direct'),
+      includesBrief: document.querySelector('#prompt').value.includes('recording sets, reps, and weight'),
+      includesDirection: document.querySelector('#prompt').value.includes(${JSON.stringify(selectedDirection)}),
       includesFakeData: document.querySelector('#prompt').value.includes('Local Services CRM')
     })`);
     console.log(`HANDOFF ${handoffState}`);
@@ -170,7 +195,7 @@ async function main() {
     console.log(await measure(send, 390, 844));
     await evaluate(send, "document.querySelector('#designToast').classList.remove('show'); true");
     await new Promise((resolve) => setTimeout(resolve, 250));
-    await capture(send, '03-mobile.png');
+    await capture(send, '04-mobile.png');
     await setCssViewport(send, 1440, 1024);
     await evaluate(send, "resetDesignWorkspace(); true");
   } finally {

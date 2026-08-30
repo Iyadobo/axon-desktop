@@ -68,15 +68,6 @@ let designPromptText = '';
 let designInitialized = false;
 let designToastTimer = null;
 
-function createDesignDirections(prompt) {
-  const subject = prompt.replace(/\s+/g, ' ').trim();
-  return [
-    { name: 'Direct', summary: `For “${subject},” keep one obvious next action and only the information needed now.` },
-    { name: 'Guided', summary: `For “${subject},” reveal each decision only when it becomes relevant.` },
-    { name: 'Expressive', summary: `Give “${subject}” a distinct Axon identity through type, rhythm, and one meaningful signal—not extra interface.` },
-  ];
-}
-
 function renderDesignDirections() {
   const host = $('designDirections');
   if (!host) return;
@@ -97,11 +88,12 @@ function resetDesignWorkspace() {
   designPromptText = '';
   $('designPrompt').value = '';
   $('designBriefText').textContent = '';
+  $('designError').textContent = '';
+  $('designError').hidden = true;
+  $('designError').dataset.tone = '';
   $('designEmpty').hidden = false;
   $('designResults').hidden = true;
   $('designSelectionActions').hidden = true;
-  $('view-design').classList.remove('prototype-mode');
-  $('designPrototype').textContent = 'Prototype';
   renderDesignDirections();
 }
 
@@ -2104,17 +2096,6 @@ for (const btn of document.querySelectorAll('.top-nav-btn[data-view]')) {
 }
 $('designNewProject').onclick = () => { resetDesignWorkspace(); $('designPrompt').focus(); };
 $('designStartOver').onclick = () => { resetDesignWorkspace(); $('designPrompt').focus(); };
-$('designCritique').onclick = () => {
-  const direction = designDirections[selectedDesignDirection];
-  if (!direction) return;
-  showDesignToast(`${direction.name}: prove the primary action before adding another surface.`);
-};
-$('designPrototype').onclick = () => {
-  const view = $('view-design');
-  const active = view.classList.toggle('prototype-mode');
-  $('designPrototype').textContent = active ? 'Exit prototype' : 'Prototype';
-  showDesignToast(active ? 'Prototype focus on.' : 'Prototype focus off.');
-};
 $('designToCode').onclick = () => {
   const direction = designDirections[selectedDesignDirection];
   if (!direction) return;
@@ -2124,26 +2105,48 @@ $('designToCode').onclick = () => {
   saveState('odraft', $('prompt').value);
   $('prompt').focus();
 };
-$('designPromptForm').onsubmit = (event) => {
+$('designPromptForm').onsubmit = async (event) => {
   event.preventDefault();
   const instruction = $('designPrompt').value.trim();
   if (!instruction) { $('designPrompt').focus(); showDesignToast('Describe what you want to design.'); return; }
+  const model = $('model').value;
+  if (!model) { $('designError').textContent = 'Choose a model in Chat before generating a design.'; $('designError').hidden = false; return; }
   const button = $('designGenerate');
   button.disabled = true;
-  button.textContent = 'Thinking…';
-  setTimeout(() => {
-    designPromptText = instruction.replace(/\s+/g, ' ').slice(0, 220);
-    designDirections = createDesignDirections(designPromptText);
+  button.textContent = 'Designing…';
+  $('designPromptForm').setAttribute('aria-busy', 'true');
+  $('designError').textContent = '';
+  $('designError').hidden = true;
+  $('designError').dataset.tone = '';
+  try {
+    const result = await window.ollama.designGenerate({ prompt: instruction, model, provider: currentProviderProfile() });
+    if (!result?.ok) throw new Error(result?.error || 'Axon could not generate design directions.');
+    if (result.status === 'needs_context') {
+      $('designError').textContent = result.question || 'What is the main task this product should help someone complete?';
+      $('designError').dataset.tone = 'question';
+      $('designError').hidden = false;
+      $('designPrompt').focus();
+      return;
+    }
+    if (result.status !== 'ready' || !Array.isArray(result.directions)) throw new Error('Axon could not read the generated design directions.');
+    designPromptText = instruction.replace(/\s+/g, ' ').slice(0, 500);
+    designDirections = result.directions;
     selectedDesignDirection = -1;
     $('designBriefText').textContent = designPromptText;
     $('designPrompt').value = '';
     $('designEmpty').hidden = true;
     $('designResults').hidden = false;
     $('designSelectionActions').hidden = true;
+    renderDesignDirections();
+  } catch (error) {
+    $('designError').textContent = error?.message || 'Axon could not generate design directions.';
+    $('designError').dataset.tone = 'error';
+    $('designError').hidden = false;
+  } finally {
     button.disabled = false;
     button.textContent = 'Create directions';
-    renderDesignDirections();
-  }, 320);
+    $('designPromptForm').removeAttribute('aria-busy');
+  }
 };
 $('projectsPageAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('settingsClose').onclick = closeSettings;

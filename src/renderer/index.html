@@ -1375,6 +1375,9 @@
   .design-prompt button { justify-self:end; min-width:156px; height:46px; padding:0 18px; border:1px solid var(--color-accent); border-radius:6px; background:var(--color-accent); color:#1b0710; font:850 12px var(--font-body); cursor:pointer; }
   .design-prompt button:hover { background:#ff69a0; }
   .design-prompt button:disabled { opacity:.55; cursor:wait; }
+  .design-error { width:100%; margin:12px 0 0; padding:12px 14px; border-left:2px solid #e86d7f; background:#171116; color:#f1b8c2; font-size:14px; line-height:1.5; }
+  .design-error[data-tone="question"] { border-left-color:var(--color-accent); background:#151216; color:var(--design-text); }
+  .design-error[hidden] { display:none; }
   .design-results { width:min(940px,100%); align-self:start; justify-self:center; }
   .design-results-head { display:flex; align-items:flex-start; justify-content:space-between; gap:28px; padding-bottom:28px; border-bottom:1px solid var(--design-rule); }
   .design-results-head span { display:block; margin-bottom:9px; color:var(--design-muted); font:800 10px var(--font-mono); letter-spacing:.11em; text-transform:uppercase; }
@@ -1574,6 +1577,7 @@
               <textarea id="designPrompt" aria-label="What do you want to design?" rows="3" placeholder="A simple workout app that makes logging a set effortless"></textarea>
               <button id="designGenerate" type="submit">Create directions</button>
             </form>
+            <p class="design-error" id="designError" role="status" aria-live="polite" hidden></p>
           </section>
           <section class="design-results" id="designResults" hidden>
             <header class="design-results-head">
@@ -1583,7 +1587,7 @@
             <div class="design-directions" id="designDirections" aria-label="Generated design directions"></div>
             <div class="design-selection-actions" id="designSelectionActions" hidden>
               <span id="designSelectionLabel">Direction selected</span>
-              <div><button id="designCritique" type="button">Critique</button><button id="designPrototype" type="button">Prototype</button><button class="primary" id="designToCode" type="button">Send to Code</button></div>
+              <div><button class="primary" id="designToCode" type="button">Send to Code</button></div>
             </div>
           </section>
         </main>
