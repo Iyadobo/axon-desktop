@@ -103,63 +103,76 @@ async function main() {
       if (await evaluate(send, "typeof switchView === 'function'")) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    await evaluate(send, "switchView('design'); document.title = 'Axon Design'; true");
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    const state = await evaluate(send, `JSON.stringify({
+    await evaluate(send, "switchView('design'); resetDesignWorkspace(); document.title = 'Axon Design'; true");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const blankState = await evaluate(send, `JSON.stringify({
       view: activeView,
       designActive: document.querySelector('#view-design').classList.contains('active'),
       cards: document.querySelectorAll('.direction-card').length,
-      selected: document.querySelector('.direction-card.selected h3')?.textContent,
+      promptVisible: !document.querySelector('#designEmpty').hidden,
+      resultsHidden: document.querySelector('#designResults').hidden,
+      legacyChrome: document.querySelectorAll('.design-rail, .design-inspector, .mini-screen').length,
+      forbiddenVisible: ['Local Services CRM', 'Components', 'Screens', 'Tokens', 'Scenes'].filter((term) => document.querySelector('#view-design').innerText.includes(term)),
       centeredBrowserDelta: (() => { const button = document.querySelector('#browserToggle').getBoundingClientRect(); const icon = document.querySelector('#browserToggle svg').getBoundingClientRect(); return Math.round(((icon.left + icon.width / 2) - (button.left + button.width / 2)) * 10) / 10; })(),
       overflowX: document.documentElement.scrollWidth - innerWidth,
       viewport: [innerWidth, innerHeight]
     })`);
-    console.log(state);
-    const selection = await evaluate(send, `(() => {
-      document.querySelectorAll('.direction-card')[0].click();
-      const selected = document.querySelector('.direction-card.selected h3')?.textContent;
-      document.querySelectorAll('.direction-card')[1].click();
-      return JSON.stringify({ selected, restored: document.querySelector('.direction-card.selected h3')?.textContent });
-    })()`);
-    console.log(selection);
-    await capture(send, '01-signal-canvas.png');
+    console.log(`BLANK ${blankState}`);
+    await capture(send, '01-empty.png');
 
-    const originalNotes = await evaluate(send, 'JSON.stringify(designNotes)');
-    const originalBrief = await evaluate(send, "document.querySelector('#designBriefText').textContent");
-    await evaluate(send, "document.querySelector('#designCritique').click(); document.querySelector('#designPrototype').click(); true");
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    const interaction = await evaluate(send, `JSON.stringify({
-      notesActive: document.querySelector('#designNotesTab').classList.contains('active'),
-      noteCount: document.querySelectorAll('#designInspectorBody li').length,
-      prototypeMode: document.querySelector('#view-design').classList.contains('prototype-mode'),
-      prototypeLabel: document.querySelector('#designPrototype').textContent
-    })`);
-    console.log(interaction);
-    await capture(send, '02-critique-prototype.png');
-    await evaluate(send, "document.querySelector('#designPrototype').click(); true");
-    const originalDirection = await evaluate(send, 'JSON.stringify(DESIGN_DIRECTIONS[selectedDesignDirection])');
     await evaluate(send, `(() => {
       const input = document.querySelector('#designPrompt');
-      input.value = 'Make the selected branch calmer and faster to scan';
+      input.value = 'Make a gym app prototype';
       document.querySelector('#designPromptForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       return true;
     })()`);
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    const branchResult = await evaluate(send, `JSON.stringify({
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const generatedState = await evaluate(send, `JSON.stringify({
       promptCleared: document.querySelector('#designPrompt').value === '',
       brief: document.querySelector('#designBriefText').textContent,
-      summary: DESIGN_DIRECTIONS[selectedDesignDirection].summary,
-      generateEnabled: !document.querySelector('#designGenerate').disabled
+      cards: document.querySelectorAll('.direction-card').length,
+      names: [...document.querySelectorAll('.direction-card h3')].map((item) => item.textContent),
+      selectionHidden: document.querySelector('#designSelectionActions').hidden,
+      hasFakeScreen: document.querySelectorAll('.mini-screen').length,
+      forbiddenVisible: ['Local Services CRM', 'Kitchen remodel', 'Components', 'Screens', 'Tokens', 'Scenes'].filter((term) => document.querySelector('#view-design').innerText.includes(term))
     })`);
-    console.log(branchResult);
-    await evaluate(send, `Object.assign(DESIGN_DIRECTIONS[selectedDesignDirection], ${originalDirection}); renderDesignDirections(); renderDesignInspector(); true`);
+    console.log(`GENERATED ${generatedState}`);
+    await evaluate(send, "document.querySelectorAll('.direction-card')[0].click(); true");
+    const selectedState = await evaluate(send, `JSON.stringify({
+      selected: document.querySelector('.direction-card.selected h3')?.textContent,
+      actionsVisible: !document.querySelector('#designSelectionActions').hidden,
+      actionCount: document.querySelectorAll('#designSelectionActions button').length
+    })`);
+    console.log(`SELECTED ${selectedState}`);
+    await capture(send, '02-directions-selected.png');
+
+    await evaluate(send, "document.querySelector('#designPrototype').click(); true");
+    const prototypeState = await evaluate(send, `JSON.stringify({
+      active: document.querySelector('#view-design').classList.contains('prototype-mode'),
+      label: document.querySelector('#designPrototype').textContent
+    })`);
+    console.log(`PROTOTYPE ${prototypeState}`);
+    await evaluate(send, "document.querySelector('#designPrototype').click(); true");
+    await evaluate(send, "document.querySelector('#designToCode').click(); true");
+    const handoffState = await evaluate(send, `JSON.stringify({
+      workspace: settings.productMode,
+      view: activeView,
+      includesBrief: document.querySelector('#prompt').value.includes('Make a gym app prototype'),
+      includesDirection: document.querySelector('#prompt').value.includes('Direct'),
+      includesFakeData: document.querySelector('#prompt').value.includes('Local Services CRM')
+    })`);
+    console.log(`HANDOFF ${handoffState}`);
+    await evaluate(send, "switchView('design'); true");
     console.log(`RUNTIME_ERRORS ${JSON.stringify(runtimeErrors)}`);
     console.log('MEASURE 1440');
     console.log(await measure(send, 1440, 1024));
     console.log('MEASURE 390');
     console.log(await measure(send, 390, 844));
-    await evaluate(send, `designNotes.splice(0, designNotes.length, ...${originalNotes}); designInspectorTab = 'overview'; document.querySelector('#designBriefText').textContent = ${JSON.stringify(originalBrief)}; renderDesignInspector(); true`);
-    await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1024, deviceScaleFactor: 1, mobile: false });
+    await evaluate(send, "document.querySelector('#designToast').classList.remove('show'); true");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await capture(send, '03-mobile.png');
+    await setCssViewport(send, 1440, 1024);
+    await evaluate(send, "resetDesignWorkspace(); true");
   } finally {
     ws.close();
   }
