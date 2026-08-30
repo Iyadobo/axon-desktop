@@ -119,29 +119,6 @@ const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', ki
 const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
-let localProfile = null;
-function normalizeLocalProfile(value) {
-  const name = typeof value?.name === 'string' ? value.name.trim().replace(/\s+/g, ' ').slice(0, 48) : '';
-  return name ? { name } : null;
-}
-function renderLocalProfile() {
-  const name = localProfile?.name || 'Set up local profile';
-  $('localProfileName').textContent = name;
-  $('localProfileInitial').textContent = localProfile ? name.slice(0, 1).toUpperCase() : '?';
-  $('localProfileNote').textContent = localProfile ? 'Local only · click to edit' : 'Stored only on this device';
-  $('localProfile').setAttribute('aria-label', localProfile ? 'Edit local profile' : 'Set up local profile');
-}
-function openLocalProfile() {
-  $('localProfileInput').value = localProfile?.name || '';
-  $('localProfileModal').classList.add('show');
-  setTimeout(() => $('localProfileInput').focus(), 0);
-}
-function closeLocalProfile() { $('localProfileModal').classList.remove('show'); }
-function saveLocalProfile() {
-  const name = String($('localProfileInput').value || '').trim().replace(/\s+/g, ' ').slice(0, 48);
-  if (!name) { $('localProfileInput').focus(); return; }
-  localProfile = { name }; saveState('ouserProfile', localProfile); renderLocalProfile(); closeLocalProfile();
-}
 function swarmProviderLimit() { return (currentProviderProfile()?.kind || 'ollama') === 'ollama' ? 3 : null; }
 function swarmSelectableModels() {
   const provider = currentProviderProfile();
@@ -179,8 +156,8 @@ function syncSwarmLimit() {
 // entry it gets in the sidebar's chat list instead (see openSwarmSession).
 function openSwarm() {
   swarmMode = true; activeId = null; activeSwarmId = null; swarmLogOpen = false;
-  $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = false; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
-  showHomeView(); $('greet').textContent = 'What should the swarm take on?'; document.querySelector('#home .sub')?.replaceChildren('Give Axon one outcome. Independent workers will investigate it in parallel.'); document.querySelector('.home-hint')?.replaceChildren('Choose a model and attach the relevant files, then launch the swarm with the normal composer. Workers are read-only so they cannot collide in your workspace.');
+  $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = true; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
+  showHomeView(); $('greet').textContent = 'Give the swarm one outcome.'; document.querySelector('#home .sub')?.replaceChildren('Axon handles the roles, parallel work, and final synthesis.'); document.querySelector('.home-hint')?.replaceChildren('Describe the outcome and launch. Open Tune only when you want different models or more workers.');
   const chips = [...document.querySelectorAll('#chips .chip')]; ['Explore approaches', 'Review a codebase', 'Research a topic', 'Compare options'].forEach((label, index) => { if (chips[index]) chips[index].textContent = label; });
   syncSwarmRoles(); $('prompt').focus();
 }
@@ -1512,9 +1489,33 @@ function renderProviderProfiles() {
   const profile = currentProviderProfile();
   select.value = profile.id; $('providerName').value = profile.name; $('providerKind').value = profile.kind; $('providerEndpoint').value = profile.endpoint; $('providerModel').value = profile.model;
   $('providerApiKey').value = '';
+  $('providerUseOllama')?.classList.toggle('active', profile.kind === 'ollama');
+  $('providerNew')?.classList.toggle('active', profile.kind !== 'ollama');
   $('providerStatus').textContent = profile.kind === 'ollama'
-    ? 'Ollama uses the current local runtime. Cloud models also work in Code and Work after you sign in with Ollama; no Axon API key is needed.'
-    : (profile.credentialId ? 'API key saved in the OS credential store.' : 'Add an API key to use this profile. It will not be written to normal settings.');
+    ? 'Using Ollama. Local models and signed-in Ollama cloud models are available without an Axon API key.'
+    : (profile.credentialId ? `${profile.name} is active. Its API key is stored securely.` : `${profile.name} is selected. Add its API key below to finish setup.`);
+  if ($('providerApiSetup')) $('providerApiSetup').open = profile.kind !== 'ollama';
+}
+async function useLocalOllama() {
+  let profile = settings.providerProfiles.find((item) => item.kind === 'ollama');
+  if (!profile) { profile = { ...DEFAULT_PROVIDER }; settings.providerProfiles.unshift(profile); }
+  settings.activeProviderProfileId = profile.id;
+  saveSettings(); renderProviderProfiles(); applyProviderModelChoices();
+  if ($('runtimeSel')?.value !== 'ollama') { $('runtimeSel').value = 'ollama'; await selectRuntime(); }
+  $('providerStatus').textContent = 'Using Ollama on this device.';
+  if (swarmMode) syncSwarmRoles();
+}
+function startApiProviderSetup() {
+  const current = currentProviderProfile();
+  if (current?.kind !== 'ollama' && !current.endpoint && !current.model && !current.credentialId) {
+    $('providerApiSetup').open = true;
+    requestAnimationFrame(() => $('providerName').focus());
+    return;
+  }
+  const profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'New API', kind: 'openai-compatible', endpoint: '', model: '', credentialId: '' };
+  settings.providerProfiles.push(profile); settings.activeProviderProfileId = profile.id; saveSettings(); renderProviderProfiles();
+  $('providerApiSetup').open = true;
+  requestAnimationFrame(() => $('providerName').focus());
 }
 const PROVIDER_PRESETS = {
   custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
@@ -1951,7 +1952,6 @@ function setBrowserOpen(open) {
   browserOpen = open; $('browserPanel').classList.toggle('show', open); $('browserToggle').classList.toggle('active', open);
   $('browserToggle').setAttribute('aria-expanded', String(open));
   $('browserToggle').title = open ? 'Close agent browser' : 'Open agent browser';
-  const label = document.querySelector('.browser-toggle-label'); if (label) label.textContent = open ? 'Browser open' : 'Browser';
   if (open) requestAnimationFrame(syncBrowserBounds); else window.ollama.browserHide();
 }
 function openBrowserAt(url) {
@@ -2056,7 +2056,8 @@ $('permissionModeButton').onclick = () => {
 $('productModeSel').onchange = () => { settings.productMode = $('productModeSel').value; syncProductMode(); saveSettings(); };
 if ($('productModeButton')) $('productModeButton').onclick = () => { const modes = ['chat', 'code', 'agent']; settings.productMode = modes[(modes.indexOf(settings.productMode) + 1) % modes.length]; syncProductMode(); saveSettings(); };
 $('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); applyProviderModelChoices(); if (swarmMode) syncSwarmRoles(); };
-$('providerNew').onclick = () => { const profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'New provider', kind: 'openai-compatible', endpoint: '', model: '', credentialId: '' }; settings.providerProfiles.push(profile); settings.activeProviderProfileId = profile.id; renderProviderProfiles(); };
+$('providerUseOllama').onclick = useLocalOllama;
+$('providerNew').onclick = startApiProviderSetup;
 $('providerApplyPreset').onclick = applyProviderPreset;
 $('providerImportOpenCode').onclick = importOpenCodeProviderConfig;
 $('providerSave').onclick = saveProviderProfile;
@@ -2096,11 +2097,8 @@ $('workWorkspace').onclick = () => setWorkspace('work');
 $('recents-label').onclick = openSettings;
 $('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
 document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
-$('localProfile').onclick = openLocalProfile;
-$('localProfileClose').onclick = closeLocalProfile;
-$('localProfileModal').onclick = (event) => { if (event.target === $('localProfileModal')) closeLocalProfile(); };
-$('localProfileSave').onclick = saveLocalProfile;
-$('localProfileInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') { event.preventDefault(); saveLocalProfile(); } });
+$('localSettings').setAttribute('aria-label', 'Open settings');
+$('localSettings').onclick = openSettings;
 $('swarmLaunch').onclick = openSwarm;
 $('swarmCount').oninput = syncSwarmLimit;
 $('swarmSentryModel').onchange = () => { if (swarmSelectableModels().length <= 1) $('swarmWorkerModel').value = $('swarmSentryModel').value; };
@@ -2403,7 +2401,6 @@ function refreshGridColor() {
     window.ollama.saveState(persisted).catch(() => {});
   } catch {}
   loadSettings();
-  localProfile = normalizeLocalProfile(persisted.ouserProfile); renderLocalProfile();
   loadProjects();
   defaultWorkspace = await window.ollama.ensureWorkspace();
   if (persisted.oworkspace !== defaultWorkspace) saveState('oworkspace', defaultWorkspace);
@@ -2426,7 +2423,6 @@ function refreshGridColor() {
   const savedView = persisted.oactiveView || 'chat';
   if (savedView !== 'chat') switchView(savedView);
   setLoading('Ready', true);
-  if (!localProfile) setTimeout(openLocalProfile, 260);
   // Open the workspace first. LAN discovery and local model inventory can be
   // slow on first launch, so let them hydrate without blocking the UI.
   setTimeout(async () => {

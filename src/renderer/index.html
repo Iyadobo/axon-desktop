@@ -730,11 +730,10 @@
   .workspace-switch { display:grid; grid-template-columns:repeat(3,1fr); gap:3px; margin:0 4px; padding:3px; background:var(--color-bg); border:1px solid var(--elev-line); border-radius:8px; }
   .workspace-tab { min-height:32px; display:inline-flex; align-items:center; justify-content:center; gap:5px; border:0; border-radius:5px; background:transparent; color:var(--color-neutral); font:700 12px/1 var(--font-body); letter-spacing:.015em; cursor:pointer; transition:background .16s ease,color .16s ease,box-shadow .16s ease; }
   .workspace-tab .workspace-mark { width:21px; height:17px; flex:none; object-fit:contain; opacity:.7; transition:opacity .16s ease, transform .16s ease; }
-  .workspace-tab .workspace-mark.dendrite { transform:scaleX(-1); }
   .workspace-tab:hover { color:var(--color-text); background:var(--elev-1); }
   .workspace-tab.active { color:var(--color-text); background:var(--elev-2); box-shadow:inset 0 -2px 0 var(--color-accent); }
   .workspace-tab:hover .workspace-mark, .workspace-tab.active .workspace-mark { opacity:1; transform:translateY(-.5px); }
-  .workspace-tab:hover .workspace-mark.dendrite, .workspace-tab.active .workspace-mark.dendrite { transform:translateY(-.5px) scaleX(-1); }
+  .workspace-tab:hover .workspace-mark.dendrite, .workspace-tab.active .workspace-mark.dendrite { transform:translateY(-.5px); }
   .workspace-tab:focus-visible, .hex-field:focus-within, .appearance-advanced summary:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
   .workspace-note { min-height:24px; padding:7px 10px 2px; color:var(--color-neutral); font-size:11px; font-weight:600; letter-spacing:.01em; }
   #side.workspace-work .workspace-note { color:var(--color-accent); }
@@ -1174,16 +1173,70 @@
     #settings .row { flex-direction:column; gap:10px; }
     #settings .modes { grid-template-columns:1fr; }
   }
+
+  /* Product shell: local-first identity, compact utilities, and one-action
+     defaults. Advanced controls remain available without owning the screen. */
+  .utility-icon { width:44px; height:44px; display:inline-grid; place-items:center; padding:0 !important; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); cursor:pointer; }
+  .utility-icon:hover { border-color:var(--color-accent); background:var(--axon-raised); }
+  .utility-icon img { width:22px; height:22px; object-fit:contain; }
+  .utility-icon svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.8; }
+  .utility-icon.active { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 12%,var(--color-bg)); color:var(--color-accent); }
+  #subagentsToggle, #browserToggle { min-width:44px; }
+  #subagentsToggle img { filter:saturate(.85); }
+  .local-workspace { min-height:46px; display:flex; align-items:center; gap:9px; padding:4px 6px 8px; }
+  .local-workspace-mark { width:30px; height:30px; flex:none; object-fit:contain; }
+  .local-workspace-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:2px; }
+  .local-workspace-copy strong { overflow:hidden; color:var(--color-text); font-size:12px; font-weight:760; text-overflow:ellipsis; white-space:nowrap; }
+  .local-workspace-copy small { color:var(--axon-muted); font-size:10px; }
+  .side-settings { width:100%; min-height:44px; display:flex; align-items:center; gap:9px; padding:0 9px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--axon-muted); font:720 12px var(--font-body); text-align:left; cursor:pointer; }
+  .side-settings:hover { border-color:var(--axon-rule); background:var(--axon-soft); color:var(--color-text); }
+  .side-settings svg { width:17px; height:17px; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; }
+  .side-settings .profile-update-badge { margin-left:auto; }
+  .swarm-controls { display:grid; gap:12px; }
+  .swarm-controls-head { margin-bottom:0; }
+  .swarm-defaults { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid var(--axon-rule); border-radius:6px; background:var(--color-bg); }
+  .swarm-default { min-height:58px; display:flex; flex-direction:column; justify-content:center; gap:2px; padding:9px 12px; border-right:1px solid var(--axon-rule); }
+  .swarm-default:last-child { border-right:0; }
+  .swarm-default strong { color:var(--color-text); font-size:12px; }
+  .swarm-default small { color:var(--axon-muted); font-size:10px; }
+  .swarm-advanced { border-top:1px solid var(--axon-rule); padding-top:10px; }
+  .swarm-advanced > summary { width:max-content; min-height:32px; display:flex; align-items:center; gap:6px; color:var(--axon-muted); font-size:11px; font-weight:760; cursor:pointer; list-style:none; }
+  .swarm-advanced > summary::before { content:'+'; color:var(--color-accent); font-size:15px; }
+  .swarm-advanced[open] > summary::before { content:'−'; }
+  .swarm-advanced .swarm-roles { margin-top:9px; }
+  .provider-hub { order:-1; display:grid; gap:13px; }
+  .provider-choice { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+  .provider-choice button { min-height:68px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:3px; padding:10px 12px; border:1px solid var(--axon-rule); border-radius:7px; background:var(--elev-1); color:var(--color-text); font:inherit; text-align:left; cursor:pointer; }
+  .provider-choice button:hover { border-color:var(--color-accent); }
+  .provider-choice button strong { font-size:13px; }
+  .provider-choice button small { color:var(--axon-muted); font-size:11px; }
+  .provider-choice button.active { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 10%,var(--elev-1)); box-shadow:inset 2px 0 0 var(--color-accent); }
+  .provider-current { display:grid; grid-template-columns:minmax(0,230px) 1fr; gap:10px; align-items:center; }
+  .provider-api-setup { border:1px solid var(--axon-rule); border-radius:8px; background:var(--elev-1); }
+  .provider-api-setup > summary { min-height:44px; display:flex; align-items:center; padding:0 12px; color:var(--color-text); font-size:12px; font-weight:780; cursor:pointer; list-style:none; }
+  .provider-api-setup > summary::after { content:'+'; margin-left:auto; color:var(--color-accent); font-size:17px; }
+  .provider-api-setup[open] > summary::after { content:'−'; }
+  .provider-api-body { display:grid; gap:10px; padding:0 12px 13px; border-top:1px solid var(--axon-rule); }
+  .provider-api-body .provider-quick { margin-top:12px; }
+  @media (max-width:760px) {
+    #subagentsToggle, #browserToggle { width:44px; }
+    .local-workspace-copy, .side-settings span:not(.profile-update-badge) { display:none; }
+    .local-workspace { justify-content:center; padding:4px 0 8px; }
+    .side-settings { justify-content:center; padding:0; }
+    .swarm-defaults, .provider-choice, .provider-current { grid-template-columns:1fr; }
+    .swarm-default { border-right:0; border-bottom:1px solid var(--axon-rule); }
+    .swarm-default:last-child { border-bottom:0; }
+  }
 </style>
 </head>
 <body>
 <div id="loading" role="status" aria-live="polite"><div class="loading-mark"><img src="../assets/icon.png" alt="" /><strong>Axon</strong><span id="loadingText">Starting local workspace…</span></div></div>
 <canvas id="grid"></canvas>
 <header class="titlebar" aria-label="Axon window controls">
-  <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button><button class="top-nav-btn" data-view="projects" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Projects</span></button><button class="top-nav-btn" data-view="models" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span>Models</span></button><button class="top-nav-btn" data-view="settings" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1 1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg><span>Settings</span></button></nav>
+  <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button><button class="top-nav-btn" data-view="projects" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Projects</span></button><button class="top-nav-btn" data-view="models" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span>Models</span></button></nav>
   <div class="window-spacer"></div>
   <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
-  <div class="title-actions"><button id="subagentsToggle" title="Open active subagents" aria-expanded="false">Agents</button><button id="browserToggle" title="Open agent browser" aria-expanded="false"><span class="browser-toggle-kicker">Web</span><span class="browser-toggle-label">Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
+  <div class="title-actions"><button id="subagentsToggle" class="utility-icon" title="Subagents" aria-label="Open subagents" aria-expanded="false"><img src="../assets/axon-swarm-terminal.png" alt="" /></button><button id="browserToggle" class="utility-icon" title="Open agent browser" aria-label="Open agent browser" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/></svg></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
 </header>
 <div id="app">
   <div id="side">
@@ -1213,9 +1266,8 @@
       <div id="recents"></div>
     </div>
     <div class="sidefoot">
-      <button id="localProfile" class="local-profile" type="button" aria-label="Set up local profile">
-        <span id="localProfileInitial" class="local-avatar">?</span><span class="local-profile-copy"><strong id="localProfileName">Set up local profile</strong><small id="localProfileNote">Stored only on this device</small></span><span id="profileUpdateBadge" class="profile-update-badge" hidden title="Update ready"></span>
-      </button>
+      <div class="local-workspace"><img class="local-workspace-mark" src="../assets/icon.png" alt="" /><span class="local-workspace-copy"><strong>Local workspace</strong><small>Your data stays on this device</small></span></div>
+      <button id="localSettings" class="side-settings" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1 1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg><span>Settings</span><span id="profileUpdateBadge" class="profile-update-badge" hidden title="Update ready"></span></button>
     </div>
   </div>
 
@@ -1232,12 +1284,8 @@
             <img class="swarm-controls-mark" src="../assets/axon-swarm-terminal.png" alt="" />
             <div class="swarm-controls-copy"><strong>Axon Swarm</strong><small>Independent workers report to one Sentry, which turns their findings into a single answer.</small></div>
           </div>
-          <div class="swarm-roles">
-            <label class="swarm-role swarm-sentry-role"><span class="swarm-role-kicker">Sentry</span><strong>Manager + synthesis</strong><small>Receives every report, resolves conflicts, and returns the decision-ready answer.</small><select id="swarmSentryModel" aria-label="Sentry model"></select></label>
-            <label class="swarm-role"><span class="swarm-role-kicker">Workers</span><strong>Scout · Builder · Skeptic</strong><small>Parallel, read-only investigation lanes. All workers use this selected model.</small><select id="swarmWorkerModel" aria-label="Worker model"></select></label>
-            <label class="swarm-worker-field"><span>Parallel workers</span><input id="swarmCount" type="number" min="1" value="3" inputmode="numeric" /></label>
-          </div>
-          <div id="swarmRoleNotice" class="swarm-role-notice"></div>
+          <div class="swarm-defaults" aria-label="Swarm defaults"><div class="swarm-default"><strong>One Sentry</strong><small>coordinates the work</small></div><div class="swarm-default"><strong>Three workers</strong><small>investigate in parallel</small></div><div class="swarm-default"><strong>One answer</strong><small>synthesized for you</small></div></div>
+          <details class="swarm-advanced"><summary>Tune models and worker count</summary><div class="swarm-roles"><label class="swarm-role swarm-sentry-role"><span class="swarm-role-kicker">Sentry</span><strong>Manager + synthesis</strong><small>Resolves conflicts and returns the final answer.</small><select id="swarmSentryModel" aria-label="Sentry model"></select></label><label class="swarm-role"><span class="swarm-role-kicker">Workers</span><strong>Parallel investigation</strong><small>All workers share this selected model.</small><select id="swarmWorkerModel" aria-label="Worker model"></select></label><label class="swarm-worker-field"><span>Workers</span><input id="swarmCount" type="number" min="1" value="3" inputmode="numeric" /></label></div><div id="swarmRoleNotice" class="swarm-role-notice"></div></details>
         </section>
         <div id="swarmLimitInfo" class="swarm-limit" hidden></div>
         <div id="swarmStatus" class="swarm-limit" hidden aria-live="polite"></div>
@@ -1352,7 +1400,7 @@
         <div class="lan-info">Enforced by Axon Terminal, not by instructions a model can talk itself out of. In Approve mode a blocked action appears in the transcript with an Allow button.</div>
       </div>
       <div class="fld"><span>Axon workspace mode</span><div class="row"><label class="fld"><select id="productModeSel"><option value="chat">Axon Chat — direct conversation</option><option value="code">Axon Code — direct repository work</option><option value="agent">Axon Work — autonomous multi-step tasks</option></select></label></div><div class="lan-info" id="productModeInfo">Chat talks directly. Code works in one repository. Work runs broader tasks with browser and delegation when useful.</div></div>
-      <div class="fld"><span>Provider profiles</span><div class="row"><label class="fld"><select id="providerProfileSel"></select></label><button id="providerNew" class="settings-action" type="button">New provider</button></div><div class="provider-quick"><div class="provider-quick-head"><strong>Quick setup</strong><span>Use a preset or paste a provider entry from your OpenCode config.</span></div><div class="row"><label class="fld"><select id="providerPreset"><option value="custom">Custom compatible API</option><option value="openai">OpenAI Responses API</option><option value="openrouter">OpenRouter compatible API</option></select></label><button id="providerApplyPreset" class="settings-action" type="button">Use preset</button></div><label class="fld"><textarea id="providerImport" rows="3" spellcheck="false" placeholder='Paste an OpenCode provider JSON entry or config here'></textarea></label><div class="row"><button id="providerImportOpenCode" class="settings-action" type="button">Import OpenCode config</button><span id="providerImportStatus" class="provider-import-status">Imports its name, endpoint, route type, and first listed model. API keys stay local to Axon.</span></div></div><div class="row"><label class="fld"><input id="providerName" type="text" placeholder="Profile name" /></label><label class="fld"><select id="providerKind"><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option></select></label></div><div class="row"><label class="fld"><input id="providerEndpoint" type="url" placeholder="https://api.example.com/v1" /></label><label class="fld"><input id="providerModel" type="text" placeholder="Default model (optional)" /></label></div><div class="row"><label class="fld"><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="API key (stored securely; leave blank to keep)" /></label><button id="providerSave" class="settings-action primary" type="button">Save profile</button></div><div id="providerStatus" class="lan-info">Ollama uses the current local or configured runtime. API keys are kept in the OS credential store.</div></div>
+      <div class="fld provider-hub"><span>Model provider</span><p class="settings-copy">Stay local with Ollama or connect one compatible API. Switching back never deletes your saved API connections.</p><div class="provider-choice"><button id="providerUseOllama" type="button"><strong>Use Ollama</strong><small>Local-first default · no API key</small></button><button id="providerNew" type="button"><strong>Add an API</strong><small>OpenAI, OpenRouter, or compatible endpoint</small></button></div><div class="provider-current"><label class="fld"><span>Active connection</span><select id="providerProfileSel"></select></label><div id="providerStatus" class="lan-info">Ollama uses the current local runtime.</div></div><details id="providerApiSetup" class="provider-api-setup"><summary>API connection details</summary><div class="provider-api-body"><div class="provider-quick"><div class="provider-quick-head"><strong>Start with a preset</strong><span>Keys remain in the OS credential store.</span></div><div class="row"><label class="fld"><select id="providerPreset"><option value="custom">Custom compatible API</option><option value="openai">OpenAI Responses API</option><option value="openrouter">OpenRouter compatible API</option></select></label><button id="providerApplyPreset" class="settings-action" type="button">Apply preset</button></div><label class="fld"><textarea id="providerImport" rows="3" spellcheck="false" placeholder='Optional: paste an OpenCode provider JSON entry'></textarea></label><div class="row"><button id="providerImportOpenCode" class="settings-action" type="button">Import config</button><span id="providerImportStatus" class="provider-import-status">Imports the endpoint and model. API keys are never imported.</span></div></div><div class="row"><label class="fld"><span>Name</span><input id="providerName" type="text" placeholder="OpenAI" /></label><label class="fld"><span>Route</span><select id="providerKind"><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option></select></label></div><div class="row"><label class="fld"><span>Endpoint</span><input id="providerEndpoint" type="url" placeholder="https://api.example.com/v1" /></label><label class="fld"><span>Model</span><input id="providerModel" type="text" placeholder="Model ID" /></label></div><div class="row"><label class="fld"><span>API key</span><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="Stored securely; leave blank to keep" /></label><button id="providerSave" class="settings-action primary" type="button">Save and use API</button></div></div></details></div>
       <div class="fld"><span>Inference runtime</span><div class="row"><label class="fld"><select id="runtimeSel"><option value="ollama">Local Ollama</option><option value="exo">Exo cluster</option><option value="llamacpp">llama.cpp RPC (2-PC VRAM pool)</option></select></label><label class="fld"><input id="exoUrl" type="url" placeholder="http://192.168.50.1:52415" /></label><button id="exoCheck" type="button">Test Exo</button></div><div id="exoStatus" class="lan-info">Local Ollama runs on this device. Exo connects to a separately running cluster coordinator.</div>
         <div id="llamaCppFields" style="display:none">
           <div class="lan-info">Experimental and unauthenticated (llama.cpp's own RPC docs call it out) — bind only to a direct, isolated Ethernet link between two PCs, never a routable network. Run Axon on both machines: one Host, one Worker.</div>
@@ -1470,9 +1518,6 @@
 </div>
 <div class="modal" id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
   <div class="update-dialog"><h3 id="updateTitle">Axon update</h3><p id="updateBody"></p><div class="buttons" id="updateButtons"></div></div>
-</div>
-<div class="modal" id="localProfileModal" role="dialog" aria-modal="true" aria-labelledby="localProfileTitle">
-  <div class="modal-card"><div class="modal-head"><h3 id="localProfileTitle">Local profile</h3><button class="x" id="localProfileClose" aria-label="Close">×</button></div><div class="modal-body"><label class="fld"><span>Name</span><input id="localProfileInput" type="text" maxlength="48" autocomplete="nickname" placeholder="What should Axon call you?" /><div class="lan-info">No password, account, or cloud sync. This name stays on this PC.</div></label><div class="update-actions"><button id="localProfileSave" class="primary" type="button">Save local profile</button></div></div></div>
 </div>
 <aside class="update-toast" id="updateToast" role="status" aria-live="polite"><div class="update-toast-copy"><strong id="updateToastTitle">Axon update ready</strong><span id="updateToastBody"></span></div><button id="updateToastAction" class="update-toast-action" type="button">Review</button><button id="updateToastDismiss" class="update-toast-dismiss" type="button" aria-label="Dismiss update notice">×</button></aside>
 <script src="model-logos.js"></script>
