@@ -46,13 +46,86 @@ function switchView(viewName) {
   if (viewName === 'settings') { openSettings(); return; }
   activeView = viewName;
   syncTopNav(viewName);
+  $('app')?.classList.toggle('design-active', viewName === 'design');
   document.querySelectorAll('.view').forEach((view) => {
     view.classList.toggle('active', view.id === 'view-' + viewName);
   });
   $('chatSidebar')?.classList.add('active');
   if (viewName === 'projects') renderProjectsPage();
   if (viewName === 'models') renderModelsPage();
+  if (viewName === 'design') initDesignWorkspace();
+  const recentLabel = viewName === 'design' ? 'Design projects' : workspaceGroup() === 'work' ? 'Recent work' : workspaceGroup() === 'code' ? 'Recent code' : 'Recent chats';
+  if ($('recentPopupToggle')) $('recentPopupToggle').textContent = recentLabel;
   saveState('oactiveView', viewName);
+}
+
+// ---- Axon Design / Signal Canvas -------------------------------------------
+const DESIGN_DIRECTIONS = [
+  { name: 'Clarity', summary: 'Clean, bright, and high contrast.', theme: 'light', overview: 'A direct, reassuring direction that keeps schedules and job state readable at a glance.', strengths: ['Fast first scan', 'Familiar service patterns', 'Clear calendar hierarchy'] },
+  { name: 'Focus', summary: 'Dark, focused, and built for speed.', theme: 'dark', overview: 'A compact operator direction optimized for dispatchers managing jobs while moving.', strengths: ['High information density', 'Clear active state', 'Optimized for speed'] },
+  { name: 'Approachable', summary: 'Warm, friendly, and client reassuring.', theme: 'warm', overview: 'A softer direction that makes customer communication and scheduling feel less technical.', strengths: ['Friendly client tone', 'Gentle visual rhythm', 'Strong appointment cues'] },
+];
+let selectedDesignDirection = 1;
+let designInspectorTab = 'overview';
+let designInitialized = false;
+let designNotes = ['Keep the primary job action visible without scrolling.', 'Validate contrast at compact density.'];
+let designToastTimer = null;
+
+function designMiniScreen(type, theme) {
+  const dark = theme === 'dark' ? ' dark' : '';
+  if (type === 'job') return `<div class="mini-screen${dark}"><div class="mini-top"><span>Job #1042</span><span>•••</span></div><div class="mini-body"><h4>Kitchen remodel</h4><p>In progress · Sarah Johnson</p><div class="mini-action"><span>Status</span><b>In progress</b></div><div class="mini-action"><span>Address</span><b>123 Maple St</b></div><div class="mini-action"><span>Due</span><b>May 15</b></div><div class="mini-action"><span>Assignee</span><b>Jordan</b></div></div></div>`;
+  if (type === 'schedule') return `<div class="mini-screen${dark}"><div class="mini-top"><span>Schedule</span><span>May</span></div><div class="mini-body"><h4>May 2025</h4><div class="mini-cal">${Array.from({ length: 21 }, (_, i) => `<span class="${i === 10 ? 'on' : ''}">${i + 1}</span>`).join('')}</div><div class="mini-action"><span>Site visit</span><b>9:00</b></div><div class="mini-action"><span>Install fixtures</span><b>11:00</b></div><div class="mini-action"><span>Final walkthrough</span><b>3:30</b></div></div></div>`;
+  return `<div class="mini-screen${dark}"><div class="mini-top"><span>Good morning, Alex</span><span>Local CRM</span></div><div class="mini-body"><h4>Today’s jobs</h4><p>Everything that needs attention.</p><div class="mini-stat-row"><div class="mini-stat"><strong>28</strong>jobs</div><div class="mini-stat"><strong>14</strong>active</div><div class="mini-stat"><strong>9</strong>visits</div></div><div class="mini-list"><div class="mini-row"><span class="mini-dot"></span><span>Kitchen remodel</span><b>10:00</b></div><div class="mini-row"><span class="mini-dot"></span><span>Bathroom repair</span><b>1:00</b></div><div class="mini-row"><span class="mini-dot"></span><span>Deck build</span><b>3:30</b></div><div class="mini-row"><span class="mini-dot"></span><span>Service call</span><b>5:00</b></div></div></div></div>`;
+}
+
+function renderDesignDirections() {
+  const host = $('designDirections');
+  if (!host) return;
+  host.replaceChildren(...DESIGN_DIRECTIONS.map((direction, index) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'direction-card' + (index === selectedDesignDirection ? ' selected' : '');
+    card.setAttribute('aria-pressed', String(index === selectedDesignDirection));
+    card.innerHTML = `<div class="direction-copy"><span class="direction-kicker">Direction 0${index + 1}</span><h3>${esc(direction.name)}</h3><p>${esc(direction.summary)}</p><span class="direction-selected">Selected direction</span></div><div class="screen-strip">${designMiniScreen('home', direction.theme)}${designMiniScreen('job', direction.theme)}${designMiniScreen('schedule', direction.theme)}</div>`;
+    card.onclick = () => selectDesignDirection(index);
+    return card;
+  }));
+}
+
+function renderDesignInspector() {
+  const direction = DESIGN_DIRECTIONS[selectedDesignDirection];
+  if (!$('designInspectorBody') || !direction) return;
+  $('designDirectionLabel').textContent = `Direction 0${selectedDesignDirection + 1}`;
+  $('designDirectionTitle').textContent = direction.name;
+  $('designOverviewTab').classList.toggle('active', designInspectorTab === 'overview');
+  $('designNotesTab').classList.toggle('active', designInspectorTab === 'notes');
+  if (designInspectorTab === 'notes') {
+    $('designInspectorBody').innerHTML = `<h4>Agent notes</h4><ul>${designNotes.map((note) => `<li>${esc(note)}</li>`).join('')}</ul><h4>Version ancestry</h4><div class="design-details"><span>v3.2</span><b>Selected</b><span>v3.1</span><b>Previous</b><span>v3.0</span><b>Initial</b></div>`;
+    return;
+  }
+  $('designInspectorBody').innerHTML = `<h4>Overview</h4><p>${esc(direction.overview)}</p><h4>Strengths</h4><ul>${direction.strengths.map((item) => `<li>${esc(item)}</li>`).join('')}</ul><h4>Details</h4><div class="design-details"><span>Style</span><b>${esc(direction.name)}</b><span>Theme</span><b>${direction.theme === 'dark' ? 'Dark' : 'Light'}</b><span>Density</span><b>Compact</b><span>Components</span><b>128</b><span>Screens</span><b>8</b></div>`;
+}
+
+function selectDesignDirection(index) {
+  selectedDesignDirection = index;
+  renderDesignDirections();
+  renderDesignInspector();
+}
+
+function showDesignToast(message) {
+  const toast = $('designToast');
+  if (!toast) return;
+  clearTimeout(designToastTimer);
+  toast.textContent = message;
+  toast.classList.add('show');
+  designToastTimer = setTimeout(() => toast.classList.remove('show'), 2400);
+}
+
+function initDesignWorkspace() {
+  if (designInitialized) return;
+  designInitialized = true;
+  renderDesignDirections();
+  renderDesignInspector();
 }
 function workspaceGroup(mode = settings?.productMode) { return mode === 'agent' ? 'work' : mode === 'code' ? 'code' : 'chat'; }
 function greetingForTime() {
@@ -2002,6 +2075,64 @@ document.addEventListener('keydown', (e) => {
 for (const btn of document.querySelectorAll('.top-nav-btn[data-view]')) {
   btn.onclick = () => switchView(btn.dataset.view);
 }
+for (const btn of document.querySelectorAll('.design-tool-group button')) {
+  btn.onclick = () => { document.querySelectorAll('.design-tool-group button').forEach((item) => item.classList.toggle('active', item === btn)); };
+}
+for (const btn of document.querySelectorAll('.design-nav button, .design-scenes button')) {
+  btn.onclick = () => showDesignToast(`${btn.textContent.trim().replace(/\d+$/, '').trim()} is ready for the next prototype pass.`);
+}
+$('designNewProject').onclick = () => { $('designPrompt').value = ''; $('designPrompt').focus(); showDesignToast('Describe the new product in the canvas prompt.'); };
+$('designShare').onclick = async () => {
+  try { await navigator.clipboard.writeText(`Axon Design — Local Services CRM — ${DESIGN_DIRECTIONS[selectedDesignDirection].name}`); showDesignToast('Project handoff copied.'); }
+  catch { showDesignToast('Project handoff is ready to share.'); }
+};
+$('designPlay').onclick = () => $('designPrototype').click();
+$('designCritique').onclick = () => {
+  const direction = DESIGN_DIRECTIONS[selectedDesignDirection];
+  const note = direction.theme === 'dark' ? 'Check the lowest-contrast metadata before implementation.' : 'Keep the bright surfaces from flattening the information hierarchy.';
+  if (!designNotes.includes(note)) designNotes.unshift(note);
+  designInspectorTab = 'notes';
+  renderDesignInspector();
+  showDesignToast(`Axon critiqued ${direction.name}.`);
+};
+$('designPrototype').onclick = () => {
+  const view = $('view-design');
+  const active = view.classList.toggle('prototype-mode');
+  $('designPrototype').textContent = active ? 'Exit prototype' : 'Prototype';
+  $('designPlay').textContent = active ? 'Stop' : 'Play';
+  showDesignToast(active ? `${DESIGN_DIRECTIONS[selectedDesignDirection].name} prototype is playing.` : 'Returned to the full signal canvas.');
+};
+$('designToCode').onclick = () => {
+  const direction = DESIGN_DIRECTIONS[selectedDesignDirection];
+  setWorkspace('code');
+  $('prompt').value = `Implement the selected Axon Design direction “${direction.name}” for Local Services CRM. ${direction.overview} Preserve the generated screen hierarchy, interaction states, and design tokens.`;
+  autosize();
+  saveState('odraft', $('prompt').value);
+  $('prompt').focus();
+};
+$('designOverviewTab').onclick = () => { designInspectorTab = 'overview'; renderDesignInspector(); };
+$('designNotesTab').onclick = () => { designInspectorTab = 'notes'; renderDesignInspector(); };
+$('designPromptForm').onsubmit = (event) => {
+  event.preventDefault();
+  const instruction = $('designPrompt').value.trim();
+  if (!instruction) { $('designPrompt').focus(); showDesignToast('Describe the direction you want Axon to branch.'); return; }
+  const button = $('designGenerate');
+  button.disabled = true;
+  button.textContent = 'Branching…';
+  setTimeout(() => {
+    const direction = DESIGN_DIRECTIONS[selectedDesignDirection];
+    direction.summary = instruction.replace(/\s+/g, ' ').slice(0, 72);
+    direction.overview = `Axon revised this branch from your instruction: ${instruction.replace(/\s+/g, ' ').slice(0, 150)}`;
+    designNotes.unshift(`Revision: ${instruction.replace(/\s+/g, ' ').slice(0, 120)}`);
+    $('designBriefText').textContent = instruction;
+    $('designPrompt').value = '';
+    button.disabled = false;
+    button.textContent = 'Generate branch';
+    renderDesignDirections();
+    renderDesignInspector();
+    showDesignToast(`${direction.name} branched from the new instruction.`);
+  }, 650);
+};
 $('projectsPageAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('settingsClose').onclick = closeSettings;
 $('settings').addEventListener('click', (e) => { if (e.target.id === 'settings') closeSettings(); });
