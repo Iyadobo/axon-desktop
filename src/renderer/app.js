@@ -730,15 +730,28 @@ function mergeModels(local, cloud) {
   }
   return merged;
 }
-async function loadModels() {
+async function loadModels(loader = () => window.ollama.listModels()) {
+  modelInventoryState = 'loading';
+  modelInventoryError = '';
   setLoading('Checking local models…');
   try {
-    const data = await window.ollama.listModels();
-    const localModels = data.models || [];
-    localModelCatalogue = localModels.map((model) => ({ ...model, source: 'local' }));
+    const data = await loader();
+    const localModels = Array.isArray(data?.models) ? data.models : [];
+    localModelCatalogue = localModels.map((model) => ({
+      ...model,
+      source: model.remote_host || /:cloud$/i.test(String(model.name || '')) ? 'cloud' : 'local',
+    }));
+    modelInventoryState = localModels.length ? 'ready' : 'empty';
     applyProviderModelChoices();
     setStatus(true, localModels.length ? 'ready' : 'no models');
-  } catch { setStatus(false, 'offline'); }
+    return true;
+  } catch (error) {
+    modelInventoryState = 'error';
+    modelInventoryError = error?.message || 'Ollama did not respond.';
+    setStatus(false, 'offline');
+    if ($('modelPicker')?.classList.contains('show')) renderPicker();
+    return false;
+  }
 }
 // ---- local model downloads --------------------------------------------------
 let downloadCatalogue = [], downloadedModelNames = new Set(), downloadingModel = null, modelHardware = null, modelDownloadPage = 1;
@@ -855,6 +868,8 @@ window.ollama.on('model-pull-progress', (update) => {
 // conversations and the send path all read it); this is a richer way to set it.
 let modelCatalogue = [];
 let localModelCatalogue = [];
+let modelInventoryState = 'loading';
+let modelInventoryError = '';
 let pickerCursor = 0;
 // Family marks. Where a vendor's mark is available under a free licence it is
 // used (see model-logos.js); where it is not — Microsoft's Phi, IBM's Granite,
@@ -907,7 +922,7 @@ function paramCount(model) {
   return m[3] ? parseFloat(m[1]) * parseFloat(m[2]) * unit : parseFloat(m[1]) * unit;
 }
 const prettyParams = (n) => (!n ? '' : n >= 1e9 ? +(n / 1e9).toFixed(n >= 1e10 ? 0 : 1) + 'B' : Math.round(n / 1e6) + 'M');
-const prettyBytes = (n) => (!n ? '' : n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.round(n / 1e6) + ' MB');
+const prettyBytes = (n) => (!n || n < 1e6 ? '' : n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.round(n / 1e6) + ' MB');
 function syncModelButton() {
   const name = $('model').value || '';
   const entry = modelCatalogue.find((m) => m.name === name);
@@ -951,7 +966,18 @@ function renderPicker() {
   $('modelCount').textContent = rows.length + (rows.length === 1 ? ' model' : ' models');
   if (!rows.length) {
     const empty = document.createElement('div'); empty.className = 'picker-empty';
-    empty.textContent = 'No models match. Pull one with `ollama pull <name>`, or cache the cloud catalogue in Settings.';
+    const message = document.createElement('p');
+    message.textContent = modelCatalogue.length
+      ? 'No models match this search.'
+      : modelInventoryState === 'error'
+        ? `Ollama is not responding. ${modelInventoryError}`
+        : 'No Ollama models are available on this device yet.';
+    empty.appendChild(message);
+    if (!modelCatalogue.length) {
+      const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = 'Retry Ollama';
+      retry.onclick = async () => { retry.disabled = true; retry.textContent = 'Checking…'; await loadModels(); if ($('modelPicker').classList.contains('show')) renderPicker(); };
+      empty.appendChild(retry);
+    }
     list.appendChild(empty); return;
   }
   if (pickerCursor >= rows.length) pickerCursor = rows.length - 1;
@@ -1003,6 +1029,7 @@ function openModelPicker() {
   pickerCursor = Math.max(0, rows.findIndex((m) => m.name === $('model').value));
   renderPicker();
   $('modelSearch').value = ''; $('modelSearch').focus();
+  if (modelInventoryState === 'error' || modelInventoryState === 'empty') loadModels().then(() => { if ($('modelPicker').classList.contains('show')) renderPicker(); });
 }
 function closeModelPicker() { $('modelPicker').classList.remove('show'); }
 function setModelByName(name) {

@@ -596,6 +596,10 @@
   .picker-foot { display:flex; justify-content:space-between; align-items:center; gap:10px;
     padding:9px 16px; border-top:1px solid var(--elev-line); font-size:var(--t-xs); color:var(--color-neutral); }
   .picker-empty { padding:26px 12px; text-align:center; color:var(--color-neutral); font-size:var(--t-sm); }
+  .picker-empty p { margin:0 auto 14px; max-width:44ch; line-height:1.55; }
+  .picker-empty button { min-height:44px; padding:0 16px; border:1px solid var(--color-border-strong); border-radius:var(--radius-sm); background:var(--color-surface-raised); color:var(--color-text); font:700 var(--t-xs) var(--font-body); cursor:pointer; }
+  .picker-empty button:hover { border-color:var(--color-accent); background:var(--color-surface-hover); }
+  .picker-empty button:disabled { opacity:.6; cursor:wait; }
 
   /* permission modes: segmented control in Settings, badge in the composer */
   .modes { display:grid; gap:8px; margin-top:8px; }
@@ -1725,7 +1729,7 @@
       </div>
       <div class="picker-filters" id="modelFilters" role="tablist">
         <button type="button" class="pfilter on" data-filter="all" role="tab">All</button>
-        <button type="button" class="pfilter" data-filter="local" role="tab">Local</button>
+        <button type="button" class="pfilter" data-filter="local" role="tab">On device</button>
       </div>
       <label class="picker-sort"><span>Sort</span>
         <select id="modelSort">

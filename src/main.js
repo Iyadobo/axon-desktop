@@ -148,15 +148,27 @@ async function isOllamaUp() {
     req.setTimeout(2000, () => { req.destroy(); resolve(false); });
   });
 }
+function notifyModelsChanged(payload = {}) {
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+  win.webContents.send('models-changed', payload);
+}
 async function ensureOllama() {
   if (runtimeKind === 'exo') return setTray('Axon: Exo runtime selected');
   if (runtimeKind === 'llamacpp') return setTray('Axon: llama.cpp RPC runtime');
-  if (await isOllamaUp()) return setTray('Axon: running');
-  ollamaProc = spawn('ollama', ['serve'], { windowsHide: true, shell: false });
-  ollamaProc.on('exit', () => { ollamaProc = null; setTray('Axon: stopped'); });
-  ollamaProc.stderr?.on('data', () => {});
-  for (let i = 0; i < 40; i++) { await sleep(500); if (await isOllamaUp()) return setTray('Ollama: running'); }
+  if (await isOllamaUp()) { setTray('Axon: running'); notifyModelsChanged({ runtime: 'ollama', ready: true }); return true; }
+  let launchError = null;
+  const child = spawn('ollama', ['serve'], { windowsHide: true, shell: false });
+  ollamaProc = child;
+  child.on('error', (error) => { launchError = error; if (ollamaProc === child) ollamaProc = null; setTray('Axon: Ollama unavailable'); });
+  child.on('exit', () => { if (ollamaProc === child) ollamaProc = null; setTray('Axon: stopped'); });
+  child.stderr?.on('data', () => {});
+  for (let i = 0; i < 40; i++) {
+    await sleep(500);
+    if (await isOllamaUp()) { setTray('Ollama: running'); notifyModelsChanged({ runtime: 'ollama', ready: true }); return true; }
+    if (launchError) break;
+  }
   setTray('Axon: failed to start');
+  return false;
 }
 
 function ollama(pathname) {
