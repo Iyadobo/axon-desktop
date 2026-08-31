@@ -105,6 +105,13 @@ async function requestWithRetry(url, body, holder, options = {}) {
 // It is a denylist, not a proof: treat it as a real backstop, not a sandbox.
 const MUTATING_COMMAND = /(^|[;&|\n]|&&|\|\|)\s*(rm|rmdir|rd|del|erase|mv|move|ren|rename|cp\b.*-r|xcopy|robocopy|mkdir|md|touch|chmod|chown|attrib|icacls|sed\s+-i|git\s+(add|commit|push|reset|checkout|rm|clean|stash|merge|rebase|apply|cherry-pick)|npm\s+(install|i\b|uninstall|ci|link)|pip\s+install|pip3\s+install|yarn\s+add|yarn\s+remove|pnpm\s+(add|remove|install)|winget\s+install|choco\s+install)\b/i;
 const WRITE_REDIRECT = />>?[^&|]|(?:^|\s)tee\s/;
+// Ollama Cloud itself does not impose the old 12-round limit. Keep a generous
+// local guard for runaway loops, with 0 meaning unlimited for advanced users.
+const DEFAULT_MAX_TOOL_ROUNDS = 96;
+function maxToolRounds() {
+  const parsed = Number.parseInt(process.env.AXON_CLOUD_MAX_TOOL_ROUNDS || '', 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, 1000) : DEFAULT_MAX_TOOL_ROUNDS;
+}
 function isMutatingCommand(cmd) {
   return MUTATING_COMMAND.test(cmd) || WRITE_REDIRECT.test(cmd);
 }
@@ -127,7 +134,8 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history
   const previous = sessions.get(sid);
   const recovered = Array.isArray(history) ? history.filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string').slice(-40) : [];
   const messages = previous ? [...previous, { role: 'user', content: prompt }] : [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, ...recovered, { role: 'user', content: prompt }];
-  for (let turn = 0; turn < 12; turn++) {
+  const roundLimit = maxToolRounds();
+  for (let turn = 0; roundLimit === 0 || turn < roundLimit; turn++) {
     const response = await requestWithRetry(endpoint, { model, messages, tools: allowDelegation ? [...tools, delegateTool] : tools, stream: true }, holder, { onContent: (content) => send('chat-delta', content) });
     const message = response.message || {};
     const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
@@ -159,7 +167,7 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history
       messages.push({ role: 'tool', content: JSON.stringify(result) });
     }
   }
-  throw new Error('Axon Cloud agent stopped after 12 tool rounds. Ask it to continue with a narrower task.');
+  throw new Error(`Axon Cloud agent reached its ${roundLimit}-round safety budget. Set AXON_CLOUD_MAX_TOOL_ROUNDS=0 to uncap it.`);
 }
 
 module.exports = { runOllamaCloudAgent, requestWithRetry, cloudIdleTimeoutMs };
