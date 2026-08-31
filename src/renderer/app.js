@@ -1314,7 +1314,7 @@ function addUserTurn(text, images = [], persist = true) {
 // down to fit the storage budget) have no steps, so fall back to prose only.
 function addStoredAiTurn(text, model, steps) {
   const turn = newAiTurn(model);
-  if (turn.think) { turn.think.remove(); turn.think = null; }
+  if (turn.generation) { turn.generation.remove(); turn.generation = null; }
   turn.started = true;
   const prose = String(text || '');
   if (Array.isArray(steps) && steps.length) {
@@ -1338,18 +1338,17 @@ function addStoredAiTurn(text, model, steps) {
   addCopyBtn(turn.turnEl, prose);
 }
 function newAiTurn(model) {
-  const t = document.createElement('div'); t.className = 'turn ai';
+  const t = document.createElement('div'); t.className = 'turn ai streaming';
   const head = document.createElement('div'); head.className = 'turnhead';
   head.textContent = model || '';
   const stream = document.createElement('div'); stream.className = 'stream';
-  const think = document.createElement('span'); think.className = 'dots'; think.innerHTML = '<i></i><i></i><i></i>';
-  const generating = document.createElement('div'); generating.className = 'generating'; generating.textContent = 'Generating…';
-  stream.appendChild(think);
-  stream.appendChild(generating);
+  const generation = document.createElement('div'); generation.className = 'generation-state';
+  generation.innerHTML = '<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="generation-label">Thinking</span>';
+  stream.appendChild(generation);
   if (head.textContent) t.appendChild(head);
   t.appendChild(stream); $('log').appendChild(t);
   scrollBottom();
-  return { turnEl: t, streamEl: stream, think, generating, blocks: [], mode: null, tail: '', started: false, model };
+  return { turnEl: t, streamEl: stream, generation, blocks: [], mode: null, tail: '', started: false, model };
 }
 // One ordered block in the transcript stream: text | think | tool | result.
 // Ordered log of everything the turn produced, kept alongside the DOM so the
@@ -1375,7 +1374,7 @@ function turnText(turn) { return turn.blocks.filter((b) => b.kind === 'text').ma
 function startContent(turn) {
   if (turn.started) return;
   turn.started = true;
-  if (turn.think) { turn.think.remove(); turn.think = null; }
+  if (turn.generation) { turn.generation.remove(); turn.generation = null; }
 }
 // Append assistant prose to the current text block, opening a new one after any
 // tool/think block so prose that follows a tool call lands below it, not above.
@@ -1391,8 +1390,9 @@ function appendThink(turn, text) {
   let block = turn.blocks[turn.blocks.length - 1];
   if (!block || block.kind !== 'think') {
     block = addBlock(turn, 'think');
+    block.el.classList.add('closed');
     const head = document.createElement('button'); head.className = 'think-toggle'; head.type = 'button';
-    head.innerHTML = '<span class="caret">▾</span> <span class="think-label">Thinking</span>';
+    head.innerHTML = '<span class="caret">▸</span> <span class="think-label">Thinking process</span>';
     const body = document.createElement('div'); body.className = 'think-body';
     block.el.appendChild(head); block.el.appendChild(body);
     head.onclick = () => { block.el.classList.toggle('closed'); head.querySelector('.caret').textContent = block.el.classList.contains('closed') ? '▸' : '▾'; };
@@ -1684,9 +1684,9 @@ function grantTool(conversationId, tool, row) {
 }
 function addStep(s, turn = currentTurn()) {
   if (!turn) return;
+  if (s.type === 'thinking') { appendThink(turn, String(s.text || '')); scrollBottom(); return; }
   startContent(turn);
   turn.blocks.forEach((b) => b.el.classList.remove('active'));
-  if (s.type === 'thinking') { appendThink(turn, String(s.text || '')); scrollBottom(); return; }
   if (s.type === 'tool_call') { addToolCall(turn, s); scrollBottom(); return; }
   if (s.type === 'tool_result') { addToolResult(turn, s); scrollBottom(); return; }
 }
@@ -1751,14 +1751,15 @@ window.ollama.on('chat-delta', ({ requestId, text }) => {
 window.ollama.on('chat-step', ({ requestId, step }) => addStep(step, activeTurns.get(requestId)));
 window.ollama.on('chat-error', ({ requestId, message }) => {
   const turn = activeTurns.get(requestId); if (!turn || stopping.has(requestId)) return;
-  if (turn.think) { turn.think.remove(); turn.think = null; }
+  if (turn.generation) { turn.generation.remove(); turn.generation = null; }
+  turn.turnEl.classList.remove('streaming');
   turn.turnEl.classList.add('error');
   turn.streamEl.innerHTML = '<div class="block text">[error] ' + esc(message) + '</div>';
 });
 window.ollama.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   const turn = activeTurns.get(requestId); if (!turn) return;
-  if (turn.think) { turn.think.remove(); turn.think = null; }
-  if (turn.generating) { turn.generating.remove(); turn.generating = null; }
+  if (turn.generation) { turn.generation.remove(); turn.generation = null; }
+  turn.turnEl.classList.remove('streaming');
   turn.blocks.forEach((b) => b.el.classList.remove('active'));
   const text = turnText(turn);
   if (steered || steering.has(requestId)) {
