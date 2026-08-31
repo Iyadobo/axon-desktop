@@ -11,6 +11,7 @@ const lan = require('./lan');
 const { createConfigStore } = require('./config');
 const llamacppRuntime = require('./llamacpp-runtime');
 const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
+const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
 const { runOllamaCloudAgent } = require('./ollama-cloud-agent');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
@@ -62,9 +63,7 @@ async function listActiveModels() {
 // Release feeds stay platform-specific so a Linux client never mistakes the
 // Windows installer for its update. AXON_UPDATE_REPOSITORY remains a useful
 // single-feed override for forks and local testing.
-const UPDATE_REPOSITORY = process.env.AXON_UPDATE_REPOSITORY
-  || (process.platform === 'linux' ? (process.env.AXON_LINUX_UPDATE_REPOSITORY || 'Iyadobo/Axon-Debian') : 'Iyadobo/Axon');
-const updatePackageLabel = () => process.platform === 'linux' ? 'Debian package' : 'Windows installer';
+const UPDATE_REPOSITORY = updateRepository(process.platform);
 
 let tray = null, win = null, ollamaProc = null, browserPanel = null, browserBridge = null, browserBridgeEndpoint = '', browserBridgeToken = '', isQuitting = false;
 let updateCheckTimer = null, announcedUpdateVersion = null;
@@ -1165,12 +1164,12 @@ async function checkForAppUpdate({ force = false } = {}) {
   let release; try { release = JSON.parse(body); } catch { throw new Error('Update server sent invalid release metadata.'); }
   const version = String(release.tag_name || '').replace(/^v/i, '');
   const assets = Array.isArray(release.assets) ? release.assets : [];
-  const installer = assets.find((asset) => releaseInstallerNames(version).includes(asset?.name));
+  const installer = assets.find((asset) => releaseInstallerNames(process.platform, version).includes(asset?.name));
   const checksum = installer && assets.find((asset) => asset?.name === `${installer.name}.sha256`);
   if (!version || !installer || !checksum) throw new Error('Latest Axon release is incomplete.');
   const available = compareVersions(version, current) > 0;
   availableRelease = available ? { version, installer: installer.browser_download_url, checksum: checksum.browser_download_url, name: installer.name, bytes: Number(installer.size) || 0 } : null;
-  cachedUpdateStatus = { current, version, available, bytes: Number(installer.size) || 0, packageLabel: updatePackageLabel(), repository: UPDATE_REPOSITORY };
+  cachedUpdateStatus = { current, version, available, bytes: Number(installer.size) || 0, packageLabel: updatePackageLabel(process.platform), repository: UPDATE_REPOSITORY };
   cachedUpdateAt = Date.now();
   return cachedUpdateStatus;
   })();
@@ -1258,12 +1257,6 @@ function startLanDiscovery() {
   });
 }
 function safeInstallerName(name) { return path.basename(String(name || '')).replace(/[^a-zA-Z0-9._-]/g, '_'); }
-function installerExtensions() { return process.platform === 'win32' ? ['exe'] : process.platform === 'linux' ? ['AppImage', 'deb'] : []; }
-function releaseInstallerNames(version) {
-  if (process.platform === 'win32') return [`Axon-Setup-${version}.exe`];
-  if (process.platform === 'linux') return [`Axon_${version}_amd64.deb`, `Axon-${version}.AppImage`];
-  return [];
-}
 async function hashFile(file) {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash('sha256'); const stream = fs.createReadStream(file);
@@ -1272,7 +1265,7 @@ async function hashFile(file) {
   });
 }
 async function selectInstaller() {
-  const extensions = installerExtensions();
+  const extensions = installerExtensions(process.platform);
   if (!extensions.length) throw new Error('Installer sharing is not supported on this platform yet.');
   const picked = await dialog.showOpenDialog(win, { title: 'Choose the newer Axon installer', properties: ['openFile'], filters: [{ name: 'Axon installer', extensions }] });
   if (picked.canceled || !picked.filePaths[0]) return null;
@@ -1490,12 +1483,9 @@ ipcMain.handle('update-accept-offer', (_e, id, approved) => {
 ipcMain.handle('update-open-installer', async (_e, file) => {
   const dir = path.join(app.getPath('userData'), 'updates'); const resolved = path.resolve(String(file || ''));
   const extension = path.extname(resolved).replace(/^\./, '');
-  if (!resolved.startsWith(path.resolve(dir) + path.sep) || !installerExtensions().some((item) => item.toLowerCase() === extension.toLowerCase()) || !fs.existsSync(resolved)) return { error: 'Verified installer not found.' };
+  if (!resolved.startsWith(path.resolve(dir) + path.sep) || !installerExtensions(process.platform).some((item) => item.toLowerCase() === extension.toLowerCase()) || !fs.existsSync(resolved)) return { error: 'Verified installer not found.' };
   try {
-    if (process.platform === 'linux') {
-      if (extension.toLowerCase() === 'appimage') fs.chmodSync(resolved, 0o755);
-      const error = await shell.openPath(resolved); return error ? { error: 'Could not open the verified installer: ' + error } : { ok: true };
-    }
+    if (process.platform === 'linux') { const error = await shell.openPath(resolved); return error ? { error: 'Could not open the verified Debian package: ' + error } : { ok: true }; }
     const installer = spawn(resolved, [], { detached: true, stdio: 'ignore', windowsHide: false });
     installer.unref();
     return { ok: true };

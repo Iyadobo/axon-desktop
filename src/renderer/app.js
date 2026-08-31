@@ -2221,7 +2221,7 @@ $('updateToastDismiss').onclick = () => $('updateToast').classList.remove('show'
 window.ollama.on('app-update-progress', (p) => {
   const status = 'Downloading Axon update: ' + Math.min(100, Math.round(p.received / p.total * 100)) + '%';
   $('maintenanceInfo').textContent = status;
-  if ($('updateModal').classList.contains('show')) $('updateBody').textContent = status + '\n\nVerifying the installer before Windows opens it.';
+  if ($('updateModal').classList.contains('show')) $('updateBody').textContent = status + '\n\nVerifying the ' + (availableAppUpdate?.packageLabel || 'installer') + ' before Axon opens it.';
 });
 $('depsBtn').onclick = async () => {
   $('depsBtn').disabled = true; $('maintenanceInfo').textContent = 'Downloading missing dependencies…';

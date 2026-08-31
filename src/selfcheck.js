@@ -6,6 +6,7 @@ const path = require('path');
 const { browserInvocation } = require('./browser-events');
 const { createConfigStore } = require('./config');
 const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
+const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
 
 let passed = 0, failed = 0;
 const ok = (name, condition) => {
@@ -17,6 +18,8 @@ ok('browser open normalizes a URL', browserInvocation('browser_open', { url: 'ht
 ok('browser navigation aliases normalize', browserInvocation('browser_navigate', { href: 'https://example.com/next' })?.url === 'https://example.com/next');
 ok('browser search opens a query', browserInvocation('web_search', { query: 'Axon agent browser' })?.url === 'https://www.google.com/search?q=Axon%20agent%20browser');
 ok('non-browser tools leave the browser alone', browserInvocation('Read', { file_path: 'notes.md' }) === null);
+ok('Windows updates use the Windows installer feed', updateRepository('win32', {}) === 'Iyadobo/Axon' && releaseInstallerNames('win32', '1.2.3').join() === 'Axon-Setup-1.2.3.exe');
+ok('Linux updates use only the Debian package feed', updateRepository('linux', {}) === 'Iyadobo/Axon-Debian' && updatePackageLabel('linux') === 'Debian package' && installerExtensions('linux').join() === 'deb' && releaseInstallerNames('linux', '1.2.3').join() === 'Axon_1.2.3_amd64.deb');
 {
   const textOnly = modelCapabilityReport({ model: 'qwen3:4b', productMode: 'agent', advertisedVision: false });
   const vision = modelCapabilityReport({ model: 'llava', productMode: 'code', advertisedVision: true });
