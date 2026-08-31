@@ -1315,6 +1315,7 @@ function addUserTurn(text, images = [], persist = true) {
 function addStoredAiTurn(text, model, steps) {
   const turn = newAiTurn(model);
   if (turn.generation) { turn.generation.remove(); turn.generation = null; }
+  turn.turnEl.classList.remove('streaming');
   turn.started = true;
   const prose = String(text || '');
   if (Array.isArray(steps) && steps.length) {
