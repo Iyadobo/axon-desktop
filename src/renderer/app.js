@@ -44,81 +44,20 @@ function syncTopNav(viewName) {
 }
 function switchView(viewName) {
   if (viewName === 'settings') { openSettings(); return; }
+  if (!['chat', 'projects', 'models'].includes(viewName)) viewName = 'chat';
   activeView = viewName;
   syncTopNav(viewName);
-  $('app')?.classList.toggle('design-active', viewName === 'design');
   document.querySelectorAll('.view').forEach((view) => {
     view.classList.toggle('active', view.id === 'view-' + viewName);
   });
   $('chatSidebar')?.classList.add('active');
   if (viewName === 'projects') renderProjectsPage();
   if (viewName === 'models') renderModelsPage();
-  if (viewName === 'design') initDesignWorkspace();
-  const recentLabel = viewName === 'design' ? 'Design projects' : workspaceGroup() === 'work' ? 'Recent work' : workspaceGroup() === 'code' ? 'Recent code' : 'Recent chats';
+  const recentLabel = workspaceGroup() === 'work' ? 'Recent work' : workspaceGroup() === 'code' ? 'Recent code' : 'Recent chats';
   if ($('recentPopupToggle')) $('recentPopupToggle').textContent = recentLabel;
   saveState('oactiveView', viewName);
 }
 
-// ---- Axon Design ------------------------------------------------------------
-// Start honest and empty. Directions are derived from the user's prompt only;
-// no sample product, fake screens, component counts, or invented project data.
-let designDirections = [];
-let selectedDesignDirection = -1;
-let designPromptText = '';
-let designInitialized = false;
-let designToastTimer = null;
-
-function renderDesignDirections() {
-  const host = $('designDirections');
-  if (!host) return;
-  host.replaceChildren(...designDirections.map((direction, index) => {
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'direction-card' + (index === selectedDesignDirection ? ' selected' : '');
-    card.setAttribute('aria-pressed', String(index === selectedDesignDirection));
-    card.innerHTML = `<span class="direction-index">0${index + 1}</span><span class="direction-copy"><h3>${esc(direction.name)}</h3><p>${esc(direction.summary)}</p></span><span class="direction-arrow" aria-hidden="true">→</span>`;
-    card.onclick = () => selectDesignDirection(index);
-    return card;
-  }));
-}
-
-function resetDesignWorkspace() {
-  designDirections = [];
-  selectedDesignDirection = -1;
-  designPromptText = '';
-  $('designPrompt').value = '';
-  $('designBriefText').textContent = '';
-  $('designError').textContent = '';
-  $('designError').hidden = true;
-  $('designError').dataset.tone = '';
-  $('designEmpty').hidden = false;
-  $('designResults').hidden = true;
-  $('designSelectionActions').hidden = true;
-  renderDesignDirections();
-}
-
-function selectDesignDirection(index) {
-  selectedDesignDirection = index;
-  renderDesignDirections();
-  const direction = designDirections[index];
-  $('designSelectionLabel').textContent = `${direction.name} selected`;
-  $('designSelectionActions').hidden = false;
-}
-
-function showDesignToast(message) {
-  const toast = $('designToast');
-  if (!toast) return;
-  clearTimeout(designToastTimer);
-  toast.textContent = message;
-  toast.classList.add('show');
-  designToastTimer = setTimeout(() => toast.classList.remove('show'), 2400);
-}
-
-function initDesignWorkspace() {
-  if (designInitialized) return;
-  designInitialized = true;
-  resetDesignWorkspace();
-}
 function workspaceGroup(mode = settings?.productMode) { return mode === 'agent' ? 'work' : mode === 'code' ? 'code' : 'chat'; }
 function greetingForTime() {
   const hour = new Date().getHours();
@@ -222,7 +161,7 @@ function syncSwarmLimit() {
 function openSwarm() {
   swarmMode = true; activeId = null; activeSwarmId = null; swarmLogOpen = false;
   $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = true; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
-  showHomeView(); $('greet').textContent = 'Give the swarm one outcome.'; document.querySelector('#home .sub')?.replaceChildren('Axon handles the roles, parallel work, and final synthesis.'); document.querySelector('.home-hint')?.replaceChildren('Describe the outcome and launch. Open Tune only when you want different models or more workers.');
+  showHomeView(); $('greet').textContent = 'Give the swarm one outcome.'; document.querySelector('#home .sub')?.replaceChildren('Axon splits the work and returns one answer.'); document.querySelector('.home-hint')?.replaceChildren('Describe the result you want. Swarm handles the rest.');
   const chips = [...document.querySelectorAll('#chips .chip')]; ['Explore approaches', 'Review a codebase', 'Research a topic', 'Compare options'].forEach((label, index) => { if (chips[index]) chips[index].textContent = label; });
   syncSwarmRoles(); $('prompt').focus();
 }
@@ -722,12 +661,19 @@ function mergeModels(local, cloud) {
   }
   return merged;
 }
+function describeModelInventoryError(value) {
+  const message = String(value || 'Ollama did not respond.');
+  const missingStore = message.match(/mkdir\s+([A-Za-z]:\\[^:]+):\s+The system cannot find the path specified/i);
+  if (missingStore) return `Ollama's model storage at ${missingStore[1]} is unavailable. Reconnect that drive or update OLLAMA_MODELS, then retry.`;
+  return message;
+}
 async function loadModels(loader = () => window.ollama.listModels()) {
   modelInventoryState = 'loading';
   modelInventoryError = '';
   setLoading('Checking local models…');
   try {
     const data = await loader();
+    if (data?.error) throw new Error(describeModelInventoryError(data.error));
     const localModels = Array.isArray(data?.models) ? data.models : [];
     localModelCatalogue = localModels.map((model) => ({
       ...model,
@@ -739,7 +685,7 @@ async function loadModels(loader = () => window.ollama.listModels()) {
     return true;
   } catch (error) {
     modelInventoryState = 'error';
-    modelInventoryError = error?.message || 'Ollama did not respond.';
+    modelInventoryError = describeModelInventoryError(error?.message);
     setStatus(false, 'offline');
     if ($('modelPicker')?.classList.contains('show')) renderPicker();
     return false;
@@ -962,7 +908,7 @@ function renderPicker() {
     message.textContent = modelCatalogue.length
       ? 'No models match this search.'
       : modelInventoryState === 'error'
-        ? `Ollama is not responding. ${modelInventoryError}`
+        ? modelInventoryError
         : 'No Ollama models are available on this device yet.';
     empty.appendChild(message);
     if (!modelCatalogue.length) {
@@ -2094,60 +2040,6 @@ document.addEventListener('keydown', (e) => {
 for (const btn of document.querySelectorAll('.top-nav-btn[data-view]')) {
   btn.onclick = () => switchView(btn.dataset.view);
 }
-$('designNewProject').onclick = () => { resetDesignWorkspace(); $('designPrompt').focus(); };
-$('designStartOver').onclick = () => { resetDesignWorkspace(); $('designPrompt').focus(); };
-$('designToCode').onclick = () => {
-  const direction = designDirections[selectedDesignDirection];
-  if (!direction) return;
-  setWorkspace('code');
-  $('prompt').value = `Implement this Axon Design brief: “${designPromptText}”\n\nSelected direction — ${direction.name}: ${direction.summary}\n\nUse only content supported by the brief. Do not invent premade screens, metrics, or sample business data.`;
-  autosize();
-  saveState('odraft', $('prompt').value);
-  $('prompt').focus();
-};
-$('designPromptForm').onsubmit = async (event) => {
-  event.preventDefault();
-  const instruction = $('designPrompt').value.trim();
-  if (!instruction) { $('designPrompt').focus(); showDesignToast('Describe what you want to design.'); return; }
-  const model = $('model').value;
-  if (!model) { $('designError').textContent = 'Choose a model in Chat before generating a design.'; $('designError').hidden = false; return; }
-  const button = $('designGenerate');
-  button.disabled = true;
-  button.textContent = 'Designing…';
-  $('designPromptForm').setAttribute('aria-busy', 'true');
-  $('designError').textContent = '';
-  $('designError').hidden = true;
-  $('designError').dataset.tone = '';
-  try {
-    const result = await window.ollama.designGenerate({ prompt: instruction, model, provider: currentProviderProfile() });
-    if (!result?.ok) throw new Error(result?.error || 'Axon could not generate design directions.');
-    if (result.status === 'needs_context') {
-      $('designError').textContent = result.question || 'What is the main task this product should help someone complete?';
-      $('designError').dataset.tone = 'question';
-      $('designError').hidden = false;
-      $('designPrompt').focus();
-      return;
-    }
-    if (result.status !== 'ready' || !Array.isArray(result.directions)) throw new Error('Axon could not read the generated design directions.');
-    designPromptText = instruction.replace(/\s+/g, ' ').slice(0, 500);
-    designDirections = result.directions;
-    selectedDesignDirection = -1;
-    $('designBriefText').textContent = designPromptText;
-    $('designPrompt').value = '';
-    $('designEmpty').hidden = true;
-    $('designResults').hidden = false;
-    $('designSelectionActions').hidden = true;
-    renderDesignDirections();
-  } catch (error) {
-    $('designError').textContent = error?.message || 'Axon could not generate design directions.';
-    $('designError').dataset.tone = 'error';
-    $('designError').hidden = false;
-  } finally {
-    button.disabled = false;
-    button.textContent = 'Create directions';
-    $('designPromptForm').removeAttribute('aria-busy');
-  }
-};
 $('projectsPageAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('settingsClose').onclick = closeSettings;
 $('settings').addEventListener('click', (e) => { if (e.target.id === 'settings') closeSettings(); });
@@ -2566,7 +2458,7 @@ function refreshGridColor() {
   refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
   if ($('lanServerChk').checked) window.ollama.lanServer(true);
   // Restore last active view
-  const savedView = persisted.oactiveView || 'chat';
+  const savedView = ['chat', 'projects', 'models'].includes(persisted.oactiveView) ? persisted.oactiveView : 'chat';
   if (savedView !== 'chat') switchView(savedView);
   setLoading('Ready', true);
   // Open the workspace first. LAN discovery and local model inventory can be
