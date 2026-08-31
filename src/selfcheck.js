@@ -7,6 +7,7 @@ const { browserInvocation } = require('./browser-events');
 const { createConfigStore } = require('./config');
 const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
 const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
+const { requestWithRetry, cloudIdleTimeoutMs } = require('./ollama-cloud-agent');
 
 let passed = 0, failed = 0;
 const ok = (name, condition) => {
@@ -45,6 +46,34 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
 })();
 
 (async () => {
+  await new Promise((resolve, reject) => {
+    let requests = 0;
+    const server = http.createServer((req, res) => {
+      req.resume(); req.on('end', () => {
+        requests++;
+        if (requests === 1) { res.writeHead(503, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: 'busy' })); return; }
+        if (requests === 3) return;
+        res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+        res.write(`${JSON.stringify({ message: { content: 'hello ' }, done: false })}\n`);
+        setTimeout(() => res.end(`${JSON.stringify({ message: { content: 'world' }, done: true })}\n`), 20);
+      });
+    });
+    server.listen(0, '127.0.0.1', async () => {
+      try {
+        const streamed = [];
+        const result = await requestWithRetry(`http://127.0.0.1:${server.address().port}`, { model: 'selfcheck', stream: true }, {}, { idleTimeoutMs: 1000, retryDelayMs: 1, onContent: (part) => streamed.push(part) });
+        ok('cloud chat streams long work and retries one gateway failure', requests === 2 && result.message.content === 'hello world' && streamed.join('') === 'hello world');
+        ok('cloud idle timeout is configurable and safely bounded', cloudIdleTimeoutMs('1000') === 30000 && cloudIdleTimeoutMs('99999999') === 1800000);
+        let timeoutError = null;
+        try { await requestWithRetry(`http://127.0.0.1:${server.address().port}`, { model: 'timeout-selfcheck', stream: true }, {}, { idleTimeoutMs: 25, retryDelayMs: 1 }); }
+        catch (error) { timeoutError = error; }
+        ok('cloud timeout never duplicates an in-flight generation', requests === 3 && /was quiet/.test(timeoutError?.message || ''));
+      } catch (error) { console.error(error); failed++; }
+      finally { server.close(resolve); }
+    });
+    server.on('error', reject);
+  });
+
   await new Promise((resolve) => {
     const req = http.get('http://127.0.0.1:11434/api/tags', (res) => { res.resume(); console.log(`  ℹ ollama /api/tags -> ${res.statusCode}`); resolve(); });
     req.on('error', () => { console.log('  ℹ ollama not reachable (start it to use Axon Chat)'); resolve(); });
