@@ -1794,17 +1794,14 @@ async function showHelp() {
   showChatView();
   const lines = [
     'Axon commands',
-    '  /new · /clear  — start a fresh chat',
-    '  /model <name>  — switch model (prefix match)',
-    '  /help          — this list',
-    '  /compact       — start a fresh context (use /clear)',
+    ...CORE_COMMANDS.map((command) => `  /${command.name}${command.args ? ' ' + command.args : ''}  — ${command.description}`),
     '',
     'Modes:',
     '  Chat  — direct model conversation',
     '  Code  — workspace work through Axon Terminal',
     '  Agent — can delegate scoped work through Axon Terminal',
     '',
-    'Anything else /foo is sent to the model verbatim. Attach files with the paperclip or drag-drop.',
+    'Commands marked Code/Work become explicit tasks for the selected harness. Attach files with the paperclip or drag-drop.',
   ];
   addSysNote(lines.join('\n'));
   scrollBottom();
@@ -1854,10 +1851,7 @@ async function send() {
   if (swarmMode) { const entry = takeComposerEntry(); if (entry) await launchSwarm(entry); return; }
 
   // built-in REPL commands (handled app-side; they don't exist in headless -p)
-  if (text === '/clear' || text === '/new') { clearInput(); clearAttachments(); newChat(); addSysNote('Started a new chat.'); showChatView(); scrollBottom(); return; }
-  if (text === '/help' || text.startsWith('/help ')) { clearInput(); showHelp(); return; }
-  if (text === '/compact') { clearInput(); showChatView(); addSysNote('/compact isn’t available in headless mode — use /clear to start a fresh session.'); scrollBottom(); return; }
-  if (text.startsWith('/model ')) { clearInput(); setModelByName(text.slice(7).trim()); return; }
+  if (runSlashCommand(text)) return;
 
   const entry = takeComposerEntry();
   startMessage(entry);
@@ -1897,12 +1891,85 @@ async function startMessage(entry) {
 
 // ---- slash-command autocomplete -------------------------------------------
 const CORE_COMMANDS = [
-  { name: 'new', description: 'Start a fresh chat', tag: 'Axon' },
-  { name: 'clear', description: 'Start a fresh chat', tag: 'Axon' },
-  { name: 'model', description: 'Switch the active model', tag: 'Axon' },
+  { name: 'model', args: '<name>', description: 'Choose a model', tag: 'Codex' },
+  { name: 'permissions', description: 'Open execution permissions', tag: 'Codex' },
+  { name: 'review', args: '[focus]', description: 'Review current changes for issues', tag: 'Code' },
+  { name: 'diff', description: 'Show the current git diff', tag: 'Code' },
+  { name: 'init', description: 'Create or update AGENTS.md instructions', tag: 'Code' },
+  { name: 'plan', args: '[task]', description: 'Plan work before editing', tag: 'Work' },
+  { name: 'goal', args: '[goal]', description: 'Set or view the task goal', tag: 'Work' },
+  { name: 'skills', description: 'List relevant skills for this task', tag: 'Code' },
+  { name: 'mcp', args: '[verbose]', description: 'List configured MCP tools', tag: 'Code' },
+  { name: 'pwd', description: 'Show the current workspace path', tag: 'Axon' },
+  { name: 'cwd', description: 'Alias for /pwd', tag: 'Axon' },
+  { name: 'status', description: 'Show session, model, and permission status', tag: 'Axon' },
+  { name: 'compact', description: 'Start a fresh model context', tag: 'Axon' },
+  { name: 'new', description: 'Start a new chat', tag: 'Axon' },
+  { name: 'clear', description: 'Clear the current chat', tag: 'Axon' },
   { name: 'help', description: 'Show commands and shortcuts', tag: 'Axon' },
-  { name: 'compact', description: 'Start fresh (headless fallback)', tag: 'Axon' },
+  { name: 'export', description: 'Copy this conversation as Markdown', tag: 'Axon' },
+  { name: 'rename', args: '<title>', description: 'Rename this conversation', tag: 'Axon' },
+  { name: 'agents', description: 'Open all active subagents', tag: 'Axon' },
+  { name: 'subagents', description: 'Open this chat’s subagents', tag: 'Axon' },
+  { name: 'mention', args: '<file>', description: 'Add a file to the task context', tag: 'Code' },
 ];
+const COMMAND_PROMPTS = {
+  review: (args) => `Review the current workspace changes${args ? `, focusing on ${args}` : ''}. Inspect the real diff and report concrete issues, risks, and verification steps.`,
+  diff: () => 'Show the current git diff, including untracked files where possible, and explain the meaningful changes.',
+  init: () => 'Create or update an AGENTS.md file for this workspace. Inspect the repository first and preserve existing instructions.',
+  plan: (args) => `Make a concise implementation plan${args ? ` for: ${args}` : ' for the current task'}. Do not edit files until the plan is clear.`,
+  goal: (args) => args ? `Treat this as the active task goal: ${args}. Restate the goal, constraints, and next verified step.` : 'State the current task goal, constraints, and next verified step.',
+  skills: () => 'Inspect the available project skills/instructions and list only the ones relevant to this task, with when to use them.',
+  mcp: (args) => `List the configured MCP tools${args ? ` in ${args} detail` : ''}, their purpose, and which are available in this session.`,
+  mention: (args) => `Add the workspace file ${args || '(missing file path)'} to the task context. Inspect it and summarize the relevant parts before proceeding.`,
+};
+function conversationMarkdown(conv) {
+  if (!conv) return '';
+  return (conv.turns || []).map((turn) => `## ${turn.role === 'user' ? 'You' : 'Axon'}\n\n${turn.content || ''}`).join('\n\n');
+}
+function runSlashCommand(input) {
+  const match = String(input || '').match(/^\/([A-Za-z0-9_-]+)(?:\s+([\s\S]*))?$/);
+  if (!match) return false;
+  const args = (match[2] || '').trim();
+  const command = match[1].toLowerCase() === 'cwd' ? 'pwd' : match[1].toLowerCase();
+  if (!CORE_COMMANDS.some((item) => item.name === command)) return false;
+  clearInput(); clearAttachments();
+  if (command === 'new' || command === 'clear') { newChat(); addSysNote('Started a new chat.'); showChatView(); scrollBottom(); return true; }
+  if (command === 'help') { showHelp(); return true; }
+  if (command === 'model') { args ? setModelByName(args) : openModelPicker(); return true; }
+  if (command === 'permissions') { openSettings(); return true; }
+  if (command === 'agents' || command === 'subagents') { setSubagentsOpen(true); return true; }
+  if (command === 'pwd') { showChatView(); addSysNote(projectCwd() || 'No workspace selected.'); scrollBottom(); return true; }
+  if (command === 'status') {
+    const conv = activeId && conversations.find((item) => item.id === activeId);
+    showChatView(); addSysNote(`Mode: ${settings.productMode}\nModel: ${$('model').value || 'none'}\nPermissions: ${settings.permissionMode}\nWorkspace: ${projectCwd() || 'none'}\nSession: ${conv?.sessionId ? 'resumable' : 'new context'}`); scrollBottom(); return true;
+  }
+  if (command === 'compact') {
+    const conv = activeId && conversations.find((item) => item.id === activeId);
+    if (conv) { conv.sessionId = null; saveConvs(); }
+    showChatView(); addSysNote('Started a fresh model context. The visible transcript is preserved.'); scrollBottom(); return true;
+  }
+  if (command === 'export') {
+    const conv = activeId && conversations.find((item) => item.id === activeId);
+    const markdown = conversationMarkdown(conv);
+    if (!markdown) { addSysNote('There is no conversation to export yet.'); return true; }
+    navigator.clipboard.writeText(markdown).then(() => addSysNote('Conversation copied as Markdown.')).catch(() => addSysNote('Could not copy the conversation to the clipboard.')); return true;
+  }
+  if (command === 'rename') {
+    const conv = activeId && conversations.find((item) => item.id === activeId);
+    if (!conv || !args) { addSysNote('Usage: /rename <title>'); return true; }
+    conv.title = args.slice(0, 120); conv.updatedAt = Date.now(); saveConvs(); renderRecents(); addSysNote('Conversation renamed.'); return true;
+  }
+  const promptFactory = COMMAND_PROMPTS[command];
+  if (promptFactory) {
+    const workspaceCommands = ['review', 'diff', 'init', 'plan', 'goal', 'skills', 'mcp', 'mention'];
+    if (settings.productMode === 'chat' && workspaceCommands.includes(command)) { addSysNote(`/${command} needs Code or Work mode so Axon can use the workspace harness.`); return true; }
+    const prompt = promptFactory(args);
+    startMessage({ text: prompt, combined: prompt, images: [], productMode: settings.productMode, providerProfileId: currentProviderProfile()?.id, model: currentProviderProfile()?.model || $('model').value });
+    return true;
+  }
+  return false;
+}
 let allCommands = CORE_COMMANDS;
 let cmdOpen = false, cmdItems = [], cmdSel = 0;
 function showCoreCommands(prefix) {
