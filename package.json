@@ -5,7 +5,7 @@
     "name": "Axon contributors",
     "email": "opensource@axon.local"
   },
-  "description": "Axon is a local-first Chat, Code, and Agent workspace powered by Ollama and Axon Terminal",
+  "description": "Axon is a local-first Chat, Code, and Work workspace powered by Ollama and official agent CLIs",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -51,7 +51,7 @@
       "artifactName": "Axon_${version}_amd64.${ext}",
       "maintainer": "Axon contributors",
       "synopsis": "Local-first AI workspace",
-      "description": "Axon is a local-first Chat, Code, and Work workspace powered by local models and its bundled Axon Terminal."
+      "description": "Axon is a local-first Chat, Code, and Work workspace powered by local models and official agent CLIs."
     },
     "nsis": {
       "oneClick": false,

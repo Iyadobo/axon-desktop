@@ -1,4 +1,4 @@
-// Axon's desktop workspace: direct chat plus Axon Terminal-backed Code and Agent modes.
+// Axon's desktop workspace: direct chat plus official-CLI Code and Work modes.
 // Style: "Relay" modernist (light/dark, sidebar, surface composer card). Features:
 // slash-command autocomplete, system prompt + appearance settings, file attachments,
 // folder-workspace projects, markdown rendering, copy, per-turn model labels.
@@ -70,8 +70,8 @@ function syncWorkspaceShell() {
   for (const [name, tab] of Object.entries(tabs)) { const active = name === workspace; tab.classList.toggle('active', active); tab.setAttribute('aria-selected', String(active)); }
   $('side')?.classList.toggle('workspace-work', workspace === 'work');
   $('workspaceNote').textContent = workspace === 'work'
-    ? 'Autonomous tasks · browser and delegation'
-    : workspace === 'code' ? 'Repository work · Axon Terminal tools' : 'Direct conversation · no tools';
+    ? 'Agent workflows'
+    : workspace === 'code' ? 'Repository tools' : 'Conversation';
   $('newChatLabel').textContent = workspace === 'work' ? 'New task' : workspace === 'code' ? 'New code session' : 'New chat';
   $('newchat').setAttribute('aria-label', $('newChatLabel').textContent);
   $('recents-label').textContent = workspace === 'work' ? 'Recent work' : workspace === 'code' ? 'Recent code' : 'Recent chats';
@@ -79,7 +79,7 @@ function syncWorkspaceShell() {
   const copy = workspace === 'work'
     ? { greet: 'What should Axon take on?', sub: 'Describe the outcome. Axon can plan, browse, and carry the task through.' }
     : workspace === 'code'
-      ? { greet: 'What are we building?', sub: 'Work directly in a repository with Axon Terminal at your side.' }
+      ? { greet: 'What are we building?', sub: 'Work directly in a repository with the official CLI at your side.' }
       : { greet: greetingForTime(), sub: 'What are we working on?' };
   if ($('greet')) $('greet').textContent = copy.greet;
   document.querySelector('#home .sub')?.replaceChildren(copy.sub);
@@ -87,7 +87,7 @@ function syncWorkspaceShell() {
   if (hint) hint.textContent = workspace === 'work'
     ? 'Work plans multi-step tasks, opens the browser when it is useful, and can delegate focused sub-tasks.'
     : workspace === 'code'
-      ? 'Code works in the selected repository through Axon Terminal. Browser research stays focused on the task.'
+      ? 'Code works in the selected repository through the official CLI. Browser research stays focused on the task.'
       : 'Chat is a direct conversation. It does not reach into a workspace, browser, or automated task.';
   const chips = [...document.querySelectorAll('#chips .chip')];
   const labels = workspace === 'work' ? ['Research a topic', 'Plan a task', 'Compare options', 'Run a workflow']
@@ -1443,7 +1443,7 @@ function addSysNote(text) {
 // expander. Unknown tools fall back to their first short string argument.
 const baseName = (p) => String(p || '').split(/[\\/]/).filter(Boolean).pop() || String(p || '');
 const hostOf = (u) => { try { return new URL(String(u)).host; } catch { return String(u || ''); } };
-// Axon Terminal tools may use snake_case or camelCase arguments, so accept both.
+// Cloud compatibility tools may use snake_case or camelCase arguments, so accept both.
 const pick = (a, ...keys) => { for (const k of keys) if (a[k] != null && a[k] !== '') return a[k]; return undefined; };
 const TOOL_SUMMARY = {
   read: (a) => baseName(pick(a, 'file_path', 'filePath')) + (a.offset ? ' · from line ' + a.offset : ''),
@@ -1499,7 +1499,8 @@ function providerModelChoices() {
   const profile = currentProviderProfile();
   if (profile?.kind === 'ollama') return localModelCatalogue;
   const name = String(profile?.model || '').trim();
-  return name ? [{ name, source: 'api', details: { parameter_size: profile.kind === 'responses' ? 'Responses API' : 'API route' } }] : [];
+  const source = profile?.kind === 'codex-cli' ? 'Codex CLI' : profile?.kind === 'claude-cli' ? 'Claude Code' : profile?.kind === 'responses' ? 'Responses API' : 'API route';
+  return name ? [{ name, source: 'api', details: { parameter_size: source } }] : [];
 }
 function applyProviderModelChoices() {
   const profile = currentProviderProfile(); const sel = $('model'); if (!sel) return;
@@ -1532,6 +1533,10 @@ function renderProviderProfiles() {
   $('providerNew')?.classList.toggle('active', profile.kind !== 'ollama');
   $('providerStatus').textContent = profile.kind === 'ollama'
     ? 'Using Ollama. Local models and signed-in Ollama cloud models are available without an Axon API key.'
+    : profile.kind === 'codex-cli'
+      ? 'Using your signed-in official Codex CLI. Axon does not inject its own Codex config or tools.'
+      : profile.kind === 'claude-cli'
+        ? 'Using your signed-in official Claude Code. Axon does not store a Claude API key.'
     : (profile.credentialId ? `${profile.name} is active. Its API key is stored securely.` : `${profile.name} is selected. Add its API key below to finish setup.`);
   if ($('providerApiSetup')) $('providerApiSetup').open = profile.kind !== 'ollama';
 }
@@ -1560,6 +1565,8 @@ const PROVIDER_PRESETS = {
   custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
   openai: { name: 'OpenAI', kind: 'responses', endpoint: 'https://api.openai.com/v1', model: '' },
   openrouter: { name: 'OpenRouter', kind: 'openai-compatible', endpoint: 'https://openrouter.ai/api/v1', model: '' },
+  codex: { name: 'Codex CLI', kind: 'codex-cli', endpoint: '', model: '' },
+  claude: { name: 'Claude Code', kind: 'claude-cli', endpoint: '', model: '' },
 };
 function fillProviderFields(profile) {
   $('providerName').value = profile.name || '';
@@ -1606,7 +1613,7 @@ async function saveProviderProfile() {
     model: $('providerModel').value.trim(),
     credentialId: existing?.credentialId || '',
   };
-  if (profile.kind !== 'ollama' && !/^https?:\/\//i.test(profile.endpoint)) { $('providerStatus').textContent = 'Enter a full http:// or https:// API endpoint.'; return; }
+  if (['openai-compatible', 'responses'].includes(profile.kind) && !/^https?:\/\//i.test(profile.endpoint)) { $('providerStatus').textContent = 'Enter a full http:// or https:// API endpoint.'; return; }
   try {
     const saved = await window.ollama.providerSave(profile, $('providerApiKey').value);
     const index = settings.providerProfiles.findIndex((item) => item.id === saved.id);
@@ -1798,8 +1805,8 @@ async function showHelp() {
     '',
     'Modes:',
     '  Chat  — direct model conversation',
-    '  Code  — workspace work through Axon Terminal',
-    '  Agent — can delegate scoped work through Axon Terminal',
+    '  Code  — workspace work through the official CLI',
+    '  Agent — can delegate scoped work through the official CLI',
     '',
     'Commands marked Code/Work become explicit tasks for the selected harness. Attach files with the paperclip or drag-drop.',
   ];
@@ -2133,7 +2140,7 @@ function syncProductMode() {
   const labels = { chat: 'Chat', code: 'Code', agent: 'Work' };
   const descriptions = {
     chat: 'Chat sends a direct conversation to the selected provider. No workspace tools are exposed.',
-    code: 'Code works directly in the selected repository through Axon Terminal. It can use the browser for focused research, but does not delegate.',
+    code: 'Code works directly in the selected repository through the official CLI. It can use the browser for focused research, but does not delegate.',
     agent: 'Work executes multi-step tasks toward an outcome. It can browse, use the selected workspace, and delegate concrete independent work.',
   };
   $('productModeSel').value = mode;
@@ -2214,8 +2221,6 @@ $('workWorkspace').onclick = () => setWorkspace('work');
 $('recents-label').onclick = openSettings;
 $('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
 document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
-$('localSettings').setAttribute('aria-label', 'Open settings');
-$('localSettings').onclick = openSettings;
 $('swarmLaunch').onclick = openSwarm;
 $('swarmCount').oninput = syncSwarmLimit;
 $('swarmSentryModel').onchange = () => { if (swarmSelectableModels().length <= 1) $('swarmWorkerModel').value = $('swarmSentryModel').value; };
@@ -2263,7 +2268,7 @@ $('projInstr').addEventListener('input', () => { const p = activeProject(); if (
 function describeDependency(name, value) { return name + ': ' + (value ? value.replace(/\s+/g, ' ').slice(0, 48) : 'missing'); }
 async function refreshAppInfo() {
   const info = await window.ollama.appInfo();
-  $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Axon Terminal', info.dependencies.axon), describeDependency('Node', info.dependencies.node)].join(' · ');
+  $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Codex CLI', info.dependencies.codex), describeDependency('Claude Code', info.dependencies.claude), describeDependency('Node', info.dependencies.node)].join(' · ');
 }
 let availableAppUpdate = null;
 function showUpdateToast(update) {
