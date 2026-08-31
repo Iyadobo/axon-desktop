@@ -1928,7 +1928,9 @@ function conversationMarkdown(conv) {
   return (conv.turns || []).map((turn) => `## ${turn.role === 'user' ? 'You' : 'Axon'}\n\n${turn.content || ''}`).join('\n\n');
 }
 function runSlashCommand(input) {
-  const match = String(input || '').match(/^\/([A-Za-z0-9_-]+)(?:\s+([\s\S]*))?$/);
+  // A slash token can appear after context in the prompt, not only at column 1.
+  const source = String(input || '').trim();
+  const match = [...source.matchAll(/(?:^|\s)\/([A-Za-z0-9_-]+)(?:\s+([\s\S]*))?/g)].at(-1);
   if (!match) return false;
   const args = (match[2] || '').trim();
   const command = match[1].toLowerCase() === 'cwd' ? 'pwd' : match[1].toLowerCase();
@@ -1985,7 +1987,9 @@ function showCoreCommands(prefix) {
 }
 
 async function openCmdList() {
-  const m = $('prompt').value.match(/^\/([A-Za-z0-9_:.\-]*)$/);
+  const prompt = $('prompt');
+  const value = prompt.value.slice(0, prompt.selectionStart ?? prompt.value.length);
+  const m = [...value.matchAll(/(?:^|\s)\/([A-Za-z0-9_:.-]*)$/g)].at(-1);
   if (!m) { closeCmdList(); return; }
   const prefix = m[1];
   const matches = allCommands.filter((c) => c.name.startsWith(prefix)).slice(0, 50);
@@ -2010,7 +2014,13 @@ function moveSel(d) {
 }
 function chooseCmd(i) {
   const c = cmdItems[i]; if (!c) return;
-  $('prompt').value = '/' + c.name + ' ';
+  const prompt = $('prompt');
+  const cursor = prompt.selectionStart ?? prompt.value.length;
+  const before = prompt.value.slice(0, cursor);
+  const token = [...before.matchAll(/(?:^|\s)\/([A-Za-z0-9_:.-]*)$/g)].at(-1);
+  const start = token ? token.index + (token[0].startsWith(' ') ? 1 : 0) : cursor;
+  prompt.value = prompt.value.slice(0, start) + '/' + c.name + ' ' + prompt.value.slice(cursor);
+  prompt.selectionStart = prompt.selectionEnd = start + c.name.length + 2;
   closeCmdList(); autosize(); $('prompt').focus();
 }
 
