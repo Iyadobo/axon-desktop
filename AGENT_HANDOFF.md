@@ -2,31 +2,78 @@
 
 ## Product shape
 
-Axon has three separated modes: Chat (direct conversation), Code (repository work), and Work (multi-step tasks with browser/delegation). Preserve the Axon dark/pink desktop identity and the top-right Browser and Agents controls.
+Axon is **one interface**. A single conversation list, a single active chat, and
+one **scope** control that says what the current turn may touch:
 
-## Routing
+| Scope | Means | Resolves to |
+| --- | --- | --- |
+| `chat` | Direct conversation, no tools | `productMode: chat`, streamed direct |
+| `read` | Reads files, browses, never writes | `productMode: code`, permission `approve` |
+| `edit` | Edits files, runs ordinary commands | `productMode: code`, permission `auto` |
+| `full` | Withholds nothing, may delegate | `productMode: agent`, permission `full` |
 
-`src/main.js` owns execution routing.
+The retired Chat/Code/Work surfaces only ever encoded two booleans (workspace
+tools on/off, delegation on/off) but cost a three-way split of the shell, the
+recents list, and the active-conversation slot. **Do not reintroduce them.**
+Scope can change mid-conversation without forking the context.
 
-- Local and Responses-compatible Code/Work use Axon Terminal via `runAxonTerminal`.
-- Ollama `:cloud` Code/Work use `src/ollama-cloud-agent.js`. Do not send Cloud models through Axon Terminal: its Codex freeform tool schema is rejected by Ollama Cloud.
-- The native Cloud loop exposes `run_command`, `browser_open`, `browser_read`, plus Work-only `delegate_task`.
-- `delegate_task` inherits the selected parent model by default; optional `model` overrides it. Recursive delegation is deliberately disabled.
+`productMode` and `permissionMode` still exist as *derived* values so
+`capabilities.js`, the native loop, and the engines keep their contract — but
+scope is the only thing a user sets. `src/engines.js` owns that mapping.
+
+Preserve the Axon dark/pink desktop identity and the top-right Browser and
+Agents controls.
+
+## Engines
+
+The agent harness is a swappable adapter, not a fork. `src/engines.js` is the
+registry; `provider.kind` is the model route and `provider.engine` is the
+harness. These are separate axes — collapsing them into one field is what
+produced combinations that failed at inference time.
+
+| Engine | Binary | Valid routes |
+| --- | --- | --- |
+| `qwen` (default) | `qwen` | Ollama, OpenAI-compatible |
+| `claude` | `claude` | Ollama (Anthropic-shaped `/v1/messages`) |
+| `codex` | `codex` | Ollama, Responses-compatible |
+| `none` | — | Ollama (Axon's own function-call loop) |
+
+`engineSupportsProvider` / `engineRefusal` refuse an invalid pair **before
+spawn**, with a sentence the user can act on. Add a rule there rather than
+writing another one-off guard at a call site.
+
+**Adding a spawn-and-stream engine** is two entries: one in `ENGINE_RUNNERS`
+(`src/main.js`) and one in `STREAM_JSON_ENGINES`. Claude Code and Qwen Code emit
+the *same* stream-json schema (`system/init`, `assistant` with
+text/thinking/tool_use parts, `user` carrying `tool_result`, final `result`), so
+`runStreamJsonCli` parses both and only argv differs. Codex uses its own schema
+and keeps `runOfficialCodex`.
+
+Known-bad pair kept as a guard: Ollama Cloud rejects Codex's freeform tool
+schema before inference. See `engineModelRefusal`.
 
 ## Files to change
 
-- `src/main.js`: Electron lifecycle, provider routing, Browser view, terminal launch, Cloud events, zoom.
-- `src/ollama-cloud-agent.js`: Cloud tool schema, agent loop, delegation and subagent lifecycle.
-- `src/renderer/app.js`: mode-specific active chats, persistence, Browser/Agents panel behavior.
+- `src/engines.js`: scope table, engine registry, route/engine compatibility, provider migration.
+- `src/main.js`: Electron lifecycle, engine dispatch, Browser view, Cloud events, zoom.
+- `src/ollama-cloud-agent.js`: the `none` engine — Ollama function-call loop, delegation, subagents. Works for local and `:cloud` models.
+- `src/renderer/app.js`: scope control, engine picker, single conversation list, persistence.
 - `src/renderer/index.html`: renderer layout and CSS.
-- `src/capabilities.js`: honest system capability language; never let models claim unimplemented abilities or another product identity.
-- `src/axon-browser-mcp.js`: Axon Terminal Browser MCP bridge.
+- `src/capabilities.js`: honest capability language; never let models claim unimplemented abilities or another product identity.
+- `src/axon-browser-mcp.js`: Browser MCP bridge.
 
 ## Persistence
 
-Saved conversation `turns` are passed back into the Cloud loop for every Code/Work request. This is the restart/update recovery path; do not remove it. `settings.activeConversationIds` keeps separate Chat, Code, and Work active conversations.
+Saved conversation `turns` are passed back into the native loop for every
+workspace turn. This is the restart/update recovery path; do not remove it.
 
-Subagent status flows: native loop → `subagent-update` in `main.js` → Agents panel in `app.js`. The panel shows status/model/task/result; it is not an interactive supervisor console yet.
+Settings migrate on load: an older `productMode` + `permissionMode` pair
+recovers its nearest scope (`scopeFromLegacy`), and a saved provider carrying
+the retired `codex-cli` / `claude-cli` kind splits into route + engine
+(`migrateProvider`). Both are covered by `npm run check`.
+
+Subagent status flows: native loop → `subagent-update` in `main.js` → Agents
+panel in `app.js`.
 
 ## Fast workflow
 
@@ -38,8 +85,18 @@ Restart Preview after source edits. Package only at a tested checkpoint with `np
 
 ## Storage and safety
 
-`axon-terminal/` is a separately managed, untracked fork. Preserve its `.git` history and user changes. Its Rust release cache is about 15 GB; do not cold-build it casually. Do not stage user-owned untracked terminal/assets/preview files.
+`axon-terminal/` is a **retired** Rust fork, ~7.4 GB, untracked and no longer
+referenced by any code path (`findAxonTerminal` was removed). It is kept only
+because it is user-owned; deleting it is the user's call. Do not stage
+user-owned untracked terminal/assets/preview files.
+
+`src/main.js` still writes an `axon-terminal.cmd` CLI shim in `cliDirectory()`.
+That shim points at a binary this build no longer ships — clean it up when the
+CLI entry points are next revisited.
 
 ## Required checks
 
-Run `node --check src/main.js`, `node --check src/ollama-cloud-agent.js`, `node --check src/renderer/app.js`, `npm run check`, and `git diff --check`. For Cloud changes, run a real Cloud smoke test. For UI changes, inspect the Preview window.
+Run `node --check src/main.js`, `node --check src/engines.js`, `node --check
+src/renderer/app.js`, `npm run check` (25 Axon checks + 11 llama.cpp), and `git
+diff --check`. For engine changes, run a real turn through the affected engine.
+For UI changes, inspect the Preview window.

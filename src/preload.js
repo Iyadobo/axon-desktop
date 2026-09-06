@@ -53,6 +53,7 @@ contextBridge.exposeInMainWorld('ollama', {
   checkAppUpdate: () => ipcRenderer.invoke('app-update-check'),
   downloadAppUpdate: () => ipcRenderer.invoke('app-update-download'),
   appInfo: () => ipcRenderer.invoke('app-info'),
+  engineAvailability: () => ipcRenderer.invoke('engine-availability'),
   installDependencies: () => ipcRenderer.invoke('install-dependencies'),
   terminalOpen: () => ipcRenderer.invoke('terminal-open'),
   windowControl: (action) => ipcRenderer.invoke('window-control', action),

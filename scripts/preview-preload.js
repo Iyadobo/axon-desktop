@@ -6,7 +6,7 @@ window.ollama = {
   fire(ch, v) { (listeners[ch] || []).forEach((cb) => cb(v)); },
 };
 // every other method -> async empty/sensible default
-for (const m of ['listModels','refreshCloudModels','listCommands','fetchCommands','refreshCommands','chat','stop','steer','clear','pickFolder','ensureWorkspace','loadState','saveState','lanServer','lanConnect','lanConnectDevice','lanDisconnect','workspaceUpsert','workspaceSeed','lanRefresh','lanRequestDeviceUpdate','selectUpdateInstaller','offerUpdate','requestUpdate','respondUpdateRequest','acceptUpdateOffer','openUpdateInstaller','checkAppUpdate','downloadAppUpdate','appInfo','installDependencies','terminalOpen','windowControl','browserShow','browserHide','browserNavigate','browserAction']) {
+for (const m of ['listModels','refreshCloudModels','listCommands','fetchCommands','refreshCommands','chat','stop','steer','clear','pickFolder','ensureWorkspace','loadState','saveState','lanServer','lanConnect','lanConnectDevice','lanDisconnect','workspaceUpsert','workspaceSeed','lanRefresh','lanRequestDeviceUpdate','selectUpdateInstaller','offerUpdate','requestUpdate','respondUpdateRequest','acceptUpdateOffer','openUpdateInstaller','checkAppUpdate','downloadAppUpdate','appInfo','installDependencies','terminalOpen','windowControl','browserShow','browserHide','browserNavigate','browserAction','browserInvocation','engineAvailability','checkExo','downloadCatalogue','hardwareProfile','llamaCppCheckPeer','llamaCppInstall','llamaCppPickModel','llamaCppSetConfig','llamaCppStart','llamaCppStatus','llamaCppStop','modelCapabilities','providerSave','pullModel','setRuntime','swarmRetryWorker','swarmStart']) {
   window.ollama[m] = (...a) => Promise.resolve(
     m === 'listModels' ? { models: [] }
     : m === 'listCommands' ? []

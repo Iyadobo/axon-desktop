@@ -58,54 +58,28 @@ function switchView(viewName) {
   saveState('oactiveView', viewName);
 }
 
-function workspaceGroup(mode = settings?.productMode) { return mode === 'agent' ? 'work' : mode === 'code' ? 'code' : 'chat'; }
+// One interface: every conversation lives in the same list regardless of the
+// scope its turns ran at. Scope is a property of a turn, not a place to be.
+function workspaceGroup() { return 'all'; }
 function greetingForTime() {
   const hour = new Date().getHours();
   return hour < 12 ? 'Good morning.' : hour < 18 ? 'Good afternoon.' : 'Good evening.';
 }
 function syncWorkspaceShell() {
-  const workspace = workspaceGroup();
-  const tabs = { chat: $('chatWorkspace'), code: $('codeWorkspace'), work: $('workWorkspace') };
-  if (!tabs.chat || !tabs.code || !tabs.work) return;
-  for (const [name, tab] of Object.entries(tabs)) { const active = name === workspace; tab.classList.toggle('active', active); tab.setAttribute('aria-selected', String(active)); }
-  $('side')?.classList.toggle('workspace-work', workspace === 'work');
-  $('workspaceNote').textContent = workspace === 'work'
-    ? 'Agent workflows'
-    : workspace === 'code' ? 'Repository tools' : 'Conversation';
-  $('newChatLabel').textContent = workspace === 'work' ? 'New task' : workspace === 'code' ? 'New code session' : 'New chat';
-  $('newchat').setAttribute('aria-label', $('newChatLabel').textContent);
-  $('recents-label').textContent = workspace === 'work' ? 'Recent work' : workspace === 'code' ? 'Recent code' : 'Recent chats';
-  $('main')?.setAttribute('data-workspace', workspace);
-  const copy = workspace === 'work'
-    ? { greet: 'What should Axon take on?', sub: 'Describe the outcome. Axon can plan, browse, and carry the task through.' }
-    : workspace === 'code'
-      ? { greet: 'What are we building?', sub: 'Work directly in a repository with the official CLI at your side.' }
-      : { greet: greetingForTime(), sub: 'What are we working on?' };
-  if ($('greet')) $('greet').textContent = copy.greet;
-  document.querySelector('#home .sub')?.replaceChildren(copy.sub);
+  if ($('workspaceNote')) $('workspaceNote').textContent = 'One conversation \u00b7 scope is per turn';
+  if ($('newChatLabel')) $('newChatLabel').textContent = 'New chat';
+  $('newchat')?.setAttribute('aria-label', 'New chat');
+  if ($('recents-label')) $('recents-label').textContent = 'Recents';
+  if ($('recentPopupToggle')) $('recentPopupToggle').textContent = 'Recents';
+  $('main')?.setAttribute('data-workspace', 'all');
+  if ($('greet')) $('greet').textContent = greetingForTime();
+  document.querySelector('#home .sub')?.replaceChildren('What are we working on?');
   const hint = document.querySelector('.home-hint');
-  if (hint) hint.textContent = workspace === 'work'
-    ? 'Work plans multi-step tasks, opens the browser when it is useful, and can delegate focused sub-tasks.'
-    : workspace === 'code'
-      ? 'Code works in the selected repository through the official CLI. Browser research stays focused on the task.'
-      : 'Chat is a direct conversation. It does not reach into a workspace, browser, or automated task.';
+  if (hint) hint.textContent = scopeMeta().hint;
   const chips = [...document.querySelectorAll('#chips .chip')];
-  const labels = workspace === 'work' ? ['Research a topic', 'Plan a task', 'Compare options', 'Run a workflow']
-    : workspace === 'code' ? ['Explain code', 'Debug an error', 'Review changes', 'Write tests']
-      : ['Ask anything', 'Brainstorm', 'Write something', 'Learn a topic'];
+  const labels = ['Ask anything', 'Explain code', 'Debug an error', 'Plan a task'];
   chips.forEach((chip, index) => { chip.textContent = labels[index] || chip.textContent; });
 }
-function setWorkspace(group) {
-  swarmMode = false; swarmLogOpen = false; $('main')?.removeAttribute('data-swarm'); $('swarmControls').hidden = true; $('swarmLimitInfo').hidden = true; $('swarmStatus').hidden = true; $('swarmLaunch')?.classList.remove('active');
-  settings.productMode = group === 'work' ? 'agent' : group === 'code' ? 'code' : 'chat';
-  syncProductMode();
-  const remembered = settings.activeConversationIds?.[group];
-  activeId = conversations.some((chat) => chat.id === remembered && workspaceGroup(chat.productMode || 'chat') === group) ? remembered : null;
-  saveSettings(); renderRecents();
-  if (activeView !== 'chat') switchView('chat');
-  if (activeId) openConv(activeId); else newChat();
-}
-
 // ---- settings / appearance --------------------------------------------------
 const THEME_PALETTES = {
   light: { accent: '#f45f96', background: '#ffffff', surface: '#f4f5f7', text: '#17131a' },
@@ -119,8 +93,30 @@ const FONT_STACKS = {
   mono: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
   serif: 'Georgia, "Times New Roman", serif',
 };
-const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', kind: 'ollama', endpoint: '', model: '', credentialId: '' };
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
+const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', kind: 'ollama', engine: 'qwen', endpoint: '', model: '', credentialId: '' };
+// Scope is the single control that replaced the Chat/Code/Work split and the
+// separate permission selector. It still resolves to the productMode and
+// permission the capability contract and the engines expect.
+const SCOPE_ORDER = ['chat', 'read', 'edit', 'full'];
+const SCOPE_META = {
+  chat: { label: 'Just chat', productMode: 'chat', permission: 'approve', hint: 'A direct conversation. Axon does not reach into a workspace, browser, or run commands.' },
+  read: { label: 'Read', productMode: 'code', permission: 'approve', hint: 'Axon can read the selected workspace and browse. Writes and commands are blocked.' },
+  edit: { label: 'Edit', productMode: 'code', permission: 'auto', hint: 'Axon can edit files and run ordinary commands in the selected workspace.' },
+  full: { label: 'Full', productMode: 'agent', permission: 'full', hint: 'Nothing is withheld, and Axon may delegate focused sub-tasks.' },
+};
+const ENGINE_META = {
+  qwen: { label: 'Qwen Code', hint: 'Official Qwen Code CLI over any OpenAI-compatible route.' },
+  claude: { label: 'Claude Code', hint: 'Official Claude Code CLI. Needs an Anthropic-compatible route.' },
+  codex: { label: 'Codex CLI', hint: 'Official Codex CLI. Needs a Responses-compatible route.' },
+  none: { label: 'Axon native', hint: "Axon's own tool loop over Ollama function calls. No external CLI." },
+};
+const ENGINE_ORDER = ['qwen', 'claude', 'codex', 'none'];
+let engineAvailability = {};
+function scopeMeta(value = settings?.scope) { return SCOPE_META[SCOPE_ORDER.includes(value) ? value : 'chat']; }
+// Derived, not stored twice: the rest of the app and every engine still read
+// productMode/permissionMode, so scope stays the only thing a user sets.
+function applyScope() { const meta = scopeMeta(); settings.productMode = meta.productMode; settings.permissionMode = meta.permission; }
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
 function swarmProviderLimit() { return (currentProviderProfile()?.kind || 'ollama') === 'ollama' ? 3 : null; }
@@ -196,6 +192,15 @@ function loadSettings() {
     settings.accent = settings.colors.accent;
     settings.providerProfiles = Array.isArray(saved.providerProfiles) && saved.providerProfiles.length ? saved.providerProfiles.map((profile) => ({ ...DEFAULT_PROVIDER, ...profile, credentialId: profile.credentialId || '' })) : [{ ...DEFAULT_PROVIDER }];
     settings.activeConversationIds = saved.activeConversationIds && typeof saved.activeConversationIds === 'object' ? saved.activeConversationIds : {};
+    if (!SCOPE_ORDER.includes(settings.scope)) {
+      settings.scope = saved.productMode === 'agent' ? 'full' : saved.productMode === 'code' ? (saved.permissionMode === 'approve' ? 'read' : 'edit') : 'chat';
+    }
+    settings.providerProfiles = (settings.providerProfiles || []).map((profile) => ({
+      ...profile,
+      engine: ENGINE_ORDER.includes(profile.engine) ? profile.engine : (profile.kind === 'claude-cli' ? 'claude' : profile.kind === 'codex-cli' ? 'codex' : 'qwen'),
+      kind: ['ollama', 'openai-compatible', 'responses'].includes(profile.kind) ? profile.kind : 'ollama',
+    }));
+    applyScope();
     if (!settings.providerProfiles.some((profile) => profile.id === settings.activeProviderProfileId)) settings.activeProviderProfileId = settings.providerProfiles[0].id;
   } catch {}
 }
@@ -238,14 +243,14 @@ function openSettings() {
   $('densitySel').value = settings.density;
   $('motionSel').value = settings.motion;
   $('fontSel').value = settings.font;
-  $('productModeSel').value = settings.productMode;
+  syncScope();
   $('runtimeSel').value = ['exo', 'llamacpp'].includes(persisted.oRuntime) ? persisted.oRuntime : 'ollama';
   $('exoUrl').value = persisted.oExoUrl || 'http://127.0.0.1:52415';
   syncRuntimeFields();
   renderProviderProfiles();
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
-  syncProductMode();
-  syncModes();
+  syncScope();
+  loadEngineAvailability();
   syncPaletteInputs(); renderProjects(); renderCloudCatalogueInfo();
   $('settings').classList.add('show');
   $('settings').setAttribute('aria-hidden', 'false');
@@ -1255,8 +1260,6 @@ function openConv(id) {
   swarmLogOpen = false;
   activeId = id;
   settings.activeConversationIds[workspaceGroup(conv.productMode || 'chat')] = id; saveSettings();
-  const convMode = ['chat', 'code', 'agent'].includes(conv.productMode) ? conv.productMode : 'chat';
-  if (settings.productMode !== convMode) { settings.productMode = convMode; syncProductMode(); saveSettings(); }
   if (conv.model && [...$('model').options].some((o) => o.value === conv.model)) $('model').value = conv.model;
   showChatView();
   $('log').innerHTML = '';
@@ -1869,7 +1872,6 @@ async function startMessage(entry) {
   // silently run a Code/Agent request through a prior Chat conversation (or
   // vice versa); mode changes begin a fresh conversation automatically.
   let conv = activeId ? conversations.find((c) => c.id === activeId) : null;
-  if (conv && (conv.productMode || 'chat') !== entry.productMode) conv = null;
   if (!conv) {
     conv = { id: rid(), sessionId: null, title: text.replace(/\s+/g, ' ').slice(0, 48) || '(attachment)', model, productMode: entry.productMode, providerProfileId: entry.providerProfileId, ts: Date.now(), updatedAt: Date.now(), projectId: activeProjectId, turns: [] };
     conversations.unshift(conv); activeId = conv.id; settings.activeConversationIds[workspaceGroup(conv.productMode)] = conv.id; saveSettings(); renderRecents();
@@ -1889,7 +1891,7 @@ async function startMessage(entry) {
   renderRecents(); syncComposerState();
   const provider = settings.providerProfiles.find((profile) => profile.id === (conv.providerProfileId || entry.providerProfileId)) || currentProviderProfile();
   const history = (conv.turns || []).filter((turn) => turn && (turn.role === 'user' || turn.role === 'assistant') && typeof turn.content === 'string').slice(-40).map((turn) => ({ role: turn.role, content: turn.content }));
-  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, productMode: conv.productMode || entry.productMode, provider, mode: settings.permissionMode, grants: conv.grants || [], history });
+  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, productMode: conv.productMode || entry.productMode, provider, mode: settings.permissionMode, scope: settings.scope, grants: conv.grants || [], history });
   if (!result?.ok) {
     const failed = activeTurns.get(requestId);
     if (failed) { failed.turnEl.classList.add('error'); failed.streamEl.innerHTML = '<div class="block text">[error] ' + esc(result?.error || 'Could not start this chat.') + '</div>'; activeTurns.delete(requestId); renderRecents(); syncComposerState(); }
@@ -1951,7 +1953,7 @@ function runSlashCommand(input) {
   if (command === 'pwd') { showChatView(); addSysNote(projectCwd() || 'No workspace selected.'); scrollBottom(); return true; }
   if (command === 'status') {
     const conv = activeId && conversations.find((item) => item.id === activeId);
-    showChatView(); addSysNote(`Mode: ${settings.productMode}\nModel: ${$('model').value || 'none'}\nPermissions: ${settings.permissionMode}\nWorkspace: ${projectCwd() || 'none'}\nSession: ${conv?.sessionId ? 'resumable' : 'new context'}`); scrollBottom(); return true;
+    showChatView(); addSysNote(`Scope: ${scopeMeta().label}\nEngine: ${ENGINE_META[currentProviderProfile()?.engine || 'qwen'].label}\nModel: ${$('model').value || 'none'}\nWorkspace: ${projectCwd() || 'none'}\nSession: ${conv?.sessionId ? 'resumable' : 'new context'}`); scrollBottom(); return true;
   }
   if (command === 'compact') {
     const conv = activeId && conversations.find((item) => item.id === activeId);
@@ -1972,7 +1974,7 @@ function runSlashCommand(input) {
   const promptFactory = COMMAND_PROMPTS[command];
   if (promptFactory) {
     const workspaceCommands = ['review', 'diff', 'init', 'plan', 'goal', 'skills', 'mcp', 'mention'];
-    if (settings.productMode === 'chat' && workspaceCommands.includes(command)) { addSysNote(`/${command} needs Code or Work mode so Axon can use the workspace harness.`); return true; }
+    if (settings.scope === 'chat' && workspaceCommands.includes(command)) { addSysNote(`/${command} needs a workspace scope. Switch the composer badge off \u201cJust chat\u201d.`); return true; }
     const prompt = promptFactory(args);
     startMessage({ text: prompt, combined: prompt, images: [], productMode: settings.productMode, providerProfileId: currentProviderProfile()?.id, model: currentProviderProfile()?.model || $('model').value });
     return true;
@@ -2134,52 +2136,66 @@ $('themeSel').onchange = () => { settings.theme = $('themeSel').value; settings.
 $('densitySel').onchange = () => { settings.density = $('densitySel').value; saveSettings(); applyAppearance(); };
 $('motionSel').onchange = () => { settings.motion = $('motionSel').value; saveSettings(); applyAppearance(); };
 $('fontSel').onchange = () => { settings.font = $('fontSel').value; saveSettings(); applyAppearance(); };
-function syncProductMode() {
-  const mode = ['chat', 'code', 'agent'].includes(settings.productMode) ? settings.productMode : 'chat';
-  settings.productMode = mode;
-  const labels = { chat: 'Chat', code: 'Code', agent: 'Work' };
-  const descriptions = {
-    chat: 'Chat sends a direct conversation to the selected provider. No workspace tools are exposed.',
-    code: 'Code works directly in the selected repository through the official CLI. It can use the browser for focused research, but does not delegate.',
-    agent: 'Work executes multi-step tasks toward an outcome. It can browse, use the selected workspace, and delegate concrete independent work.',
-  };
-  $('productModeSel').value = mode;
-  const modeButton = $('productModeButton');
-  if (modeButton) { modeButton.textContent = labels[mode]; modeButton.title = descriptions[mode]; }
-  $('productModeInfo').textContent = descriptions[mode];
+function syncScope() {
+  if (!SCOPE_ORDER.includes(settings.scope)) settings.scope = 'chat';
+  applyScope();
+  syncModes();
   syncWorkspaceShell();
   refreshModelCapabilityBadge();
+}
+// The engine list is rendered from what is actually installed, so an
+// unavailable harness is visible and labelled instead of failing at spawn.
+function syncEngineSelect() {
+  const select = $('engineSel');
+  if (!select) return;
+  const provider = currentProviderProfile();
+  const active = ENGINE_ORDER.includes(provider?.engine) ? provider.engine : 'qwen';
+  select.innerHTML = '';
+  for (const id of ENGINE_ORDER) {
+    const state = engineAvailability[id];
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = ENGINE_META[id].label + (state && state.installed === false ? ' \u2014 not installed' : state?.version ? ' \u00b7 ' + state.version : '');
+    if (state && state.installed === false) option.disabled = true;
+    select.appendChild(option);
+  }
+  select.value = active;
+  if ($('engineInfo')) $('engineInfo').textContent = ENGINE_META[active].hint;
+}
+async function loadEngineAvailability() {
+  try { engineAvailability = await window.ollama.engineAvailability() || {}; } catch { engineAvailability = {}; }
+  syncEngineSelect();
 }
 // Permission mode: a segmented control rather than a <select>, because the
 // difference between the three is the description, not the label.
 function syncModes() {
   for (const btn of document.querySelectorAll('#modes .mode')) {
-    const on = btn.dataset.mode === settings.permissionMode;
+    const on = btn.dataset.mode === settings.scope;
     btn.classList.toggle('on', on);
     btn.setAttribute('aria-checked', on ? 'true' : 'false');
   }
-  const badge = $('permissionModeButton');
+  const badge = $('scopeButton');
   if (badge) {
-    badge.textContent = { approve: 'Approve', auto: 'Auto', full: 'Full' }[settings.permissionMode] || 'Auto';
-    badge.className = 'composer-mode mode-' + settings.permissionMode;
-    badge.title = {
-      approve: 'Approve mode — writes and commands are blocked until you allow them',
-      auto: 'Auto mode — the standard tool set runs without asking',
-      full: 'Full mode — nothing is withheld',
-    }[settings.permissionMode] || '';
+    const meta = scopeMeta();
+    badge.textContent = meta.label;
+    badge.className = 'composer-mode mode-' + settings.scope;
+    badge.title = meta.hint;
   }
 }
 for (const btn of document.querySelectorAll('#modes .mode')) {
-  btn.onclick = () => { settings.permissionMode = btn.dataset.mode; syncModes(); saveSettings(); };
+  btn.onclick = () => { settings.scope = btn.dataset.mode; syncScope(); saveSettings(); };
 }
-$('permissionModeButton').onclick = () => {
-  const order = ['approve', 'auto', 'full'];
-  settings.permissionMode = order[(order.indexOf(settings.permissionMode) + 1) % order.length];
-  syncModes(); saveSettings();
+$('scopeButton').onclick = () => {
+  settings.scope = SCOPE_ORDER[(SCOPE_ORDER.indexOf(settings.scope) + 1) % SCOPE_ORDER.length];
+  syncScope(); saveSettings();
 };
-$('productModeSel').onchange = () => { settings.productMode = $('productModeSel').value; syncProductMode(); saveSettings(); };
-if ($('productModeButton')) $('productModeButton').onclick = () => { const modes = ['chat', 'code', 'agent']; settings.productMode = modes[(modes.indexOf(settings.productMode) + 1) % modes.length]; syncProductMode(); saveSettings(); };
-$('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); applyProviderModelChoices(); if (swarmMode) syncSwarmRoles(); };
+$('engineSel').onchange = () => {
+  const provider = currentProviderProfile();
+  if (!provider) return;
+  provider.engine = $('engineSel').value;
+  saveSettings(); syncEngineSelect();
+};
+$('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); syncEngineSelect(); applyProviderModelChoices(); if (swarmMode) syncSwarmRoles(); };
 $('providerUseOllama').onclick = useLocalOllama;
 $('providerNew').onclick = startApiProviderSetup;
 $('providerApplyPreset').onclick = applyProviderPreset;
@@ -2215,9 +2231,6 @@ for (const [colorKey, colorInput, hexInput] of [['accent', 'accentColor', 'accen
   $(hexInput).onkeydown = (event) => { if (event.key === 'Enter') { event.preventDefault(); $(hexInput).blur(); } };
 }
 $('paletteReset').onclick = () => { settings.colors = { ...THEME_PALETTES[settings.theme] || THEME_PALETTES.midnight }; settings.accent = settings.colors.accent; saveSettings(); applyAppearance(); syncPaletteInputs(); };
-$('chatWorkspace').onclick = () => setWorkspace('chat');
-$('codeWorkspace').onclick = () => setWorkspace('code');
-$('workWorkspace').onclick = () => setWorkspace('work');
 $('recents-label').onclick = openSettings;
 $('recentPopupToggle').onclick = (event) => { event.stopPropagation(); toggleRecentPopup(); };
 document.addEventListener('click', (event) => { const popup = $('recentPopup'); if (popup?.classList.contains('show') && !popup.contains(event.target) && event.target !== $('recentPopupToggle')) closeRecentPopup(); });
@@ -2535,7 +2548,7 @@ function refreshGridColor() {
   $('prompt').value = typeof persisted.odraft === 'string' ? persisted.odraft : '';
   autosize();
   applyAppearance();
-  syncProductMode();
+  syncScope();
   syncModes();
   renderRecents();
   updateProjectLabel();

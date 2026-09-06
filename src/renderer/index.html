@@ -1360,25 +1360,10 @@
 <div id="app">
   <div id="side">
     <div class="brand"><img class="logo" src="../assets/icon.png" alt="Axon" /><span style="flex:1">Axon</span></div>
-    <div class="side-section-head">Mode</div>
-    <div class="workspace-switch" role="tablist" aria-label="Axon execution mode">
-      <button id="chatWorkspace" class="workspace-tab active" type="button" role="tab" aria-selected="true">
-        <img class="workspace-mark dendrite" src="../assets/axon-workspace-dendrite-v5.png" alt="" />
-        <span>Chat</span>
-      </button>
-      <button id="workWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">
-        <img class="workspace-mark" src="../assets/axon-workspace-axon-v5.png" alt="" />
-        <span>Work</span>
-      </button>
-      <button id="codeWorkspace" class="workspace-tab" type="button" role="tab" aria-selected="false">
-        <img class="workspace-mark" src="../assets/axon-workspace-terminal-v5.png" alt="" />
-        <span>Code</span>
-      </button>
-    </div>
     <button id="swarmLaunch" class="swarm-launch" type="button" aria-label="Open Axon Swarm">
       <img src="../assets/axon-swarm-terminal.png" alt="" /><span class="swarm-launch-copy"><strong>Axon Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
     </button>
-    <div class="workspace-note" id="workspaceNote">Direct conversation · no tools</div>
+    <div class="workspace-note" id="workspaceNote">One conversation · scope is per turn</div>
     <button class="newchat" id="newchat" type="button"><span aria-hidden="true" style="opacity:.6">+</span><span id="newChatLabel">New chat</span></button>
     <div id="chatSidebar" class="sidebar-view active">
       <button class="recents-label" id="recents-label" type="button">Recent chats</button>
@@ -1420,7 +1405,7 @@
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <span class="select-tag" hidden><select id="model"></select></span>
-              <button type="button" id="permissionModeButton" class="composer-mode mode-auto" title="Execution permissions">Auto</button>
+              <button type="button" id="scopeButton" class="composer-mode mode-chat" title="What this conversation can do">Just chat</button>
             </span>
             <button id="steer" title="Stop the current run and continue with this message" hidden>Steer</button>
             <button id="send" title="Send">→</button>
@@ -1499,25 +1484,29 @@
         <textarea id="sysPrompt" placeholder="Define the assistant's behavior, tone, identity, and constraints…"></textarea>
         <div class="lan-info">Applied to every new Axon session. Axon owns its identity, instructions, workspace, and tool policy.</div>
       </label>
-      <div class="fld"><span>Execution permissions</span>
-        <div class="modes" id="modes" role="radiogroup" aria-label="Execution permissions">
-          <button type="button" class="mode" data-mode="approve" role="radio" aria-checked="false">
-            <span class="mode-name">Approve</span>
-            <span class="mode-desc">Reads freely. Anything that writes or runs a command is blocked until you allow it.</span>
+      <div class="fld"><span>What this conversation can do</span>
+        <div class="modes" id="modes" role="radiogroup" aria-label="Conversation scope">
+          <button type="button" class="mode" data-mode="chat" role="radio" aria-checked="true">
+            <span class="mode-name">Just chat</span>
+            <span class="mode-desc">Direct conversation, streamed straight from the model. No workspace, browser, or commands.</span>
           </button>
-          <button type="button" class="mode" data-mode="auto" role="radio" aria-checked="true">
-            <span class="mode-name">Auto</span>
-            <span class="mode-desc">Read, write, edit and ordinary commands run without asking.</span>
+          <button type="button" class="mode" data-mode="read" role="radio" aria-checked="false">
+            <span class="mode-name">Read workspace</span>
+            <span class="mode-desc">Reads files and browses. Anything that writes or runs a command is blocked.</span>
+          </button>
+          <button type="button" class="mode" data-mode="edit" role="radio" aria-checked="false">
+            <span class="mode-name">Edit files</span>
+            <span class="mode-desc">Reads, writes, edits and runs ordinary commands in the selected workspace.</span>
           </button>
           <button type="button" class="mode" data-mode="full" role="radio" aria-checked="false">
-            <span class="mode-name">Full</span>
-            <span class="mode-desc">Nothing is withheld. Only the model's own judgement applies.</span>
+            <span class="mode-name">Full access</span>
+            <span class="mode-desc">Nothing is withheld, and the engine may delegate focused sub-tasks.</span>
           </button>
         </div>
-        <div class="lan-info">Enforced by the selected official CLI, not by instructions a model can talk itself out of. In Approve mode a blocked action appears in the transcript with an Allow button.</div>
+        <div class="lan-info">Enforced by the selected engine, not by instructions a model can talk itself out of. Scope can change mid-conversation without starting over.</div>
       </div>
-      <div class="fld"><span>Axon workspace mode</span><div class="row"><label class="fld"><select id="productModeSel"><option value="chat">Axon Chat — direct conversation</option><option value="code">Axon Code — direct repository work</option><option value="agent">Axon Work — autonomous multi-step tasks</option></select></label></div><div class="lan-info" id="productModeInfo">Chat talks directly. Code works in one repository. Work runs broader tasks with browser and delegation when useful.</div></div>
-      <div class="fld provider-hub"><span>Model provider</span><p class="settings-copy">Stay local with Ollama, connect an API, or use an official signed-in CLI. Switching back never deletes saved connections.</p><div class="provider-choice"><button id="providerUseOllama" type="button"><strong>Use Ollama</strong><small>Local-first default · no API key</small></button><button id="providerNew" type="button"><strong>Add a connection</strong><small>API, Codex CLI, or Claude Code</small></button></div><div class="provider-current"><label class="fld"><span>Active connection</span><select id="providerProfileSel"></select></label><div id="providerStatus" class="lan-info">Ollama uses the current local runtime.</div></div><details id="providerApiSetup" class="provider-api-setup"><summary>Connection details</summary><div class="provider-api-body"><div class="provider-quick"><div class="provider-quick-head"><strong>Start with a preset</strong><span>API keys remain in the OS credential store.</span></div><div class="row"><label class="fld"><select id="providerPreset"><option value="custom">Custom compatible API</option><option value="openai">OpenAI Responses API</option><option value="openrouter">OpenRouter compatible API</option><option value="codex">Official Codex CLI</option><option value="claude">Official Claude Code</option></select></label><button id="providerApplyPreset" class="settings-action" type="button">Apply preset</button></div><label class="fld"><textarea id="providerImport" rows="3" spellcheck="false" placeholder='Optional: paste an OpenCode provider JSON entry'></textarea></label><div class="row"><button id="providerImportOpenCode" class="settings-action" type="button">Import config</button><span id="providerImportStatus" class="provider-import-status">Imports the endpoint and model. API keys are never imported.</span></div></div><div class="row"><label class="fld"><span>Name</span><input id="providerName" type="text" placeholder="OpenAI" /></label><label class="fld"><span>Route</span><select id="providerKind"><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option><option value="codex-cli">Official Codex CLI</option><option value="claude-cli">Official Claude Code</option></select></label></div><div class="row"><label class="fld"><span>Endpoint</span><input id="providerEndpoint" type="url" placeholder="Not needed for official CLI" /></label><label class="fld"><span>Model</span><input id="providerModel" type="text" placeholder="Model ID (optional for official CLI)" /></label></div><div class="row"><label class="fld"><span>API key</span><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="Not needed for official CLI" /></label><button id="providerSave" class="settings-action primary" type="button">Save and use</button></div></div></details></div>
+      <div class="fld"><span>Agent engine</span><div class="row"><label class="fld"><select id="engineSel"></select></label></div><div class="lan-info" id="engineInfo">The harness that drives a turn once it can touch the workspace. Chat always streams direct.</div></div>
+      <div class="fld provider-hub"><span>Model provider</span><p class="settings-copy">Stay local with Ollama or connect an API. The engine that drives agent turns is chosen separately. Switching back never deletes saved connections.</p><div class="provider-choice"><button id="providerUseOllama" type="button"><strong>Use Ollama</strong><small>Local-first default · no API key</small></button><button id="providerNew" type="button"><strong>Add a connection</strong><small>OpenAI-compatible or Responses API</small></button></div><div class="provider-current"><label class="fld"><span>Active connection</span><select id="providerProfileSel"></select></label><div id="providerStatus" class="lan-info">Ollama uses the current local runtime.</div></div><details id="providerApiSetup" class="provider-api-setup"><summary>Connection details</summary><div class="provider-api-body"><div class="provider-quick"><div class="provider-quick-head"><strong>Start with a preset</strong><span>API keys remain in the OS credential store.</span></div><div class="row"><label class="fld"><select id="providerPreset"><option value="custom">Custom compatible API</option><option value="openai">OpenAI Responses API</option><option value="openrouter">OpenRouter compatible API</option></select></label><button id="providerApplyPreset" class="settings-action" type="button">Apply preset</button></div><label class="fld"><textarea id="providerImport" rows="3" spellcheck="false" placeholder='Optional: paste an OpenCode provider JSON entry'></textarea></label><div class="row"><button id="providerImportOpenCode" class="settings-action" type="button">Import config</button><span id="providerImportStatus" class="provider-import-status">Imports the endpoint and model. API keys are never imported.</span></div></div><div class="row"><label class="fld"><span>Name</span><input id="providerName" type="text" placeholder="OpenAI" /></label><label class="fld"><span>Route</span><select id="providerKind"><option value="ollama">Ollama</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option></select></label></div><div class="row"><label class="fld"><span>Endpoint</span><input id="providerEndpoint" type="url" placeholder="https://api.example.com/v1" /></label><label class="fld"><span>Model</span><input id="providerModel" type="text" placeholder="Model ID" /></label></div><div class="row"><label class="fld"><span>API key</span><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="Paste key" /></label><button id="providerSave" class="settings-action primary" type="button">Save and use</button></div></div></details></div>
       <div class="fld"><span>Inference runtime</span><div class="row"><label class="fld"><select id="runtimeSel"><option value="ollama">Local Ollama</option><option value="exo">Exo cluster</option><option value="llamacpp">llama.cpp RPC (2-PC VRAM pool)</option></select></label><label class="fld"><input id="exoUrl" type="url" placeholder="http://192.168.50.1:52415" /></label><button id="exoCheck" type="button">Test Exo</button></div><div id="exoStatus" class="lan-info">Local Ollama runs on this device. Exo connects to a separately running cluster coordinator.</div>
         <div id="llamaCppFields" style="display:none">
           <div class="lan-info">Experimental and unauthenticated (llama.cpp's own RPC docs call it out) — bind only to a direct, isolated Ethernet link between two PCs, never a routable network. Run Axon on both machines: one Host, one Worker.</div>

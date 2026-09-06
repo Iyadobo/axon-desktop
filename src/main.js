@@ -13,6 +13,7 @@ const llamacppRuntime = require('./llamacpp-runtime');
 const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
 const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
 const { runOllamaCloudAgent } = require('./ollama-cloud-agent');
+const { resolveRoute, migrateProvider, normalizeEngine, normalizeProviderKind, scopeInfo, scopeFromLegacy, ENGINE_ORDER, engineInfo } = require('./engines');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('io.axon.workspace'); } catch {}
@@ -83,29 +84,6 @@ function whereFirst(command) {
       .split(/\r?\n/).map((s) => s.trim()).find((p) => p && fs.existsSync(p)) || null;
   } catch { return null; }
 }
-function findAxonTerminal() {
-  const executable = process.platform === 'win32' ? 'axon.exe' : 'axon';
-  // A cleaned development checkout may deliberately omit Cargo's 15+ GB
-  // release cache. On Windows, reuse the already-installed Axon terminal for
-  // preview sessions instead of forcing an immediate cold Rust rebuild. This
-  // path is dev-only; packaged releases still carry their own binary.
-  const installedPreviewTerminal = !app.isPackaged && process.platform === 'win32'
-    ? path.join(process.env.LOCALAPPDATA || app.getPath('home'), 'Programs', 'Axon', 'resources', 'axon-terminal', executable)
-    : null;
-  const candidates = [
-    // Development checkout: build this controlled fork locally.
-    path.join(__dirname, '..', 'axon-terminal', 'codex-rs', 'target', 'release', executable),
-    path.join(__dirname, '..', 'axon-terminal', 'codex-rs', 'target', 'debug', executable),
-    // Packaged builds place the terminal next to the application resources.
-    app.isPackaged && path.join(process.resourcesPath, 'axon-terminal', executable),
-    installedPreviewTerminal,
-    whereFirst(executable),
-  ].filter(Boolean);
-  const command = candidates.find((candidate) => candidate && fs.existsSync(candidate));
-  return command ? { command, prefix: [] } : null;
-}
-// Code and Work now use the official Codex CLI. Prefer its native executable
-// on Windows: npm's extensionless shim is not safe to spawn with shell:false.
 function findOfficialCodexCli() {
   try {
     const probe = process.platform === 'win32' ? 'where.exe codex' : 'command -v codex';
@@ -122,6 +100,14 @@ function findClaudeCli() {
   const resolved = whereFirst('claude');
   return resolved ? { command: resolved, prefix: [] } : null;
 }
+function findQwenCli() {
+  const resolved = whereFirst(process.platform === 'win32' ? 'qwen.cmd' : 'qwen') || whereFirst('qwen');
+  return resolved ? { command: resolved, prefix: [] } : null;
+}
+// One lookup per engine id so the picker can report what is actually installed
+// instead of failing at spawn time.
+const ENGINE_LAUNCHERS = { codex: findOfficialCodexCli, claude: findClaudeCli, qwen: findQwenCli, none: () => ({ command: null, prefix: [] }) };
+function findEngineCli(engineId) { return (ENGINE_LAUNCHERS[normalizeEngine(engineId)] || (() => null))(); }
 function runQuiet(command, args, timeout = 15000) {
   return new Promise((resolve) => {
     let out = ''; let child;
@@ -134,13 +120,28 @@ function runQuiet(command, args, timeout = 15000) {
 async function dependencyStatus() {
   const codexLaunch = findOfficialCodexCli();
   const claudeLaunch = findClaudeCli();
-  const [ollama, node, codex, claude] = await Promise.all([
+  const qwenLaunch = findQwenCli();
+  const [ollama, node, codex, claude, qwen] = await Promise.all([
     runQuiet(whereFirst(process.platform === 'win32' ? 'ollama.exe' : 'ollama') || 'ollama', ['--version']),
     runQuiet(whereFirst(process.platform === 'win32' ? 'node.exe' : 'node') || 'node', ['--version']),
     codexLaunch ? runQuiet(codexLaunch.command, [...codexLaunch.prefix, '--version']) : Promise.resolve(null),
     claudeLaunch ? runQuiet(claudeLaunch.command, [...claudeLaunch.prefix, '--version']) : Promise.resolve(null),
+    qwenLaunch ? runQuiet(qwenLaunch.command, [...qwenLaunch.prefix, '--version']) : Promise.resolve(null),
   ]);
-  return { ollama, node, codex, claude };
+  return { ollama, node, codex, claude, qwen };
+}
+// The engine picker asks for this so an unavailable harness is greyed out with
+// a reason instead of spawning and failing.
+async function engineAvailability() {
+  const entries = await Promise.all(ENGINE_ORDER.map(async (id) => {
+    const info = engineInfo(id);
+    if (!info.binary) return [id, { installed: true, version: null }];
+    const launch = findEngineCli(id);
+    if (!launch?.command) return [id, { installed: false, version: null }];
+    const version = await runQuiet(launch.command, [...launch.prefix, '--version']);
+    return [id, { installed: true, version: version ? version.split(/\r?\n/)[0].slice(0, 40) : null }];
+  }));
+  return Object.fromEntries(entries);
 }
 let config = null;
 const visionCapability = new Map();
@@ -703,8 +704,8 @@ function runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, hol
     ].filter(Boolean).join('\n\n');
     const providerKind = provider?.kind || 'ollama';
     const usingOllamaCloud = isOllamaCloudModel(model, provider);
-    if (!['ollama', 'codex-cli'].includes(providerKind)) {
-      send('chat-error', 'This API profile supports Axon Chat. Code and Work now run through the official Codex or Claude CLI; select a CLI profile for agent work.');
+    if (!['ollama', 'responses'].includes(providerKind)) {
+      send('chat-error', 'Codex CLI needs an Ollama or Responses-compatible route. Pick a different engine for this provider.');
       send('chat-done', { sessionId, ok: false });
       return resolve();
     }
@@ -777,8 +778,10 @@ async function planSwarmRoles({ sentryModel, prompt, count, provider }) {
   const send = (channel, value) => { if (channel === 'chat-delta') text += String(value || ''); };
   const plannerPrompt = 'You plan Swarm worker roles. Explain your reasoning briefly, then the JSON plan after ---ROLES---.';
   try {
-    if (provider?.kind === 'claude-cli') await runOfficialClaude(sentryModel, ask, null, send, plannerPrompt, ensureDefaultWorkspace(), holder, [], 'approve', 'chat');
-    else if (provider?.kind === 'codex-cli') await runOfficialCodex(sentryModel, ask, null, send, plannerPrompt, ensureDefaultWorkspace(), holder, [], 'approve', 'chat', provider);
+    // The Sentry only needs text back, so it plans over whichever engine the
+    // profile selects and falls back to the direct route when none applies.
+    const planner = ENGINE_RUNNERS[normalizeEngine(provider?.engine)];
+    if (planner) await planner({ model: sentryModel, prompt: ask, sessionId: null, send, systemPrompt: plannerPrompt, cwd: ensureDefaultWorkspace(), holder, images: [], permission: 'approve', productMode: 'chat', provider, capabilities: null });
     else await runDirectChat(sentryModel, ask, null, send, plannerPrompt, holder, [], provider);
   } catch { /* fall through to fallback lanes */ }
   const split = text.split('---ROLES---');
@@ -988,32 +991,77 @@ function safeImages(value) {
   return images;
 }
 
-function runOfficialClaude(model, prompt, sessionId, send, systemPrompt, cwd, holder, _images = [], permissionMode = 'auto', productMode = 'code') {
+// Claude Code and Qwen Code emit the same stream-json event schema:
+// {type:'system',subtype:'init'}, {type:'assistant',message:{content:[...]}} with
+// text/thinking/tool_use parts, {type:'user'} carrying tool_result, and a final
+// {type:'result'}.  Only the argv and env differ, so one parser serves both and
+// a third stream-json engine costs an entry in STREAM_JSON_ENGINES.
+const STREAM_JSON_ENGINES = {
+  claude: {
+    label: 'Claude Code',
+    find: findClaudeCli,
+    // Claude Code reads an Anthropic-shaped endpoint; Ollama serves one at /v1/messages.
+    env: () => ({}),
+    args({ model, mode, sessionId, instruction }) {
+      const args = ['-p', '--verbose', '--output-format', 'stream-json', '--include-partial-messages',
+        '--permission-mode', mode === 'approve' ? 'plan' : mode === 'auto' ? 'acceptEdits' : 'bypassPermissions'];
+      if (mode === 'full') args.push('--dangerously-skip-permissions');
+      if (model) args.push('--model', model);
+      if (sessionId) args.push('--resume', sessionId);
+      args.push(instruction);
+      return args;
+    },
+  },
+  qwen: {
+    label: 'Qwen Code',
+    find: findQwenCli,
+    env: () => ({}),
+    // `--bare` skips implicit context discovery so a desktop turn is reproducible
+    // and does not silently absorb unrelated files from the user's home.
+    args({ model, mode, sessionId, systemPrompt, prompt, baseUrl, apiKey }) {
+      const args = ['--bare', '--output-format', 'stream-json', '--include-partial-messages', '--channel', 'desktop',
+        '--approval-mode', mode === 'approve' ? 'plan' : mode === 'auto' ? 'auto-edit' : 'yolo'];
+      if (model) args.push('--model', model);
+      if (baseUrl) args.push('--auth-type', 'openai', '--openai-base-url', baseUrl, '--openai-api-key', apiKey || 'ollama');
+      if (systemPrompt) args.push('--system-prompt', systemPrompt);
+      if (sessionId) args.push('--resume', sessionId);
+      args.push(prompt);
+      return args;
+    },
+  },
+};
+
+// Ollama's OpenAI-compatible surface is what Qwen Code talks to for a local model.
+function openAiRouteFor(provider) {
+  if (provider?.kind === 'openai-compatible' && provider.endpoint) {
+    return { baseUrl: provider.endpoint.replace(/\/$/, ''), apiKey: provider.credentialId ? readProviderSecret(provider.credentialId) : null };
+  }
+  return { baseUrl: `${activeOllamaUrl().replace(/\/$/, '')}/v1`, apiKey: 'ollama' };
+}
+
+function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemPrompt, cwd, holder, permissionMode = 'auto', productMode = 'code', provider = null }) {
   holder = holder || {};
+  const spec = STREAM_JSON_ENGINES[engineId];
   return new Promise((resolve) => {
-    const launch = findClaudeCli();
+    const launch = spec.find();
     if (!launch) {
-      send('chat-error', 'Claude Code is not installed or not on PATH. Install and sign in with the official Claude Code CLI, then retry.');
+      send('chat-error', `${spec.label} is not installed or not on PATH. Install it, then retry.`);
       send('chat-done', { sessionId, ok: false });
       return resolve();
     }
     const root = cwd || ensureDefaultWorkspace();
-    const instruction = [
-      systemPrompt?.trim(),
-      productMode === 'agent'
-        ? 'You are Axon Work, running through the official Claude Code CLI. Complete the requested multi-step task in the current workspace. Use your native tools and report the finished result plainly.'
-        : productMode === 'chat'
-          ? 'You are Axon Chat, running through the official Claude Code CLI. Answer helpfully and concisely.'
-          : 'You are Axon Code, running through the official Claude Code CLI. Work directly in the current repository, verify changes, and report the result plainly.',
-      prompt,
-    ].filter(Boolean).join('\n\n');
+    const scopeLine = productMode === 'agent'
+      ? 'Complete the requested multi-step task in the current workspace. Use your native tools and report the finished result plainly.'
+      : productMode === 'chat'
+        ? 'Answer helpfully and concisely.'
+        : 'Work directly in the current repository, verify changes, and report the result plainly.';
+    const identity = [systemPrompt?.trim(), `You are Axon, running through ${spec.label}. ${scopeLine}`].filter(Boolean).join('\n\n');
     const mode = normalizeMode(permissionMode);
-    const args = ['-p', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--permission-mode', mode === 'approve' ? 'plan' : mode === 'auto' ? 'acceptEdits' : 'bypassPermissions'];
-    if (mode === 'full') args.push('--dangerously-skip-permissions');
-    if (model) args.push('--model', model);
-    if (sessionId) args.push('--resume', sessionId);
-    args.push(instruction);
-    const child = spawn(launch.command, [...launch.prefix, ...args], { cwd: root, env: { ...process.env }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    const route = openAiRouteFor(provider);
+    const args = spec.args({ model, mode, sessionId, instruction: [identity, prompt].filter(Boolean).join('\n\n'), systemPrompt: identity, prompt, ...route });
+    const child = spawn(launch.command, [...launch.prefix, ...args], {
+      cwd: root, env: { ...process.env, ...spec.env({ ...route }) }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+    });
     holder.child = child;
     let buffer = '', resultSid = sessionId || null, stderr = '', failed = false, delivered = '';
     const finish = (ok) => { if (holder.child === child) holder.child = null; send('chat-done', { sessionId: resultSid, ok }); resolve(); };
@@ -1031,27 +1079,54 @@ function runOfficialClaude(model, prompt, sessionId, send, systemPrompt, cwd, ho
         let event; try { event = JSON.parse(line); } catch { continue; }
         if (event.session_id) resultSid = event.session_id;
         if (event.type === 'assistant') {
-          const text = (event.message?.content || []).filter((part) => part?.type === 'text').map((part) => part.text).join('');
-          emitText(text);
+          const parts = event.message?.content || [];
+          emitText(parts.filter((part) => part?.type === 'text').map((part) => part.text).join(''));
+          for (const part of parts) {
+            if (part?.type === 'tool_use') send('chat-step', { type: 'tool_call', fn: part.name || 'tool', args: part.input || {} });
+          }
         }
-        if (event.type === 'result' && event.is_error) { failed = true; send('chat-error', event.result || 'Claude Code failed to complete this turn.'); }
+        if (event.type === 'user') {
+          for (const part of event.message?.content || []) {
+            if (part?.type !== 'tool_result') continue;
+            const body = typeof part.content === 'string' ? part.content : JSON.stringify(part.content ?? '');
+            send('chat-step', { type: 'tool_result', result: String(body).slice(0, 4000), isError: part.is_error === true });
+          }
+        }
+        if (event.type === 'result' && event.is_error) { failed = true; send('chat-error', event.result || `${spec.label} failed to complete this turn.`); }
       }
     });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.on('exit', (code) => {
       if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
-      if (code && !failed) send('chat-error', `Claude Code exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
+      if (code && !failed) send('chat-error', `${spec.label} exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
       finish(!code && !failed);
     });
-    child.on('error', (error) => { send('chat-error', `Could not start Claude Code: ${error.message}`); finish(false); });
+    child.on('error', (error) => { send('chat-error', `Could not start ${spec.label}: ${error.message}`); finish(false); });
   });
 }
 
-function runOfficialCli(model, prompt, sessionId, send, systemPrompt, cwd, holder, images, permissionMode, productMode, provider, capabilities) {
-  if (provider?.kind === 'claude-cli') return runOfficialClaude(model, prompt, sessionId, send, systemPrompt, cwd, holder, images, permissionMode, productMode);
-  return runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, holder, images, permissionMode, productMode, provider, capabilities);
+function runOfficialClaude(model, prompt, sessionId, send, systemPrompt, cwd, holder, _images = [], permissionMode = 'auto', productMode = 'code', provider = null) {
+  return runStreamJsonCli('claude', { model, prompt, sessionId, send, systemPrompt, cwd, holder, permissionMode, productMode, provider });
 }
-ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, productMode, provider, mode, grants, history }) => {
+function runQwenCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, _images = [], permissionMode = 'auto', productMode = 'code', provider = null) {
+  return runStreamJsonCli('qwen', { model, prompt, sessionId, send, systemPrompt, cwd, holder, permissionMode, productMode, provider });
+}
+// The adapter table.  Adding a spawn-and-stream engine is an entry here plus
+// one in STREAM_JSON_ENGINES; nothing else in the routing has to know about it.
+const ENGINE_RUNNERS = {
+  qwen: (a) => runQwenCode(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
+  claude: (a) => runOfficialClaude(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
+  codex: (a) => runOfficialCodex(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider, a.capabilities),
+};
+// Learned the hard way: Ollama Cloud rejects Codex's freeform tool schema before
+// inference, so refuse that pair up front rather than surfacing raw protocol JSON.
+function engineModelRefusal(engineId, model, provider) {
+  if (engineId === 'codex' && isOllamaCloudModel(model, provider)) {
+    return 'Codex CLI cannot drive an Ollama Cloud model: Cloud rejects its freeform tool schema. Use Qwen Code or Axon native for :cloud models.';
+  }
+  return null;
+}
+ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd, images, requestId, productMode, provider, mode, scope, grants, history }) => {
   if (!requestId || typeof requestId !== 'string') return { ok: false, error: 'Missing chat request ID.' };
   const expanded = String(prompt || '').trim();
   if (!expanded) return { ok: false, error: 'Enter a message first.' };
@@ -1059,26 +1134,29 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   const send = (channel, value) => win?.webContents.send(channel, { requestId, ...(channel === 'chat-delta' ? { text: value } : channel === 'chat-step' ? { step: value } : channel === 'chat-error' ? { message: value } : value) });
   // ponytail: client mode forwards to the LAN server (cwd dropped -- the client's
   // project path is on the client device and doesn't map to the server's filesystem).
-  if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null, productMode, provider, mode }); return { ok: true }; }
-  const permission = normalizeMode(mode);
-  const selectedMode = ['chat', 'code', 'agent'].includes(productMode) ? productMode : 'chat';
+  if (lanClientConnected && lanClient) { lanClient.send({ type: 'chat', requestId, model, prompt: expanded, sessionId, systemPrompt, images: safe, cwd: null, productMode, provider, mode, scope }); return { ok: true }; }
+  // One scope control now owns what used to be productMode + permissionMode.
+  // `scopeFromLegacy` keeps an older renderer or LAN client working unchanged.
+  const active = scopeInfo(scope || scopeFromLegacy(productMode, mode));
+  const permission = normalizeMode(active.permission);
+  const selectedMode = active.productMode;
   const bound = await capabilityBoundPrompt(systemPrompt, model, selectedMode, provider);
   let usableImages = safe;
   if (selectedMode === 'chat' && safe.length && !bound.report.vision) {
     usableImages = [];
     send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not have verified vision support.` });
   }
+  const decided = resolveRoute({ scope: active.id, engine: provider?.engine, providerKind: provider?.kind });
+  const refusal = decided.reason || (decided.runner === 'refused' ? 'Unsupported engine.' : engineModelRefusal(decided.engine, model, provider));
+  if (refusal) { send('chat-error', refusal); send('chat-done', { sessionId: sessionId || null, ok: false }); return { ok: true }; }
   const holder = {}; localHolders.set(requestId, holder);
-  const run = provider?.kind === 'claude-cli'
-    ? runOfficialClaude(model, expanded, sessionId, send, bound.systemPrompt, cwd, holder, usableImages, permission, selectedMode)
-    : provider?.kind === 'codex-cli'
-      ? runOfficialCodex(model, expanded, sessionId, send, bound.systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider, bound.report)
-    : selectedMode === 'chat'
-      ? runDirectChat(model, expanded, sessionId, send, bound.systemPrompt, holder, usableImages, provider)
-    : isOllamaCloudModel(model, provider)
+  const args = { model, prompt: expanded, sessionId, send, systemPrompt: bound.systemPrompt, cwd, holder, images: usableImages, permission, productMode: selectedMode, provider, capabilities: bound.report };
+  const run = decided.runner === 'direct'
+    ? runDirectChat(model, expanded, sessionId, send, bound.systemPrompt, holder, usableImages, provider)
+    : decided.runner === 'native'
       ? runOllamaCloudAgent({ endpoint: activeOllamaUrl(), model, prompt: expanded, sessionId, history, systemPrompt: bound.systemPrompt, cwd: cwd || ensureDefaultWorkspace(), permissionMode: permission, productMode: selectedMode, send, holder, browser: { open: revealBrowser, read: readBrowser }, onSubagent: (agent) => win?.webContents.send('subagent-update', agent) })
         .then((cloudSessionId) => send('chat-done', { sessionId: cloudSessionId, ok: true }), (error) => { send('chat-error', error.message); send('chat-done', { sessionId: sessionId || null, ok: false }); })
-    : runOfficialCli(model, expanded, sessionId, send, bound.systemPrompt, cwd, holder, usableImages, permission, selectedMode, provider, bound.report);
+      : ENGINE_RUNNERS[decided.runner](args);
   run
     .catch((e) => send('chat-error', e.message))
     .finally(() => localHolders.delete(requestId));
@@ -1090,7 +1168,7 @@ ipcMain.handle('swarm-start', async (_e, { sentryModel, workerModel, prompt, ima
   if (!outcome) return { ok: false, error: 'Describe the outcome for the swarm.' };
   if (!Number.isSafeInteger(requested) || requested < 1) return { ok: false, error: 'Choose at least one worker.' };
   const kind = provider?.kind || 'ollama';
-  if (!['ollama', 'responses', 'openai-compatible', 'codex-cli', 'claude-cli'].includes(kind)) return { ok: false, error: 'Choose a supported provider profile before launching a swarm.' };
+  if (!['ollama', 'responses', 'openai-compatible'].includes(kind)) return { ok: false, error: 'Choose a supported provider profile before launching a swarm.' };
   const count = Math.min(requested, swarmLimit(provider));
   const swarmId = crypto.randomUUID();
   const fallbackModel = String(workerModel || sentryModel || '').slice(0, 160);
@@ -1172,11 +1250,13 @@ ipcMain.handle('browser-action', (_e, action) => {
 });
 ipcMain.handle('provider-save', (_e, profile, apiKey) => {
   const value = profile || {};
-  const kind = ['ollama', 'openai-compatible', 'responses', 'codex-cli', 'claude-cli'].includes(value.kind) ? value.kind : 'ollama';
+  const migrated = migrateProvider(value);
+  const kind = normalizeProviderKind(migrated.kind);
   const clean = {
     id: typeof value.id === 'string' && /^[a-z0-9_-]{4,80}$/i.test(value.id) ? value.id : crypto.randomUUID(),
     name: typeof value.name === 'string' ? value.name.trim().slice(0, 80) || 'Unnamed provider' : 'Unnamed provider',
     kind,
+    engine: normalizeEngine(migrated.engine),
     endpoint: typeof value.endpoint === 'string' ? value.endpoint.trim().replace(/\/$/, '').slice(0, 500) : '',
     model: typeof value.model === 'string' ? value.model.trim().slice(0, 160) : '',
     credentialId: typeof value.credentialId === 'string' ? value.credentialId : '',
@@ -1579,6 +1659,7 @@ ipcMain.handle('app-update-download', async () => {
   try { return await downloadAppUpdate(); } catch (error) { return { error: error.message }; }
 });
 ipcMain.handle('app-info', async () => ({ version: app.getVersion(), dependencies: await dependencyStatus() }));
+ipcMain.handle('engine-availability', async () => engineAvailability());
 ipcMain.handle('install-dependencies', async () => {
   const before = await dependencyStatus(); const steps = [];
   if (process.platform !== 'win32') return { ok: true, steps: ['Install Ollama through your Linux distribution. Install the official Codex CLI and Claude Code separately for Code and Work.'], status: before };

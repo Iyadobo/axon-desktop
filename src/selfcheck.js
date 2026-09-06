@@ -8,6 +8,7 @@ const { createConfigStore } = require('./config');
 const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
 const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
 const { requestWithRetry, cloudIdleTimeoutMs } = require('./ollama-cloud-agent');
+const { resolveRoute, scopeInfo, scopeFromLegacy, engineSupportsProvider, engineRefusal, migrateProvider, normalizeEngine } = require('./engines');
 
 let passed = 0, failed = 0;
 const ok = (name, condition) => {
@@ -27,6 +28,33 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
   ok('text-only models cannot receive screenshots', !textOnly.vision && !textOnly.browserScreenshot);
   ok('vision models can inspect agent browser screenshots', vision.vision && vision.browserScreenshot);
   ok('capability prompt prevents borrowed product identity', /not Claude, ChatGPT, Codex/.test(capabilityInstruction(textOnly)) && /screenshots are unavailable/.test(capabilityInstruction(textOnly)));
+}
+{
+  // Scope is the single control that replaced Chat/Code/Work plus the separate
+  // permission selector; it must still resolve to the same capability contract.
+  ok('scope maps onto the capability contract', scopeInfo('chat').productMode === 'chat' && !scopeInfo('chat').usesEngine
+    && scopeInfo('read').productMode === 'code' && scopeInfo('read').permission === 'approve'
+    && scopeInfo('edit').permission === 'auto' && scopeInfo('full').productMode === 'agent');
+  ok('legacy modes recover their nearest scope', scopeFromLegacy('agent', 'auto') === 'full'
+    && scopeFromLegacy('code', 'approve') === 'read' && scopeFromLegacy('code', 'auto') === 'edit'
+    && scopeFromLegacy('chat', 'auto') === 'chat');
+  ok('unknown scope falls back to chat', scopeInfo('nonsense').id === 'chat');
+  // An engine on a route it cannot speak is refused before spawn, with a reason.
+  ok('engines declare the routes they can drive', engineSupportsProvider('qwen', 'openai-compatible')
+    && !engineSupportsProvider('claude', 'openai-compatible') && engineSupportsProvider('codex', 'responses')
+    && !engineSupportsProvider('codex', 'openai-compatible'));
+  ok('an unsupported engine pair is refused with a reason', /Responses-compatible/.test(engineRefusal('codex', 'openai-compatible') || '')
+    && engineRefusal('qwen', 'ollama') === null);
+  ok('chat scope never spawns an engine', resolveRoute({ scope: 'chat', engine: 'codex', providerKind: 'openai-compatible' }).runner === 'direct');
+  ok('workspace scope routes to the selected engine', resolveRoute({ scope: 'edit', engine: 'qwen', providerKind: 'ollama' }).runner === 'qwen'
+    && resolveRoute({ scope: 'full', engine: 'none', providerKind: 'ollama' }).runner === 'native'
+    && resolveRoute({ scope: 'edit', engine: 'claude', providerKind: 'openai-compatible' }).runner === 'refused');
+  // The old single field mixed route and harness; saved profiles must survive.
+  ok('legacy provider kinds split into route and engine', migrateProvider({ kind: 'codex-cli' }).engine === 'codex'
+    && migrateProvider({ kind: 'codex-cli' }).kind === 'ollama'
+    && migrateProvider({ kind: 'claude-cli' }).engine === 'claude'
+    && migrateProvider({ kind: 'openai-compatible' }).kind === 'openai-compatible'
+    && normalizeEngine('bogus') === 'qwen');
 }
 
 (function () {
