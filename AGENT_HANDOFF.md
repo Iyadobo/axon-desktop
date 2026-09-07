@@ -83,12 +83,33 @@ Use source Preview for iterative work, not an installer every change:
 
 Restart Preview after source edits. Package only at a tested checkpoint with `npm run dist:win`.
 
+## Git state
+
+Remote is `origin` = `Iyadobo/axon-desktop`. Work happens on feature branches;
+`main` is only moved deliberately.
+
+As of 2026-09-07 the current line is `claude/one-interface-engine-registry` at
+`29de7a1`, pushed and tracking `origin/claude/one-interface-engine-registry`. It
+is 20 commits ahead of `main` (`50ffb34`) and has **not** been merged; no PR is
+open. `codex/model-picker-hover-fix` is 16 commits ahead of its upstream and
+unpushed, and `experimental` (`bfe7161`) is a deliberately local-only WIP
+snapshot — leave both alone unless asked.
+
+Push a branch as soon as it holds work worth keeping: this branch carried 20
+commits with no upstream at all, so a machine loss would have taken all of them.
+
 ## Storage and safety
 
 `axon-terminal/` is a **retired** Rust fork, ~7.4 GB, untracked and no longer
 referenced by any code path (`findAxonTerminal` was removed). It is kept only
 because it is user-owned; deleting it is the user's call. Do not stage
 user-owned untracked terminal/assets/preview files.
+
+Also untracked and deliberately unstaged: `worker-viewmodel-1840/` and
+`minecraft-rotten-flesh-leather/` (unrelated asset projects), `_to_delete/`
+(stale git index locks only), and the three
+`src/assets/axon-neural-paintbrush-v*.png` candidates — no code path
+references them.
 
 `src/main.js` still writes an `axon-terminal.cmd` CLI shim in `cliDirectory()`.
 That shim points at a binary this build no longer ships — clean it up when the
