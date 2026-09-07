@@ -88,9 +88,10 @@ Restart Preview after source edits. Package only at a tested checkpoint with `np
 Remote is `origin` = `Iyadobo/axon-desktop`. Work happens on feature branches;
 `main` is only moved deliberately.
 
-As of 2026-09-07 the current line is `claude/one-interface-engine-registry` at
-`29de7a1`, pushed and tracking `origin/claude/one-interface-engine-registry`. It
-is 20 commits ahead of `main` (`50ffb34`) and has **not** been merged; no PR is
+As of 2026-09-07 the current line is `claude/one-interface-engine-registry`,
+pushed and tracking `origin/claude/one-interface-engine-registry`. The
+one-interface + engine-registry work is commit `29de7a1`; the branch sits 20
+commits ahead of `main` (`50ffb34`) and has **not** been merged, and no PR is
 open. `codex/model-picker-hover-fix` is 16 commits ahead of its upstream and
 unpushed, and `experimental` (`bfe7161`) is a deliberately local-only WIP
 snapshot — leave both alone unless asked.
