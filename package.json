@@ -1,6 +1,6 @@
 {
   "name": "axon",
-  "version": "0.7.28",
+  "version": "0.7.29",
   "author": {
     "name": "Axon contributors",
     "email": "opensource@axon.local"
@@ -17,6 +17,7 @@
     "publish:deb": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_deb.ps1"
   },
   "build": {
+    "electronVersion": "36.9.5",
     "appId": "io.axon.workspace",
     "productName": "Axon",
     "asar": true,

@@ -2330,26 +2330,26 @@ let availableAppUpdate = null;
 function showUpdateToast(update) {
   availableAppUpdate = update;
   $('profileUpdateBadge').hidden = false;
-  $('updateToastTitle').textContent = 'Axon ' + update.version + ' is ready';
-  $('updateToastBody').textContent = 'A verified update is ready to download.';
+  $('updateToastTitle').textContent = 'NoCLI.ai is ready';
+  $('updateToastBody').textContent = 'Axon has moved to NoCLI.ai. Switch when you are ready.';
   $('updateToast').classList.add('show');
 }
 function showAvailableUpdate(update) {
   availableAppUpdate = update;
   $('profileUpdateBadge').hidden = false;
-  $('maintenanceInfo').textContent = 'Axon v' + update.version + ' is ready to download.';
+  $('maintenanceInfo').textContent = 'NoCLI.ai is ready to replace Axon.';
   const packageLabel = update.packageLabel || 'installer';
-  showUpdateDialog('Axon ' + update.version + ' is ready', 'Download the verified ' + packageLabel + ' now? Axon checks its SHA-256 before it can open it.', [
+  showUpdateDialog('Switch to NoCLI.ai', 'Axon has moved to NoCLI.ai. Download the verified ' + packageLabel + ' now? Axon checks its SHA-256 before it opens it.', [
     { label: 'Later', run: () => {} },
-    { label: 'Download and open', primary: true, onStart: () => { $('updateBody').textContent = 'Downloading Axon ' + update.version + '…\n\nThis can take a minute. The ' + packageLabel + ' is verified before Axon opens it.'; }, run: async () => { const file = await window.ollama.downloadAppUpdate(); if (file?.error) return file; return window.ollama.openUpdateInstaller(file.path); } },
+    { label: 'Switch to NoCLI.ai', primary: true, onStart: () => { $('updateBody').textContent = 'Downloading NoCLI.ai…\n\nThis can take a minute. The ' + packageLabel + ' is verified before NoCLI.ai opens it.'; }, run: async () => { const file = await window.ollama.downloadAppUpdate(); if (file?.error) return file; return window.ollama.openUpdateInstaller(file.path); } },
   ]);
 }
 async function checkAppUpdate({ manual = false } = {}) {
-  const button = $('appUpdateBtn'); if (manual) { button.disabled = true; $('maintenanceInfo').textContent = 'Checking for an Axon update…'; }
+  const button = $('appUpdateBtn'); if (manual) { button.disabled = true; $('maintenanceInfo').textContent = 'Checking for NoCLI.ai…'; }
   try {
     const update = await window.ollama.checkAppUpdate();
     if (update?.error) { $('maintenanceInfo').textContent = 'Update check failed: ' + update.error; return; }
-    if (!update.available) { $('maintenanceInfo').textContent = 'Axon is up to date (v' + update.current + ').'; return; }
+    if (!update.available) { $('maintenanceInfo').textContent = 'NoCLI.ai is not available yet.'; return; }
     showUpdateToast(update); if (manual) showAvailableUpdate(update);
   } catch (error) { $('maintenanceInfo').textContent = 'Update check failed: ' + (error?.message || 'Unknown error'); }
   finally { if (manual) button.disabled = false; }

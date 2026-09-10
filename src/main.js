@@ -1485,8 +1485,10 @@ async function checkForAppUpdate({ force = false } = {}) {
   const assets = Array.isArray(release.assets) ? release.assets : [];
   const installer = assets.find((asset) => releaseInstallerNames(process.platform, version).includes(asset?.name));
   const checksum = installer && assets.find((asset) => asset?.name === `${installer.name}.sha256`);
-  if (!version || !installer || !checksum) throw new Error('Latest Axon release is incomplete.');
-  const available = compareVersions(version, current) > 0;
+  if (!version || !installer || !checksum) throw new Error('Latest NoCLI.ai release is incomplete.');
+  // This bridge intentionally offers NoCLI.ai even when the bridge and release
+  // share a version: it is a product migration, not an Axon patch.
+  const available = process.platform === 'win32' ? compareVersions(version, current) >= 0 : compareVersions(version, current) > 0;
   availableRelease = available ? { version, installer: installer.browser_download_url, checksum: checksum.browser_download_url, name: installer.name, bytes: Number(installer.size) || 0 } : null;
   cachedUpdateStatus = { current, version, available, bytes: Number(installer.size) || 0, packageLabel: updatePackageLabel(process.platform), repository: UPDATE_REPOSITORY };
   cachedUpdateAt = Date.now();
