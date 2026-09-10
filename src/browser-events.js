@@ -1,6 +1,6 @@
-// Normalizes browser-related tool calls from the harnesses Axon can host.
+// Normalizes browser-related tool calls from the harnesses NoCLI.ai can host.
 // Keeping this outside the renderer makes the auto-open contract testable and
-// normalizes legacy and native browser tool names into Axon browser intents.
+// normalizes legacy and native browser tool names into NoCLI.ai browser intents.
 function browserInvocation(toolName, args = {}) {
   const name = String(toolName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const url = [args.url, args.href, args.target].find((value) => typeof value === 'string' && value.trim());

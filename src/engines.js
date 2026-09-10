@@ -1,5 +1,5 @@
 // Engine registry: which agent harness drives a turn, and what a turn is
-// allowed to touch.  Axon owns the product; the engine is a swappable adapter.
+// allowed to touch.  NoCLI.ai owns the product; the engine is a swappable adapter.
 //
 // Two axes that used to be one field.  `provider.kind` is the model route
 // (where tokens come from); `provider.engine` is the harness (what runs the
@@ -71,8 +71,8 @@ function scopeFromLegacy(productMode, permissionMode) {
 const ENGINES = {
   none: {
     id: 'none',
-    label: 'Axon native',
-    hint: "Axon's own tool loop over Ollama's function calls. No external CLI.",
+    label: 'NoCLI.ai native',
+    hint: "NoCLI.ai's own tool loop over Ollama's function calls. No external CLI.",
     binary: null,
     schema: 'native',
     providers: ['ollama'],
@@ -88,7 +88,7 @@ const ENGINES = {
   kimi: {
     id: 'kimi',
     label: 'Kimi Code',
-    hint: 'Official Kimi Code CLI. Axon supplies the selected Ollama or OpenAI-compatible model without changing Kimi configuration.',
+    hint: 'Official Kimi Code CLI. NoCLI.ai supplies the selected Ollama or OpenAI-compatible model without changing Kimi configuration.',
     binary: 'kimi',
     schema: 'kimi-json',
     providers: ['ollama', 'openai-compatible'],
@@ -170,7 +170,7 @@ function migrateProvider(profile) {
 function resolveRoute({ scope, engine, providerKind }) {
   const info = scopeInfo(scope);
   // Go and Zen credentials belong to OpenCode, so even a no-tools chat must
-  // pass through its CLI. The Axon adapter supplies a deny-all tool policy.
+  // pass through its CLI. The NoCLI.ai adapter supplies a deny-all tool policy.
   if (!info.usesEngine && normalizeProviderKind(providerKind) === 'opencode') return { runner: 'opencode', scope: info, engine: 'opencode', reason: null };
   if (!info.usesEngine) return { runner: 'direct', scope: info, engine: 'none', reason: null };
   const selected = normalizeEngine(engine);

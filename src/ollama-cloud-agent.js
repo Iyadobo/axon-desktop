@@ -11,12 +11,12 @@ const RETRYABLE_STATUS_CODES = new Set([429, 502, 503, 504]);
 
 const tools = [
   { type: 'function', function: { name: 'run_command', description: 'Run a command in the current workspace. Inspect before changing files and verify changes.', parameters: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'] } } },
-  { type: 'function', function: { name: 'browser_open', description: 'Open an http(s) page in the visible Axon Browser.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
-  { type: 'function', function: { name: 'browser_read', description: 'Read visible page text and labelled controls from Axon Browser.', parameters: { type: 'object', properties: {} } } },
+  { type: 'function', function: { name: 'browser_open', description: 'Open an http(s) page in the visible NoCLI.ai Browser.', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } },
+  { type: 'function', function: { name: 'browser_read', description: 'Read visible page text and labelled controls from NoCLI.ai Browser.', parameters: { type: 'object', properties: {} } } },
 ];
 const delegateTool = { type: 'function', function: { name: 'delegate_task', description: 'Delegate one bounded, independent subtask. It uses the current model unless model is explicitly supplied. Do not delegate tasks that need the parent conversation context.', parameters: { type: 'object', properties: { task: { type: 'string' }, model: { type: 'string', description: 'Optional Ollama model override.' } }, required: ['task'] } } };
 
-function cloudIdleTimeoutMs(value = process.env.AXON_OLLAMA_CLOUD_IDLE_TIMEOUT_MS) {
+function cloudIdleTimeoutMs(value = process.env.NOCLI_OLLAMA_CLOUD_IDLE_TIMEOUT_MS) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return DEFAULT_CLOUD_IDLE_TIMEOUT_MS;
   return Math.min(Math.max(Math.round(parsed), 30000), 30 * 60 * 1000);
@@ -109,7 +109,7 @@ const WRITE_REDIRECT = />>?[^&|]|(?:^|\s)tee\s/;
 // local guard for runaway loops, with 0 meaning unlimited for advanced users.
 const DEFAULT_MAX_TOOL_ROUNDS = 96;
 function maxToolRounds() {
-  const parsed = Number.parseInt(process.env.AXON_CLOUD_MAX_TOOL_ROUNDS || '', 10);
+  const parsed = Number.parseInt(process.env.NOCLI_CLOUD_MAX_TOOL_ROUNDS || '', 10);
   return Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, 1000) : DEFAULT_MAX_TOOL_ROUNDS;
 }
 function isMutatingCommand(cmd) {
@@ -133,7 +133,7 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history
   const sid = sessionId || crypto.randomUUID();
   const previous = sessions.get(sid);
   const recovered = Array.isArray(history) ? history.filter((item) => item && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string').slice(-40) : [];
-  const messages = previous ? [...previous, { role: 'user', content: prompt }] : [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are Axon Work. Complete the outcome in small verified steps.' : 'You are Axon Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, ...recovered, { role: 'user', content: prompt }];
+  const messages = previous ? [...previous, { role: 'user', content: prompt }] : [{ role: 'system', content: [systemPrompt, productMode === 'agent' ? 'You are NoCLI.ai Work. Complete the outcome in small verified steps.' : 'You are NoCLI.ai Code. Work carefully in the current repository and verify changes.'].filter(Boolean).join('\n\n') }, ...recovered, { role: 'user', content: prompt }];
   const roundLimit = maxToolRounds();
   for (let turn = 0; roundLimit === 0 || turn < roundLimit; turn++) {
     const response = await requestWithRetry(endpoint, { model, messages, tools: allowDelegation ? [...tools, delegateTool] : tools, stream: true }, holder, { onContent: (content) => send('chat-delta', content) });
@@ -148,7 +148,7 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history
       try {
         if (fn === 'run_command') {
           const cmd = String(args.command || '');
-          if (permissionMode === 'approve') result = { error: 'Command execution needs Auto or Full permission in Axon.' };
+          if (permissionMode === 'approve') result = { error: 'Command execution needs Auto or Full permission in NoCLI.ai.' };
           else if (readOnly && isMutatingCommand(cmd)) result = { error: 'This Swarm worker is read-only: write/delete/move commands are blocked. Report the proposed change instead of applying it.' };
           else result = await command(cmd, cwd);
         }
@@ -158,7 +158,7 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history
           const childModel = typeof args.model === 'string' && args.model.trim() ? args.model.trim().slice(0, 160) : model;
           const childId = crypto.randomUUID(); onSubagent?.({ id: childId, status: 'working', task: String(args.task || '').slice(0, 240), model: childModel, startedAt: Date.now() });
           let response = '';
-          try { await runOllamaCloudAgent({ endpoint, model: childModel, prompt: String(args.task || '').slice(0, 12000), systemPrompt: `${systemPrompt || ''}\n\nYou are a focused Axon subagent. Return concise findings to your parent.`, cwd, permissionMode, productMode: 'code', send: (kind, value) => { if (kind === 'chat-delta') response += value; }, holder: {}, browser, allowDelegation: false, readOnly }); result = { model: childModel, response: response.slice(0, 16000) || '(subagent completed without a text summary)' }; onSubagent?.({ id: childId, status: 'completed', result: result.response, finishedAt: Date.now() }); }
+          try { await runOllamaCloudAgent({ endpoint, model: childModel, prompt: String(args.task || '').slice(0, 12000), systemPrompt: `${systemPrompt || ''}\n\nYou are a focused NoCLI.ai subagent. Return concise findings to your parent.`, cwd, permissionMode, productMode: 'code', send: (kind, value) => { if (kind === 'chat-delta') response += value; }, holder: {}, browser, allowDelegation: false, readOnly }); result = { model: childModel, response: response.slice(0, 16000) || '(subagent completed without a text summary)' }; onSubagent?.({ id: childId, status: 'completed', result: result.response, finishedAt: Date.now() }); }
           catch (error) { onSubagent?.({ id: childId, status: 'failed', result: error.message, finishedAt: Date.now() }); throw error; }
         }
         else result = { error: `Unknown tool: ${fn}` };
@@ -167,7 +167,7 @@ async function runOllamaCloudAgent({ endpoint, model, prompt, sessionId, history
       messages.push({ role: 'tool', content: JSON.stringify(result) });
     }
   }
-  throw new Error(`Axon Cloud agent reached its ${roundLimit}-round safety budget. Set AXON_CLOUD_MAX_TOOL_ROUNDS=0 to uncap it.`);
+  throw new Error(`NoCLI.ai Cloud agent reached its ${roundLimit}-round safety budget. Set NOCLI_CLOUD_MAX_TOOL_ROUNDS=0 to uncap it.`);
 }
 
 module.exports = { runOllamaCloudAgent, requestWithRetry, cloudIdleTimeoutMs };

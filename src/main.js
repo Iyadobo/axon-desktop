@@ -1,4 +1,4 @@
-// Electron main: tray + window + Ollama lifecycle + native Axon chat and terminal modes.
+// Electron main: tray + window + Ollama lifecycle + native NoCLI.ai chat and terminal modes.
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView, safeStorage, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -17,11 +17,31 @@ const { resolveRoute, migrateProvider, normalizeEngine, normalizeProviderKind, s
 const { openCodeLaunchConfig } = require('./opencode-adapter');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
-try { app.setAppUserModelId('io.axon.workspace'); } catch {}
+try { app.setAppUserModelId('io.nocli.workspace'); } catch {}
 // A stable display name also stabilizes Electron's userData folder across dev
-// and packaged launches (Windows otherwise kept both `axon` and `Axon`).
-try { app.setName('Axon'); } catch {}
-// Keep a launch click focused on the existing Axon window instead of opening
+// and packaged launches (Windows otherwise kept both `nocli` and `NoCLI.ai`).
+try { app.setName('NoCLI.ai'); } catch {}
+
+function migrateLegacyUserData(targetDirectory) {
+  const targetSettings = path.join(targetDirectory, 'settings.json');
+  if (fs.existsSync(targetSettings)) return;
+  const parent = path.dirname(targetDirectory);
+  const legacyNames = ['A' + 'xon', 'a' + 'xon', 'ollama-desktop-harness'];
+  for (const name of legacyNames) {
+    const sourceDirectory = path.join(parent, name);
+    if (!fs.existsSync(path.join(sourceDirectory, 'settings.json'))) continue;
+    try {
+      fs.mkdirSync(targetDirectory, { recursive: true });
+      for (const file of ['settings.json', 'settings.backup.json', 'provider-secrets.json']) {
+        const source = path.join(sourceDirectory, file);
+        const target = path.join(targetDirectory, file);
+        if (fs.existsSync(source) && !fs.existsSync(target)) fs.copyFileSync(source, target);
+      }
+      return;
+    } catch {}
+  }
+}
+// Keep a launch click focused on the existing NoCLI.ai window instead of opening
 // another Electron group (which also keeps the taskbar pleasantly tidy).
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
@@ -63,13 +83,13 @@ async function listActiveModels() {
   return await ollama('/api/tags');
 }
 // Release feeds stay platform-specific so a Linux client never mistakes the
-// Windows installer for its update. AXON_UPDATE_REPOSITORY remains a useful
+// Windows installer for its update. NOCLI_UPDATE_REPOSITORY remains a useful
 // single-feed override for forks and local testing.
 const UPDATE_REPOSITORY = updateRepository(process.platform);
 
 let tray = null, win = null, ollamaProc = null, browserPanel = null, browserBridge = null, browserBridgeEndpoint = '', browserBridgeToken = '', isQuitting = false;
 let updateCheckTimer = null, announcedUpdateVersion = null;
-let trayLabel = 'Axon: starting…';
+let trayLabel = 'NoCLI.ai: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
 const localHolders = new Map();
@@ -216,21 +236,21 @@ function notifyModelsChanged(payload = {}) {
   win.webContents.send('models-changed', payload);
 }
 async function ensureOllama() {
-  if (runtimeKind === 'exo') return setTray('Axon: Exo runtime selected');
-  if (runtimeKind === 'llamacpp') return setTray('Axon: llama.cpp RPC runtime');
-  if (await isOllamaUp()) { setTray('Axon: running'); notifyModelsChanged({ runtime: 'ollama', ready: true }); return true; }
+  if (runtimeKind === 'exo') return setTray('NoCLI.ai: Exo runtime selected');
+  if (runtimeKind === 'llamacpp') return setTray('NoCLI.ai: llama.cpp RPC runtime');
+  if (await isOllamaUp()) { setTray('NoCLI.ai: running'); notifyModelsChanged({ runtime: 'ollama', ready: true }); return true; }
   let launchError = null;
   const child = spawn('ollama', ['serve'], { windowsHide: true, shell: false });
   ollamaProc = child;
-  child.on('error', (error) => { launchError = error; if (ollamaProc === child) ollamaProc = null; setTray('Axon: Ollama unavailable'); });
-  child.on('exit', () => { if (ollamaProc === child) ollamaProc = null; setTray('Axon: stopped'); });
+  child.on('error', (error) => { launchError = error; if (ollamaProc === child) ollamaProc = null; setTray('NoCLI.ai: Ollama unavailable'); });
+  child.on('exit', () => { if (ollamaProc === child) ollamaProc = null; setTray('NoCLI.ai: stopped'); });
   child.stderr?.on('data', () => {});
   for (let i = 0; i < 40; i++) {
     await sleep(500);
     if (await isOllamaUp()) { setTray('Ollama: running'); notifyModelsChanged({ runtime: 'ollama', ready: true }); return true; }
     if (launchError) break;
   }
-  setTray('Axon: failed to start');
+  setTray('NoCLI.ai: failed to start');
   return false;
 }
 
@@ -267,7 +287,7 @@ function checkExo(url) {
 function fetchCloudCatalogue() {
   return new Promise((resolve, reject) => {
     const req = https.get('https://ollama.com/api/tags', {
-      headers: { 'User-Agent': `Axon/${app.getVersion()}`, Accept: 'application/json' },
+      headers: { 'User-Agent': `NoCLI.ai/${app.getVersion()}`, Accept: 'application/json' },
     }, (res) => {
       if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Ollama Cloud returned ${res.statusCode}`)); }
       let body = '';
@@ -397,7 +417,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 820, height: 720, show: false, autoHideMenuBar: true,
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    // Axon's renderer owns the title bar so the app has one coherent chrome
+    // NoCLI.ai's renderer owns the title bar so the app has one coherent chrome
     // instead of a Windows-coloured frame sitting above the workspace.
     frame: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
@@ -405,7 +425,7 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.webContents.once('did-finish-load', () => startBackgroundUpdateChecks());
   // Frameless Electron windows do not reliably inherit Chromium's browser
-  // zoom shortcuts. Keep this scoped to Axon's shell (not the agent browser).
+  // zoom shortcuts. Keep this scoped to NoCLI.ai's shell (not the agent browser).
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' || !(input.control || input.meta)) return;
     const key = String(input.key || '').toLowerCase();
@@ -419,11 +439,11 @@ function createWindow() {
       console.error(`[renderer:${details.level}] ${details.sourceId}:${details.lineNumber} ${details.message}`);
     });
   }
-  // Open maximized: Axon is a workspace, and the transcript plus the browser
+  // Open maximized: NoCLI.ai is a workspace, and the transcript plus the browser
   // pane both want room. Maximize before showing so there is no resize flash;
   // the width/height above stay as the restore-down size.
   win.once('ready-to-show', () => { win.maximize(); win.show(); });
-  // Axon is an agent host: closing the window keeps active work alive in the
+  // NoCLI.ai is an agent host: closing the window keeps active work alive in the
   // background. The tray's explicit Quit item remains the kill switch.
   win.on('close', (event) => {
     if (isQuitting) return;
@@ -434,8 +454,8 @@ function createWindow() {
 // Electron has no `localAppData` getPath key; use the Windows environment
 // location directly so the CLI remains user-local and works in packaged builds.
 function cliDirectory() {
-  if (process.platform === 'win32') return path.join(process.env.LOCALAPPDATA || path.dirname(app.getPath('appData')), 'Axon', 'bin');
-  return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'axon', 'bin');
+  if (process.platform === 'win32') return path.join(process.env.LOCALAPPDATA || path.dirname(app.getPath('appData')), 'NoCLI.ai', 'bin');
+  return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'nocli', 'bin');
 }
 function refreshShortcutIcons(iconPath) {
   // Pinned taskbar shortcuts cache an executable's first icon resource very aggressively.
@@ -443,8 +463,8 @@ function refreshShortcutIcons(iconPath) {
   const appData = process.env.APPDATA;
   if (!appData || process.platform !== 'win32') return;
   const shortcuts = [
-    path.join(appData, 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar', 'Axon.lnk'),
-    path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Axon.lnk'),
+    path.join(appData, 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'TaskBar', 'NoCLI.ai.lnk'),
+    path.join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'NoCLI.ai.lnk'),
   ];
   const quote = (value) => String(value).replace(/'/g, "''");
   const list = shortcuts.map((shortcut) => `'${quote(shortcut)}'`).join(',');
@@ -455,33 +475,33 @@ function ensureCliCommand() {
   const dir = cliDirectory(); fs.mkdirSync(dir, { recursive: true });
   if (process.platform !== 'win32') {
     const workspace = ensureDefaultWorkspace();
-    const terminal = path.join(dir, 'axon-terminal');
+    const terminal = path.join(dir, 'nocli-terminal');
     fs.writeFileSync(terminal, `#!/usr/bin/env bash\ncd ${JSON.stringify(workspace)}\nexec \"${process.env.SHELL || '/bin/bash'}\" -i\n`, { mode: 0o755 });
     try { fs.chmodSync(terminal, 0o755); } catch {}
     return dir;
   }
-  const iconPath = path.join(path.dirname(dir), 'Axon.ico');
+  const iconPath = path.join(path.dirname(dir), 'NoCLI.ai.ico');
   try { fs.copyFileSync(path.join(__dirname, 'assets', 'icon.ico'), iconPath); refreshShortcutIcons(iconPath); } catch {}
   const workspace = ensureDefaultWorkspace();
-  // Packaged Axon launches directly; the dev fallback remains useful to us while testing.
+  // Packaged NoCLI.ai launches directly; the dev fallback remains useful to us while testing.
   const launch = app.isPackaged ? `"${process.execPath}"` : `"${process.execPath}" "${app.getAppPath()}"`;
   const terminal = [
-    '@echo off', 'title Axon Terminal', 'color 0F', `cd /d "${workspace}"`, 'prompt AXON $P$G',
+    '@echo off', 'title NoCLI.ai Terminal', 'color 0F', `cd /d "${workspace}"`, 'prompt NOCLI $P$G',
   ].join('\r\n');
-  const command = ['@echo off', 'if /I "%~1"=="terminal" (', '  start "Axon Terminal" "%ComSpec%" /k "%~dp0axon-terminal.cmd"', '  exit /b 0', ')', `start "Axon" ${launch}`, 'exit /b 0', ''].join('\r\n');
-  fs.writeFileSync(path.join(dir, 'axon-terminal.cmd'), terminal, 'utf8');
-  fs.writeFileSync(path.join(dir, 'axon.cmd'), command, 'utf8');
+  const command = ['@echo off', 'if /I "%~1"=="terminal" (', '  start "NoCLI.ai Terminal" "%ComSpec%" /k "%~dp0nocli-terminal.cmd"', '  exit /b 0', ')', `start "NoCLI.ai" ${launch}`, 'exit /b 0', ''].join('\r\n');
+  fs.writeFileSync(path.join(dir, 'nocli-terminal.cmd'), terminal, 'utf8');
+  fs.writeFileSync(path.join(dir, 'nocli.cmd'), command, 'utf8');
   process.env.PATH = dir + ';' + (process.env.PATH || '');
   // Persist it for future Command Prompt / Windows Terminal sessions, without touching system PATH.
   const escapedDir = dir.replace(/'/g, "''");
-  const ps = `$d='${escapedDir}';$p=[Environment]::GetEnvironmentVariable('Path','User');if(-not (($p -split ';') | Where-Object { $_ -eq $d })){[Environment]::SetEnvironmentVariable('Path',(($p.TrimEnd(';')+';'+$d).TrimStart(';')),'User')};Add-Type -Name AxonEnv -Namespace Native -MemberDefinition '[DllImport("user32.dll",SetLastError=true,CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd,uint Msg,IntPtr wParam,string lParam,uint flags,uint timeout,out IntPtr result);' -ErrorAction SilentlyContinue;$r=[IntPtr]::Zero;[Native.AxonEnv]::SendMessageTimeout([IntPtr]0xffff,0x1a,[IntPtr]::Zero,'Environment',2,1000,[ref]$r)|Out-Null`;
+  const ps = `$d='${escapedDir}';$p=[Environment]::GetEnvironmentVariable('Path','User');if(-not (($p -split ';') | Where-Object { $_ -eq $d })){[Environment]::SetEnvironmentVariable('Path',(($p.TrimEnd(';')+';'+$d).TrimStart(';')),'User')};Add-Type -Name NoCLIEnv -Namespace Native -MemberDefinition '[DllImport("user32.dll",SetLastError=true,CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd,uint Msg,IntPtr wParam,string lParam,uint flags,uint timeout,out IntPtr result);' -ErrorAction SilentlyContinue;$r=[IntPtr]::Zero;[Native.NoCLIEnv]::SendMessageTimeout([IntPtr]0xffff,0x1a,[IntPtr]::Zero,'Environment',2,1000,[ref]$r)|Out-Null`;
   try { spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, stdio: 'ignore' }); } catch {}
   return dir;
 }
 function openGenuineTerminal() {
   ensureCliCommand();
   if (process.platform !== 'win32') {
-    const script = path.join(cliDirectory(), 'axon-terminal');
+    const script = path.join(cliDirectory(), 'nocli-terminal');
     const terminals = [
       ['x-terminal-emulator', ['-e', script]], ['gnome-terminal', ['--', script]],
       ['konsole', ['-e', script]], ['xfce4-terminal', ['-x', script]], ['xterm', ['-e', script]],
@@ -492,7 +512,7 @@ function openGenuineTerminal() {
     catch (error) { return { ok: false, error: error.message }; }
   }
   try {
-    const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'start "Axon Terminal" "%ComSpec%" /k "' + path.join(cliDirectory(), 'axon-terminal.cmd') + '"'], { windowsHide: false, detached: true, stdio: 'ignore' });
+    const child = spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'start "NoCLI.ai Terminal" "%ComSpec%" /k "' + path.join(cliDirectory(), 'nocli-terminal.cmd') + '"'], { windowsHide: false, detached: true, stdio: 'ignore' });
     child.unref(); return { ok: true };
   } catch (error) { return { ok: false, error: error.message }; }
 }
@@ -521,7 +541,7 @@ function browserSnapshotScript() {
     const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
     const controls = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"]')]
       .filter(visible).slice(0, 120).map((el, index) => {
-        const id = el.dataset.axonBrowserId || ('axon-' + (index + 1)); el.dataset.axonBrowserId = id;
+        const id = el.dataset.nocliBrowserId || ('nocli-' + (index + 1)); el.dataset.nocliBrowserId = id;
         return { id, tag: el.tagName.toLowerCase(), text: (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 180), href: el.href || undefined, type: el.type || undefined };
       });
     return { title: document.title, url: location.href, text: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 12000), controls };
@@ -544,7 +564,7 @@ function startBrowserBridge() {
   browserBridgeToken = crypto.randomBytes(32).toString('hex');
   browserBridge = http.createServer((request, response) => {
     const done = (status, data) => { response.writeHead(status, { 'content-type': 'application/json' }); response.end(JSON.stringify(data)); };
-    if (request.method !== 'POST' || request.headers['x-axon-browser-token'] !== browserBridgeToken) return done(403, { error: 'Axon Browser access denied.' });
+    if (request.method !== 'POST' || request.headers['x-nocli-browser-token'] !== browserBridgeToken) return done(403, { error: 'NoCLI.ai Browser access denied.' });
     let raw = ''; request.setEncoding('utf8');
     request.on('data', (chunk) => { raw += chunk; if (raw.length > 128 * 1024) request.destroy(); });
     request.on('end', async () => {
@@ -559,9 +579,9 @@ function startBrowserBridge() {
         if (action === 'read') return done(200, await readBrowser());
         const panel = ensureBrowserPanel();
         if (action === 'click' || action === 'type') {
-          const id = String(payload.id || ''); if (!/^axon-\d+$/.test(id)) throw new Error('Use an element ID returned by browser_read.');
+          const id = String(payload.id || ''); if (!/^nocli-\d+$/.test(id)) throw new Error('Use an element ID returned by browser_read.');
           const text = action === 'type' ? String(payload.text || '') : '';
-          const result = await panel.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-axon-browser-id="${id}"]'); if (!el) return { error: 'That page element is no longer available. Read the page again.' }; if ('${action}' === 'click') { el.click(); return { ok: true }; } el.focus(); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set; if (!setter) return { error: 'That element cannot accept typed text.' }; setter.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true }; })()`, true);
+          const result = await panel.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-nocli-browser-id="${id}"]'); if (!el) return { error: 'That page element is no longer available. Read the page again.' }; if ('${action}' === 'click') { el.click(); return { ok: true }; } el.focus(); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set; if (!setter) return { error: 'That element cannot accept typed text.' }; setter.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true }; })()`, true);
           if (result?.error) throw new Error(result.error); return done(200, result);
         }
         if (action === 'screenshot') {
@@ -579,13 +599,13 @@ function startBrowserBridge() {
     });
   });
 }
-function ensureAxonBrowserMcpConfig(provider = null) {
+function ensureNocliBrowserMcpConfig(provider = null) {
   const home = path.join(app.getPath('userData'), 'terminal'); fs.mkdirSync(home, { recursive: true });
   const quote = (value) => JSON.stringify(String(value));
-  const mcpScript = app.isPackaged ? path.join(process.resourcesPath, 'axon-browser-mcp.js') : path.join(__dirname, 'axon-browser-mcp.js');
-  let profile = `[mcp_servers.axon_browser]\ncommand = ${quote(process.execPath)}\nargs = [${quote(mcpScript)}]\nenv = { ELECTRON_RUN_AS_NODE = "1" }\n`;
+  const mcpScript = app.isPackaged ? path.join(process.resourcesPath, 'nocli-browser-mcp.js') : path.join(__dirname, 'nocli-browser-mcp.js');
+  let profile = `[mcp_servers.nocli_browser]\ncommand = ${quote(process.execPath)}\nargs = [${quote(mcpScript)}]\nenv = { ELECTRON_RUN_AS_NODE = "1" }\n`;
   if (provider?.kind === 'responses') {
-    profile += `\nmodel_provider = "axon_custom"\n[model_providers.axon_custom]\nname = ${quote(provider.name || 'Axon API')}\nbase_url = ${quote(provider.endpoint)}\nenv_key = "AXON_PROVIDER_API_KEY"\nwire_api = "responses"\n`;
+    profile += `\nmodel_provider = "nocli_custom"\n[model_providers.nocli_custom]\nname = ${quote(provider.name || 'NoCLI.ai API')}\nbase_url = ${quote(provider.endpoint)}\nenv_key = "NOCLI_PROVIDER_API_KEY"\nwire_api = "responses"\n`;
   }
   fs.writeFileSync(path.join(home, 'browser.config.toml'), profile, 'utf8');
   return home;
@@ -598,7 +618,7 @@ const normalizeMode = (value) => (PERMISSION_MODES.has(value) ? value : 'auto');
 const isOllamaCloudModel = (model, provider) =>
   (!provider?.kind || provider.kind === 'ollama') && /(?:^|[:._-])cloud$/i.test(String(model || ''));
 
-// Axon Chat deliberately avoids an agent harness. It is a fast, local-first
+// NoCLI.ai Chat deliberately avoids an agent harness. It is a fast, local-first
 // conversation surface backed by the selected Ollama-compatible runtime.
 const directChatSessions = new Map();
 function apiEndpoint(base, pathName) {
@@ -696,7 +716,7 @@ function runDirectChat(model, prompt, sessionId, send, systemPrompt, holder, ima
     }, (response) => {
       if (response.statusCode !== 200) {
         let body = ''; response.setEncoding('utf8'); response.on('data', (chunk) => { body += chunk; });
-        response.on('end', () => { send('chat-error', `Axon Chat could not reach ${target.origin}: ${body.slice(0, 300) || response.statusCode}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
+        response.on('end', () => { send('chat-error', `NoCLI.ai Chat could not reach ${target.origin}: ${body.slice(0, 300) || response.statusCode}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
         return;
       }
       let buffer = '', assistant = '', completed = false;
@@ -724,7 +744,7 @@ function runDirectChat(model, prompt, sessionId, send, systemPrompt, holder, ima
       response.on('error', (error) => { send('chat-error', error.message); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
     });
     holder.child = request;
-    request.on('error', (error) => { send('chat-error', `Axon Chat request failed: ${error.message}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
+    request.on('error', (error) => { send('chat-error', `NoCLI.ai Chat request failed: ${error.message}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); });
     request.end(payload);
   });
 }
@@ -742,7 +762,7 @@ function runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, hol
     const sandbox = { approve: 'read-only', auto: 'workspace-write', full: 'danger-full-access' }[normalizeMode(permissionMode)];
     const instruction = [
       systemPrompt?.trim(),
-      productMode === 'agent' ? 'You are Axon Work. Execute the requested multi-step task toward a finished outcome. Use the browser when research or website interaction is needed; delegate only concrete, independent workstreams when they materially help; keep all workers within the parent workspace and permission boundary.' : 'You are Axon Code. Work directly in the current repository, use the browser only for focused implementation research, verify your changes, and keep the user informed. Do not delegate or turn the task into an autonomous workstream.',
+      productMode === 'agent' ? 'You are NoCLI.ai Work. Execute the requested multi-step task toward a finished outcome. Use the browser when research or website interaction is needed; delegate only concrete, independent workstreams when they materially help; keep all workers within the parent workspace and permission boundary.' : 'You are NoCLI.ai Code. Work directly in the current repository, use the browser only for focused implementation research, verify your changes, and keep the user informed. Do not delegate or turn the task into an autonomous workstream.',
       prompt,
     ].filter(Boolean).join('\n\n');
     const providerKind = provider?.kind || 'ollama';
@@ -752,7 +772,7 @@ function runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, hol
       send('chat-done', { sessionId, ok: false });
       return resolve();
     }
-    // Keep this invocation deliberately close to the official CLI. Axon no
+    // Keep this invocation deliberately close to the official CLI. NoCLI.ai no
     // longer supplies a shadow CODEX_HOME or custom MCP configuration.
     const common = ['--json', '--skip-git-repo-check', '--sandbox', sandbox, '-C', root];
     if (providerKind === 'ollama') common.push('--oss', '--local-provider', 'ollama');
@@ -785,7 +805,7 @@ function runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, hol
           // this is a per-model provider limitation, not a VRAM requirement.
           const schemaRejected = /(?:tools?\.\d+\.function.*name.*required|name.*required.*tools?\.\d+\.function|tool schema)/i.test(message);
           send('chat-error', usingOllamaCloud && schemaRejected
-            ? "Ollama Cloud rejected an Axon Terminal custom tool before the model could run. This is a protocol mismatch, not a VRAM or API-key issue. Chat works; Cloud Code and Work need Axon's native-function compatibility bridge."
+            ? "Ollama Cloud rejected an NoCLI.ai Terminal custom tool before the model could run. This is a protocol mismatch, not a VRAM or API-key issue. Chat works; Cloud Code and Work need NoCLI.ai's native-function compatibility bridge."
             : message);
         }
       }
@@ -815,7 +835,7 @@ const SWARM_FALLBACK_LANES = [
   { role: 'Skeptic', brief: 'Look for risks, counterexamples, and verification steps.' },
 ];
 async function planSwarmRoles({ sentryModel, prompt, count, provider }) {
-  const ask = `You are the Axon Swarm Sentry. Before any worker runs, reason about how to best split the outcome below into ${count} independent, non-overlapping investigation roles that will each report back to you.\n\nOutcome:\n${prompt}\n\nFirst, in 2-4 sentences, explain your reasoning: what needs investigating, and how you're dividing it. Then on its own line write exactly ---ROLES--- and after that ONLY a JSON array of exactly ${count} objects: [{"role": "<2-4 word role name>", "brief": "<specific instructions for this worker, tailored to this outcome, 1-3 sentences>"}]. Nothing after the JSON.`;
+  const ask = `You are the NoCLI.ai Swarm Sentry. Before any worker runs, reason about how to best split the outcome below into ${count} independent, non-overlapping investigation roles that will each report back to you.\n\nOutcome:\n${prompt}\n\nFirst, in 2-4 sentences, explain your reasoning: what needs investigating, and how you're dividing it. Then on its own line write exactly ---ROLES--- and after that ONLY a JSON array of exactly ${count} objects: [{"role": "<2-4 word role name>", "brief": "<specific instructions for this worker, tailored to this outcome, 1-3 sentences>"}]. Nothing after the JSON.`;
   let text = '';
   const holder = {};
   const send = (channel, value) => { if (channel === 'chat-delta') text += String(value || ''); };
@@ -860,7 +880,7 @@ async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = []
   const runWorker = async (index) => {
     const id = crypto.randomUUID(); const holder = {}; group.holders.set(id, holder);
     const { role, brief: roleBrief } = roles[index];
-    const task = `Axon Swarm worker ${index + 1} of ${count}. Role: ${role}. ${roleBrief} Independently investigate this outcome. Use the workspace and browser tools available to inspect the real context, then return concise actionable findings -- including any code, diffs, or commands you'd propose -- for the Sentry. Do not delegate. You are running read-only: you cannot modify files, so report a proposed change instead of applying it.\n\nOutcome:\n${prompt}`;
+    const task = `NoCLI.ai Swarm worker ${index + 1} of ${count}. Role: ${role}. ${roleBrief} Independently investigate this outcome. Use the workspace and browser tools available to inspect the real context, then return concise actionable findings -- including any code, diffs, or commands you'd propose -- for the Sentry. Do not delegate. You are running read-only: you cannot modify files, so report a proposed change instead of applying it.\n\nOutcome:\n${prompt}`;
     let result = '', failure = ''; const steps = [];
     emit({ id, status: 'working', task: `Worker ${index + 1} · ${role}`, role, brief: roleBrief, model: workerModel, startedAt: Date.now() });
     const send = (channel, value) => {
@@ -889,11 +909,11 @@ async function runSwarm({ swarmId, sentryModel, workerModel, prompt, images = []
       const summary = error.message; emit({ id, status: 'failed', result: summary, finishedAt: Date.now() }); return { role, brief: roleBrief, summary, failed: true };
     } finally { group.holders.delete(id); }
   };
-  emit({ id: swarmId, status: 'launching', task: `Axon Swarm · Sentry + ${count} workers`, model: sentryModel, startedAt: Date.now() });
+  emit({ id: swarmId, status: 'launching', task: `NoCLI.ai Swarm · Sentry + ${count} workers`, model: sentryModel, startedAt: Date.now() });
   const reports = await Promise.all(Array.from({ length: count }, (_, index) => runWorker(index)));
   const sentryBound = await capabilityBoundPrompt(systemPrompt, sentryModel, 'code', provider);
   const brief = reports.map((report, index) => `Worker ${index + 1} -- ${report.role} (${report.brief}):\n${report.summary.slice(0, 6000)}`).join('\n\n');
-  const sentryTask = `You are the Axon Swarm Sentry. You planned the roles below and dispatched these workers; now reconcile their reports into one final result. Preserve and present any code, diffs, commands, or concrete artifacts a worker proposed -- don't summarize code away. Reconcile disagreements, identify the strongest evidence, state remaining uncertainty, and return one complete, decision-ready final result for the original outcome. Do not delegate or modify files.\n\nOriginal outcome:\n${prompt}\n\nWorker reports:\n${brief}`;
+  const sentryTask = `You are the NoCLI.ai Swarm Sentry. You planned the roles below and dispatched these workers; now reconcile their reports into one final result. Preserve and present any code, diffs, commands, or concrete artifacts a worker proposed -- don't summarize code away. Reconcile disagreements, identify the strongest evidence, state remaining uncertainty, and return one complete, decision-ready final result for the original outcome. Do not delegate or modify files.\n\nOriginal outcome:\n${prompt}\n\nWorker reports:\n${brief}`;
   let sentryResult = '', sentryFailure = '';
   emit({ id: sentryId, status: 'working', task: 'Sentry · synthesize worker reports', model: sentryModel, startedAt: Date.now() });
   const sentrySend = (channel, value) => { if (channel === 'chat-delta') sentryResult = (sentryResult + String(value || '')).slice(-24000); if (channel === 'chat-error') sentryFailure = String(value || 'Sentry failed.'); };
@@ -917,7 +937,7 @@ async function runSwarmWorkerRetry({ swarmId, agentId, lane, workerModel, prompt
   const cloudExecMode = normalizeMode(mode) === 'approve' ? 'auto' : normalizeMode(mode);
   const briefText = lane || SWARM_FALLBACK_LANES[0].brief;
   const workerBound = await capabilityBoundPrompt(systemPrompt, workerModel, 'code', provider);
-  const task = `Axon Swarm worker retry. ${briefText} Independently investigate this outcome. Use the workspace and browser tools available to inspect the real context, then return concise actionable findings -- including any code, diffs, or commands you'd propose -- for the Sentry. Do not delegate. You are running read-only: you cannot modify files, so report a proposed change instead of applying it.\n\nOutcome:\n${prompt}`;
+  const task = `NoCLI.ai Swarm worker retry. ${briefText} Independently investigate this outcome. Use the workspace and browser tools available to inspect the real context, then return concise actionable findings -- including any code, diffs, or commands you'd propose -- for the Sentry. Do not delegate. You are running read-only: you cannot modify files, so report a proposed change instead of applying it.\n\nOutcome:\n${prompt}`;
   const holder = {};
   let result = '', failure = ''; const steps = [];
   const label = 'Retry';
@@ -965,7 +985,7 @@ ipcMain.handle('set-runtime', async (_e, runtime) => {
       const check = await checkExo(nextExo); if (!check.ok) return check;
     }
     runtimeKind = next; exoBase = nextExo; config?.save({ oRuntime: runtimeKind, oExoUrl: exoBase });
-    setTray(runtimeKind === 'exo' ? 'Axon: Exo runtime' : runtimeKind === 'llamacpp' ? 'Axon: llama.cpp RPC runtime' : 'Axon: local Ollama');
+    setTray(runtimeKind === 'exo' ? 'NoCLI.ai: Exo runtime' : runtimeKind === 'llamacpp' ? 'NoCLI.ai: llama.cpp RPC runtime' : 'NoCLI.ai: local Ollama');
     return { ok: true, kind: runtimeKind, url: exoBase };
   } catch (error) { return { error: error.message }; }
 });
@@ -1084,14 +1104,14 @@ const STREAM_JSON_ENGINES = {
     label: 'Kimi Code',
     find: findKimiCli,
     // KIMI_MODEL_* creates an in-memory provider for this process. It keeps
-    // Axon's selected route/model truthful without rewriting ~/.kimi-code.
+    // NoCLI.ai's selected route/model truthful without rewriting ~/.kimi-code.
     env: ({ model, baseUrl, apiKey }) => ({
       KIMI_MODEL_NAME: model,
       KIMI_MODEL_API_KEY: apiKey || 'ollama',
       KIMI_MODEL_PROVIDER_TYPE: 'openai',
       KIMI_MODEL_BASE_URL: baseUrl,
-      KIMI_CODE_IDENTITY_NAME: 'Axon',
-      KIMI_CODE_IDENTITY_SLUG: 'axon',
+      KIMI_CODE_IDENTITY_NAME: 'NoCLI.ai',
+      KIMI_CODE_IDENTITY_SLUG: 'nocli',
     }),
     args({ sessionId, instruction }) {
       const args = ['--prompt', instruction, '--output-format', 'stream-json'];
@@ -1125,7 +1145,7 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
       : productMode === 'chat'
         ? 'Answer helpfully and concisely.'
         : 'Work directly in the current repository, verify changes, and report the result plainly.';
-    const identity = [systemPrompt?.trim(), `You are Axon, running through ${spec.label}. ${scopeLine}`].filter(Boolean).join('\n\n');
+    const identity = [systemPrompt?.trim(), `You are NoCLI.ai, running through ${spec.label}. ${scopeLine}`].filter(Boolean).join('\n\n');
     const mode = normalizeMode(permissionMode);
     const route = openAiRouteFor(provider);
     const instruction = [identity, prompt].filter(Boolean).join('\n\n');
@@ -1221,14 +1241,14 @@ function runOpenCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
       send('chat-error', error.message); send('chat-done', { sessionId, ok: false }); return resolve();
     }
     const scopeLine = scope === 'chat'
-      ? 'Answer helpfully and concisely. Axon has disabled every tool for this turn.'
+      ? 'Answer helpfully and concisely. NoCLI.ai has disabled every tool for this turn.'
       : scope === 'read'
-        ? 'Inspect and explain the current workspace. Axon has disabled edits, shell commands, delegation, and external paths.'
+        ? 'Inspect and explain the current workspace. NoCLI.ai has disabled edits, shell commands, delegation, and external paths.'
         : scope === 'full'
           ? 'Complete the requested multi-step task in the current workspace and report the finished result plainly.'
           : 'Work directly in the current workspace, verify changes, and report the result plainly. Do not delegate.';
-    const instruction = [systemPrompt?.trim(), `You are Axon, running through OpenCode. ${scopeLine}`, prompt].filter(Boolean).join('\n\n');
-    const args = ['run', '--format', 'json', '--pure', '--agent', 'axon', '--model', route.launchModel];
+    const instruction = [systemPrompt?.trim(), `You are NoCLI.ai, running through OpenCode. ${scopeLine}`, prompt].filter(Boolean).join('\n\n');
+    const args = ['run', '--format', 'json', '--pure', '--agent', 'nocli', '--model', route.launchModel];
     if (sessionId) args.push('--session', sessionId);
     args.push(instruction);
     const child = spawn(launch.command, [...launch.prefix, ...args], {
@@ -1278,7 +1298,7 @@ const ENGINE_RUNNERS = {
 // inference, so refuse that pair up front rather than surfacing raw protocol JSON.
 function engineModelRefusal(engineId, model, provider) {
   if (engineId === 'codex' && isOllamaCloudModel(model, provider)) {
-    return 'Codex CLI cannot drive an Ollama Cloud model: Cloud rejects its freeform tool schema. Use Qwen Code or Axon native for :cloud models.';
+    return 'Codex CLI cannot drive an Ollama Cloud model: Cloud rejects its freeform tool schema. Use Qwen Code or NoCLI.ai native for :cloud models.';
   }
   return null;
 }
@@ -1304,7 +1324,7 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   }
   const decided = resolveRoute({ scope: active.id, engine: provider?.engine, providerKind: provider?.kind });
   const refusal = decided.reason
-    || (decided.engine === 'kimi' && active.id === 'read' ? 'Kimi Code print mode cannot enforce a read-only workspace. Choose Qwen Code, Claude Code, Codex CLI, or Axon native for Read scope.' : null)
+    || (decided.engine === 'kimi' && active.id === 'read' ? 'Kimi Code print mode cannot enforce a read-only workspace. Choose Qwen Code, Claude Code, Codex CLI, or NoCLI.ai native for Read scope.' : null)
     || (decided.runner === 'refused' ? 'Unsupported engine.' : engineModelRefusal(decided.engine, model, provider));
   if (refusal) { send('chat-error', refusal); send('chat-done', { sessionId: sessionId || null, ok: false }); return { ok: true }; }
   const holder = {}; localHolders.set(requestId, holder);
@@ -1331,7 +1351,7 @@ ipcMain.handle('swarm-start', async (_e, { sentryModel, workerModel, prompt, ima
   const swarmId = crypto.randomUUID();
   const fallbackModel = String(workerModel || sentryModel || '').slice(0, 160);
   runSwarm({ swarmId, sentryModel: String(sentryModel || fallbackModel).slice(0, 160), workerModel: fallbackModel, prompt: outcome.slice(0, 12000), images: safeImages(images), workers: count, systemPrompt, cwd, provider, permissionMode: mode })
-    .catch((error) => win?.webContents.send('subagent-update', { id: swarmId, swarmId, status: 'failed', task: 'Axon Swarm', result: error.message, finishedAt: Date.now() }));
+    .catch((error) => win?.webContents.send('subagent-update', { id: swarmId, swarmId, status: 'failed', task: 'NoCLI.ai Swarm', result: error.message, finishedAt: Date.now() }));
   return { ok: true, swarmId, requested, count, capped: count !== requested, cap: Number.isFinite(swarmLimit(provider)) ? swarmLimit(provider) : null };
 });
 ipcMain.handle('swarm-retry-worker', async (_e, { swarmId, agentId, lane, model, prompt, systemPrompt, cwd, provider, mode, images }) => {
@@ -1372,11 +1392,11 @@ ipcMain.handle('pick-folder', async () => {
 });
 // Each installation gets a predictable writable home for chats that are not
 // attached to a named Project. A user-selected workspace must already exist;
-// only Axon's own default is created automatically.
+// only NoCLI.ai's own default is created automatically.
 function ensureDefaultWorkspace() {
   const configured = config?.load()?.oworkspace;
   if (typeof configured === 'string' && configured && fs.existsSync(configured)) return configured;
-  const workspace = path.join(app.getPath('documents'), 'Axon Workspace');
+  const workspace = path.join(app.getPath('documents'), 'NoCLI.ai Workspace');
   fs.mkdirSync(workspace, { recursive: true });
   return workspace;
 }
@@ -1429,7 +1449,7 @@ ipcMain.handle('provider-save', (_e, profile, apiKey) => {
 });
 
 // ---- LAN: same-WiFi link, one instance as server ----------------------------
-// ponytail: raw TCP + NDJSON (src/lan.js). Server runs Axon locally and streams
+// ponytail: raw TCP + NDJSON (src/lan.js). Server runs NoCLI.ai locally and streams
 // events back over the socket; client forwards chats and maps events to the renderer,
 // so the renderer UI is identical on either side. No HTTP, no web GUI.
 let lanServer = null, lanClient = null, lanClientConnected = false, lanDiscovery = null;
@@ -1461,7 +1481,7 @@ function compareVersions(left, right) {
 function fetchHttps(url, redirects = 0) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error('Too many update download redirects.'));
-    const req = https.get(url, { headers: { 'User-Agent': 'Axon-Updater', Accept: 'application/vnd.github+json' } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'NoCLI.ai-Updater', Accept: 'application/vnd.github+json' } }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) { res.resume(); return resolve(fetchHttps(new URL(res.headers.location, url).href, redirects + 1)); }
       if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Update server returned ${res.statusCode}.`)); }
       resolve(res);
@@ -1485,7 +1505,7 @@ async function checkForAppUpdate({ force = false } = {}) {
   const assets = Array.isArray(release.assets) ? release.assets : [];
   const installer = assets.find((asset) => releaseInstallerNames(process.platform, version).includes(asset?.name));
   const checksum = installer && assets.find((asset) => asset?.name === `${installer.name}.sha256`);
-  if (!version || !installer || !checksum) throw new Error('Latest Axon release is incomplete.');
+  if (!version || !installer || !checksum) throw new Error('Latest NoCLI.ai release is incomplete.');
   const available = compareVersions(version, current) > 0;
   availableRelease = available ? { version, installer: installer.browser_download_url, checksum: checksum.browser_download_url, name: installer.name, bytes: Number(installer.size) || 0 } : null;
   cachedUpdateStatus = { current, version, available, bytes: Number(installer.size) || 0, packageLabel: updatePackageLabel(process.platform), repository: UPDATE_REPOSITORY };
@@ -1504,7 +1524,7 @@ async function runBackgroundUpdateCheck() {
     if (announcedUpdateVersion === update.version) return;
     announcedUpdateVersion = update.version;
     if (Notification.isSupported()) {
-      const notice = new Notification({ title: 'Axon update ready', body: `Axon ${update.version} is ready to download.` });
+      const notice = new Notification({ title: 'NoCLI.ai update ready', body: `NoCLI.ai ${update.version} is ready to download.` });
       notice.on('click', () => { if (win) { win.show(); win.focus(); } });
       notice.show();
     }
@@ -1519,7 +1539,7 @@ function startBackgroundUpdateChecks() {
 }
 async function downloadAppUpdate() {
   const release = availableRelease || (await checkForAppUpdate(), availableRelease);
-  if (!release) throw new Error('Axon is already up to date.');
+  if (!release) throw new Error('NoCLI.ai is already up to date.');
   const expected = (await readHttpsText(release.checksum)).match(/\b([a-f0-9]{64})\b/i)?.[1]?.toLowerCase();
   if (!expected) throw new Error('Release checksum is invalid.');
   const dir = path.join(app.getPath('userData'), 'updates'); fs.mkdirSync(dir, { recursive: true });
@@ -1586,7 +1606,7 @@ async function hashFile(file) {
 async function selectInstaller() {
   const extensions = installerExtensions(process.platform);
   if (!extensions.length) throw new Error('Installer sharing is not supported on this platform yet.');
-  const picked = await dialog.showOpenDialog(win, { title: 'Choose the newer Axon installer', properties: ['openFile'], filters: [{ name: 'Axon installer', extensions }] });
+  const picked = await dialog.showOpenDialog(win, { title: 'Choose the newer NoCLI.ai installer', properties: ['openFile'], filters: [{ name: 'NoCLI.ai installer', extensions }] });
   if (picked.canceled || !picked.filePaths[0]) return null;
   const file = picked.filePaths[0]; const stat = await fs.promises.stat(file);
   if (stat.size < 1024 || stat.size > 750 * 1024 * 1024) throw new Error('Installer must be between 1 KB and 750 MB.');
@@ -1594,7 +1614,7 @@ async function selectInstaller() {
   return { name: hostInstaller.name, bytes: hostInstaller.bytes, sha256: hostInstaller.sha256 };
 }
 function offerInstaller(sock) {
-  if (!hostInstaller) throw new Error('Choose a newer Axon installer first.');
+  if (!hostInstaller) throw new Error('Choose a newer NoCLI.ai installer first.');
   const id = crypto.randomUUID();
   const offer = { type: 'update-offer', id, name: hostInstaller.name, bytes: hostInstaller.bytes, sha256: hostInstaller.sha256 };
   if (sock) lan.sendTo(sock, offer); else lanServer?.broadcast(offer);
@@ -1772,7 +1792,7 @@ ipcMain.handle('lan-disconnect', () => {
 ipcMain.handle('lan-discovery-refresh', () => { lanDiscovery?.refresh(); return lanDiscovery?.devices() || []; });
 ipcMain.handle('lan-request-device-update', (_e, device) => {
   const host = String(device?.host || '').trim(); const port = Number(device?.port) || lan.PORT;
-  if (!host || !device?.available) return { error: 'That device is not accepting Axon links. Turn on Host mode there first.' };
+  if (!host || !device?.available) return { error: 'That device is not accepting NoCLI.ai links. Turn on Host mode there first.' };
   if (!connectLanClient(host + ':' + port)) return { error: 'Could not start a link to that device.' };
   lanClient.send({ type: 'update-request', requester: os.hostname() });
   return { ok: true, target: host + ':' + port };
@@ -1830,19 +1850,17 @@ ipcMain.handle('install-dependencies', async () => {
 // ---- app lifecycle --------------------------------------------------------
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
+  migrateLegacyUserData(userDataPath);
   config = createConfigStore(userDataPath);
   // Preserve all known predecessors. Merge only missing keys so the canonical
-  // Axon folder wins while a dev/package casing change cannot lose history.
+  // NoCLI.ai folder wins while a dev/package casing change cannot lose history.
   const state = config.load(); const parent = path.dirname(userDataPath);
   try {
     if (state.oRuntime === 'exo' && state.oExoUrl) { runtimeKind = 'exo'; exoBase = normalizeExoUrl(state.oExoUrl); }
     else if (state.oRuntime === 'llamacpp') runtimeKind = 'llamacpp';
   } catch { runtimeKind = 'ollama'; exoBase = ''; }
   if (state.oLlamaCpp) llamaCppConfig = normalizeLlamaCppConfig(state.oLlamaCpp);
-  const candidates = [
-    path.join(parent, 'axon', 'settings.json'),
-    path.join(parent, 'ollama-desktop-harness', 'settings.json'),
-  ];
+  const candidates = [path.join(parent, 'ollama-desktop-harness', 'settings.json')];
   const merged = {};
   for (const file of candidates) {
     if (path.resolve(file) === path.join(userDataPath, 'settings.json')) continue;
@@ -1855,7 +1873,7 @@ app.whenReady().then(async () => {
   createWindow();
   // Keeps visual/test launches from opening Windows' firewall prompt. Normal
   // packaged launches retain discovery unless the flag is explicitly set.
-  if (process.env.AXON_DISABLE_LAN_DISCOVERY !== '1') startLanDiscovery();
+  if (process.env.NOCLI_DISABLE_LAN_DISCOVERY !== '1') startLanDiscovery();
   await ensureOllama();
 });
 app.on('before-quit', () => {

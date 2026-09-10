@@ -1,6 +1,6 @@
 # Privacy and security
 
-Axon keeps chats and settings in Electron's per-user application-data directory.
+NoCLI.ai keeps chats and settings in Electron's per-user application-data directory.
 They are never part of the repository or release artifacts.
 
 Before contributing, remove personal paths, account names, tokens, local logs,

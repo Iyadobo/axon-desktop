@@ -1,7 +1,7 @@
-// Throwaway smoke test: loads the real renderer (with a stubbed window.ollama via
+// Throwaway smoke test: loads the real renderer (with a stubbed window.nocli via
 // preview-preload.js), drives a synthetic ordered chat stream (thinking -> text ->
 // tool_call -> tool_result -> final text), screenshots it, and prints console
-// errors. Separate userData -> separate single-instance lock, so the live Axon is
+// errors. Separate userData -> separate single-instance lock, so the live NoCLI.ai is
 // never touched. Run once:  npx electron scripts/preview-stream.js
 const { app, BrowserWindow } = require('electron');
 const path = require('path');

@@ -1,21 +1,21 @@
-# Axon
+# NoCLI.ai
 
-Axon is a local-first workspace with one conversation surface and a per-turn scope:
+NoCLI.ai is a local-first desktop workspace that puts models, tools, and official harnesses behind one calm interface. It is for people who want the power without living in a terminal or paying for a mystery “super agent” subscription.
 
-- **Just chat** — direct streamed conversation with Ollama or a configured API profile.
+- **Just chat** — direct streamed conversation with a local runtime or a configured API profile.
 - **Read** — workspace and browser access without writes.
 - **Edit** — project work through the selected agent engine.
 - **Full** — multi-step work with delegation available.
 
 Kimi Code is the default agent engine. OpenCode, Qwen Code, Claude Code, Codex CLI, and
-Axon's native Ollama loop remain selectable alternatives.
+NoCLI.ai's native local-runtime loop remains a selectable alternative.
 
 ## What is included
 
-- Local Ollama, Exo, and llama.cpp RPC inference runtimes.
+- Local runtime support through Ollama, Exo, and llama.cpp RPC.
 - Separate provider profiles, system prompts, model choices, and encrypted API-key storage.
 - A swappable engine registry kept separate from model-provider routing.
-- A native browser sidebar that opens automatically when an agent invokes the Axon Browser MCP.
+- A native browser sidebar that opens automatically when an agent invokes the NoCLI.ai Browser MCP.
   Browser reading is text-first; screenshots are withheld from text-only models.
 - Native desktop window controls, projects, recents, themes, model downloads, tray behavior, and LAN workspace sharing.
 
@@ -37,7 +37,7 @@ Agent engines are official external CLIs. Install the ones you want available in
 the engine picker; Kimi Code can be installed with
 `npm install -g @moonshot-ai/kimi-code`, and OpenCode with
 `npm install -g opencode-ai`. OpenCode profiles can use an existing Go or Zen
-login, or Axon's encrypted OpenRouter/OpenAI-compatible API profile.
+login, or NoCLI.ai's encrypted OpenRouter/OpenAI-compatible API profile.
 
 ### Debian / Linux
 
@@ -51,19 +51,19 @@ npm ci
 npm run dist:deb
 ```
 
-The package is written to `dist/Axon_<version>_amd64.deb`.
+The package is written to `dist/nocli.ai_<version>_amd64.deb`.
 `npm run dist:linux` emits both the `.deb` and AppImage variants.
 
-Linux updates use the separate `Iyadobo/Axon-Debian` release feed by default, while
-Windows continues to use `Iyadobo/Axon`. Axon checks the appropriate feed shortly
+Linux updates use the separate `Iyadobo/nocli.ai-debian` release feed by default, while
+Windows uses `Iyadobo/nocli.ai-releases`. NoCLI.ai checks the appropriate feed shortly
 after startup and then in the background every six hours. To publish a verified
 Debian release after building it, run `npm run publish:deb -- -Version <version>`
-with `AXON_DEB_RELEASE_REPOSITORY` set to the target GitHub repository.
+with `NOCLI_DEB_RELEASE_REPOSITORY` set to the target GitHub repository.
 
 ## Runtime design
 
 ```text
-Just chat    → selected Ollama/API provider directly (OpenCode auth stays in its CLI)
+Just chat    → selected local runtime/API provider directly (OpenCode auth stays in its CLI)
 Read/Edit    → selected provider + selected engine → workspace/browser tools
 Full         → selected provider + selected engine → workspace/browser/delegation
 ```
@@ -72,7 +72,7 @@ The browser bridge is loopback-only, uses a fresh per-launch bearer token, and a
 
 ## Commands
 
-The composer has a small set of Axon-owned commands:
+The composer has a small set of NoCLI.ai-owned commands:
 
 - `/new` or `/clear` — fresh conversation
 - `/model <name>` — select a known model by prefix
@@ -84,7 +84,7 @@ The composer has a small set of Axon-owned commands:
 | Path | Purpose |
 | --- | --- |
 | `src/main.js` | Electron main process, providers, native modes, browser bridge |
-| `src/axon-browser-mcp.js` | stdio MCP adapter for the native browser |
+| `src/nocli-browser-mcp.js` | stdio MCP adapter for the native browser |
 | `src/renderer/` | desktop UI, themes, projects, settings |
 | `src/engines.js` | scope definitions, engine registry, compatibility rules |
 | `src/selfcheck.js` | browser/config/runtime checks |
@@ -92,7 +92,7 @@ The composer has a small set of Axon-owned commands:
 ## Safety notes
 
 Each official engine enforces permissions through its own supported controls.
-Kimi Code's non-interactive mode cannot enforce a read-only workspace, so Axon
+Kimi Code's non-interactive mode cannot enforce a read-only workspace, so NoCLI.ai
 refuses that engine in **Read** scope. **Full** is powerful; use it only in a
 workspace you intend the agent to change.
 

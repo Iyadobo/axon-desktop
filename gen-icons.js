@@ -1,4 +1,4 @@
-// Legacy fallback icon generator. The canonical Axon mark is src/assets/axon-nervous-system.png.
+// Legacy fallback icon generator. The canonical NoCLI.ai mark is src/assets/nocli-mark-source.png.
 // ponytail: pure-Node rasterizer (no deps), 4x4 supersample AA, single IDAT PNG,
 // ICO wraps the PNG. Node 'zlib' for compression, hand-rolled CRC32.
 // Run: node gen-icons.js
@@ -85,4 +85,4 @@ png.copy(ico, 22);
 const dir = path.join(__dirname, 'src', 'assets');
 fs.writeFileSync(path.join(dir, 'icon.png'), png);
 fs.writeFileSync(path.join(dir, 'icon.ico'), ico);
-console.log('wrote icon.png (' + png.length + 'B) + icon.ico (' + ico.length + 'B) -- Axon neuron mark');
+console.log('wrote icon.png (' + png.length + 'B) + icon.ico (' + ico.length + 'B) -- NoCLI.ai fallback mark');

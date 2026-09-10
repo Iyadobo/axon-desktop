@@ -1,4 +1,4 @@
-// Installs and drives the prebuilt llama.cpp CUDA runtime that powers Axon's
+// Installs and drives the prebuilt llama.cpp CUDA runtime that powers NoCLI.ai's
 // two-PC RPC pool: download the official Windows CUDA release (no cmake/nvcc
 // required), then spawn either rpc-server (expose this PC's GPU to a remote
 // host) or llama-server (the host, pulling in one or more remote GPUs via
@@ -32,7 +32,7 @@ function runtimeStatus(root) {
 function fetchWithRedirects(url, redirects = 0) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error('Too many redirects.'));
-    const req = https.get(url, { headers: { 'User-Agent': 'Axon-LlamaCppInstaller' } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'NoCLI.ai-LlamaCppInstaller' } }, (res) => {
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) { res.resume(); return resolve(fetchWithRedirects(new URL(res.headers.location, url).href, redirects + 1)); }
       if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Download returned ${res.statusCode} for ${url}`)); }
       resolve(res);
@@ -170,7 +170,7 @@ function selfcheck() {
 
     // 1. runtimeStatus against an empty dir: not installed, correct paths.
     (() => {
-      const tmp = fsExtra.mkdtempSync(pathExtra.join(osExtra.tmpdir(), 'axon-llamacpp-'));
+      const tmp = fsExtra.mkdtempSync(pathExtra.join(osExtra.tmpdir(), 'nocli-llamacpp-'));
       const status = runtimeStatus(tmp);
       ok(status.installed === false, 'empty install dir reports not installed');
       ok(status.llamaServer.endsWith('llama-server.exe') && status.rpcServer.endsWith('rpc-server.exe'), 'runtimeStatus resolves expected binary names');
@@ -182,7 +182,7 @@ function selfcheck() {
 
     // 2. flattenSingleSubdir collapses one nesting level.
     (() => {
-      const tmp = fsExtra.mkdtempSync(pathExtra.join(osExtra.tmpdir(), 'axon-flatten-'));
+      const tmp = fsExtra.mkdtempSync(pathExtra.join(osExtra.tmpdir(), 'nocli-flatten-'));
       const nested = pathExtra.join(tmp, 'build-x64');
       fsExtra.mkdirSync(nested); fsExtra.writeFileSync(pathExtra.join(nested, 'llama-server.exe'), 'x');
       flattenSingleSubdir(tmp);

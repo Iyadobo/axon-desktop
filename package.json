@@ -1,11 +1,11 @@
 {
-  "name": "axon",
+  "name": "nocli-ai",
   "version": "0.7.28",
   "author": {
-    "name": "Axon contributors",
-    "email": "opensource@axon.local"
+    "name": "NoCLI.ai contributors",
+    "email": "opensource@nocli.local"
   },
-  "description": "Axon is a local-first Chat, Code, and Work workspace powered by Ollama and official agent CLIs",
+  "description": "NoCLI.ai is a local-first desktop workspace for models, tools, and official harnesses without living in a terminal.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -17,20 +17,20 @@
     "publish:deb": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/publish_deb.ps1"
   },
   "build": {
-    "appId": "io.axon.workspace",
-    "productName": "Axon",
+    "appId": "ai.nocli.desktop",
+    "productName": "NoCLI.ai",
     "asar": true,
     "files": [
       "src/**",
-      "!src/assets/axon-nervous-system-source.png",
+      "!src/assets/nocli-mark-source.png",
       "!src/assets/icon-preview-64.png",
       "package.json"
     ],
     "afterPack": "scripts/after-pack.js",
     "extraResources": [
       {
-        "from": "src/axon-browser-mcp.js",
-        "to": "axon-browser-mcp.js"
+        "from": "src/nocli-browser-mcp.js",
+        "to": "nocli-browser-mcp.js"
       }
     ],
     "win": {
@@ -45,18 +45,18 @@
       "category": "Development"
     },
     "appImage": {
-      "artifactName": "Axon-${version}.${ext}"
+      "artifactName": "nocli.ai-${version}.${ext}"
     },
     "deb": {
-      "artifactName": "Axon_${version}_amd64.${ext}",
-      "maintainer": "Axon contributors",
+      "artifactName": "nocli.ai_${version}_amd64.${ext}",
+      "maintainer": "NoCLI.ai contributors",
       "synopsis": "Local-first AI workspace",
-      "description": "Axon is a local-first Chat, Code, and Work workspace powered by local models and official agent CLIs."
+      "description": "NoCLI.ai is a local-first desktop workspace for models, tools, and official harnesses without living in a terminal."
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "Axon-Setup-${version}.${ext}"
+      "artifactName": "nocli.ai-Setup-${version}.${ext}"
     }
   },
   "devDependencies": {

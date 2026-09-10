@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
-<title>Axon</title>
+<title>NoCLI.ai</title>
 <style>
   :root {
     --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
@@ -24,7 +24,7 @@
     --shadow-1:0 1px 2px var(--color-shadow);
     --shadow-2:0 10px 30px var(--color-shadow);
     --color-text:#f7f2f4; --color-divider:#2c292d; --color-surface:#151316; --color-surface-2:#211d22;
-    --color-accent:#f45f96;
+    --color-accent:#4ea1ff;
     --color-accent-600:color-mix(in srgb, var(--color-accent) 86%, #000);
     --color-accent-700:color-mix(in srgb, var(--color-accent) 70%, #000);
     /* Matches the midnight palette in app.js's DEFAULT_SETTINGS — this is what
@@ -54,7 +54,7 @@
   #loading.done { opacity:0; visibility:hidden; }
   .loading-mark { display:flex; flex-direction:column; align-items:center; gap:12px; color:var(--color-text); }
   .loading-mark img { width:58px; height:72px; object-fit:contain; animation:bootpulse 1.2s ease-in-out infinite; }
-  #loading .loading-mark img { content:url('../assets/axon-nervous-system.png'); }
+  #loading .loading-mark img { content:url('../assets/icon.png'); }
   .loading-mark strong { font-size:16px; letter-spacing:.02em; }
   .loading-mark span { font-size:12px; color:var(--color-neutral); }
   @keyframes bootpulse { 50% { transform:scale(.92); opacity:.68; } }
@@ -447,7 +447,7 @@
     border:0; border-radius:5px; background:transparent; color:var(--color-neutral); cursor:pointer; opacity:0; }
   .sidebar-project:hover .project-manage { opacity:.8; }.project-manage:hover { background:var(--elev-1); color:var(--color-text); }
 
-  /* Axon refined-calm pass: hierarchy from a real type scale, layered surfaces
+  /* NoCLI.ai refined-calm pass: hierarchy from a real type scale, layered surfaces
      and a 4px spacing rhythm. Accent is punctuation, never decoration. */
 
   /* Sidebar sits on its own plane. It used to be 55% surface over transparent,
@@ -662,12 +662,12 @@
   .motion-calm *, .motion-calm *::before, .motion-calm *::after { animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
   @media (prefers-reduced-motion: reduce) { .generation-label { animation:none; } }
 
-  /* Workspace reframe: Axon's identity stays in the material, not
+  /* Workspace reframe: NoCLI.ai's identity stays in the material, not
      in competing cards or animated decoration. */
   #grid { display:none; }
   #side { position:relative; isolation:isolate; background:var(--elev-1); border-right-color:var(--elev-line); }
-  #side::before { content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; opacity:.095;
-    background:url('../assets/axon-sidebar-dendrites-v1.png') center/cover no-repeat; }
+  #side::before { content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; opacity:.18;
+    background:linear-gradient(145deg, transparent 36%, color-mix(in srgb, var(--color-accent) 7%, transparent) 100%); }
   #side > * { position:relative; }
   .brand { min-height:34px; margin-bottom:12px; font-size:15px; font-weight:720; }
   .newchat { min-height:38px; border-radius:8px; box-shadow:none; background:var(--elev-2); }
@@ -685,8 +685,8 @@
 
   #main { background:var(--color-bg); }
   #home { position:relative; overflow:hidden; }
-  #home::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.12;
-    background:url('../assets/axon-neural-field-bg-v1.png') center/cover no-repeat; }
+  #home::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.14;
+    background:radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 30%); }
   #home .wrap { position:relative; z-index:1; max-width:760px; }
   .hero-emblem { height:52px; margin-bottom:10px; opacity:.82; }
   .hero-emblem img { width:38px; height:52px; }
@@ -727,7 +727,7 @@
   button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
   .mode:hover, .allow-btn:hover, .deny-btn:hover { transform:none; }
   @media (prefers-reduced-motion: reduce) { #side::before, #home::before { opacity:.07; } }
-  /* Axon workspace split + settings contrast pass. The controls use the same
+  /* NoCLI.ai workspace split + settings contrast pass. The controls use the same
      four theme tokens as chat, so no settings text can become an orphaned
      low-contrast colour when a custom palette is active. */
   .workspace-switch { display:grid; grid-template-columns:repeat(3,1fr); gap:3px; margin:0 4px; padding:3px; background:var(--color-bg); border:1px solid var(--elev-line); border-radius:8px; }
@@ -790,63 +790,63 @@
   .color-field input[type=text] { width:100%; min-height:28px !important; padding:0 !important; border:0 !important; border-radius:0 !important; background:transparent !important; font:650 12px var(--font-mono,ui-monospace,monospace) !important; }
   @media (max-width:680px) { .modes { grid-template-columns:1fr; }.appearance-grid { grid-template-columns:1fr; } }
 
-  /* Axon desktop shell — based on the selected Axon Work visual reference.
+  /* NoCLI.ai desktop shell — based on the selected NoCLI.ai Work visual reference.
      The accent always comes from the active theme rather than being baked in. */
-  :root { --axon-rule:color-mix(in srgb, var(--color-text) 13%, transparent); --axon-soft:color-mix(in srgb, var(--color-text) 4%, var(--color-bg)); --axon-raised:color-mix(in srgb, var(--color-text) 7%, var(--color-bg)); --axon-muted:color-mix(in srgb, var(--color-text) 62%, var(--color-bg)); }
+  :root { --nocli-rule:color-mix(in srgb, var(--color-text) 13%, transparent); --nocli-soft:color-mix(in srgb, var(--color-text) 4%, var(--color-bg)); --nocli-raised:color-mix(in srgb, var(--color-text) 7%, var(--color-bg)); --nocli-muted:color-mix(in srgb, var(--color-text) 62%, var(--color-bg)); }
   #grid { display:none; }
   html, body { font-family:var(--font-body); letter-spacing:-.008em; }
-  .titlebar { height:60px; padding:0 22px; border-bottom:1px solid var(--axon-rule); background:color-mix(in srgb, var(--color-bg) 96%, #000); }
+  .titlebar { height:60px; padding:0 22px; border-bottom:1px solid var(--nocli-rule); background:color-mix(in srgb, var(--color-bg) 96%, #000); }
   #app { height:calc(100vh - 60px); }
   .window-brand { min-width:310px; gap:9px; color:var(--color-accent); font-size:16px; font-weight:800; letter-spacing:.05em; }
   .window-mark { width:22px; height:22px; }
-  .title-nav { height:100%; display:flex; align-items:center; gap:3px; padding:0 10px; border-right:1px solid var(--axon-rule); -webkit-app-region:no-drag; }
-  .top-nav-btn { height:32px; display:inline-flex; align-items:center; gap:7px; padding:0 10px; border:1px solid transparent; border-radius:5px; background:transparent; color:var(--axon-muted); font-size:12px; font-weight:700; cursor:pointer; }
+  .title-nav { height:100%; display:flex; align-items:center; gap:3px; padding:0 10px; border-right:1px solid var(--nocli-rule); -webkit-app-region:no-drag; }
+  .top-nav-btn { height:32px; display:inline-flex; align-items:center; gap:7px; padding:0 10px; border:1px solid transparent; border-radius:5px; background:transparent; color:var(--nocli-muted); font-size:12px; font-weight:700; cursor:pointer; }
   .top-nav-btn svg { width:16px; height:16px; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; }
-  .top-nav-btn:hover { background:var(--axon-soft); color:var(--color-text); }
-  .top-nav-btn.active { border-color:var(--axon-rule); background:var(--axon-raised); color:var(--color-text); box-shadow:inset 0 -2px 0 var(--color-accent); }
+  .top-nav-btn:hover { background:var(--nocli-soft); color:var(--color-text); }
+  .top-nav-btn.active { border-color:var(--nocli-rule); background:var(--nocli-raised); color:var(--color-text); box-shadow:inset 0 -2px 0 var(--color-accent); }
   .top-nav-btn:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
-  .title-recent { color:var(--axon-muted); font-size:12px; }
+  .title-recent { color:var(--nocli-muted); font-size:12px; }
   .title-actions { gap:8px; }
-  #browserToggle { display:inline-flex; align-items:center; min-height:34px; padding:0 10px; gap:8px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font-size:12px; font-weight:750; letter-spacing:.015em; }
-  #browserToggle:hover { border-color:var(--color-accent); color:var(--color-text); background:var(--axon-raised); }
-  #browserToggle.active { border-color:color-mix(in srgb, var(--color-accent) 68%, var(--axon-rule)); background:color-mix(in srgb, var(--color-accent) 13%, var(--color-bg)); color:var(--color-text); }
-  .browser-toggle-kicker { padding-right:8px; border-right:1px solid var(--axon-rule); color:var(--color-accent); font-size:9px; font-weight:850; letter-spacing:.1em; text-transform:uppercase; }
+  #browserToggle { display:inline-flex; align-items:center; min-height:34px; padding:0 10px; gap:8px; border:1px solid var(--nocli-rule); border-radius:6px; background:var(--nocli-soft); color:var(--color-text); font-size:12px; font-weight:750; letter-spacing:.015em; }
+  #browserToggle:hover { border-color:var(--color-accent); color:var(--color-text); background:var(--nocli-raised); }
+  #browserToggle.active { border-color:color-mix(in srgb, var(--color-accent) 68%, var(--nocli-rule)); background:color-mix(in srgb, var(--color-accent) 13%, var(--color-bg)); color:var(--color-text); }
+  .browser-toggle-kicker { padding-right:8px; border-right:1px solid var(--nocli-rule); color:var(--color-accent); font-size:9px; font-weight:850; letter-spacing:.1em; text-transform:uppercase; }
   #browserToggle.active .browser-toggle-kicker { color:var(--color-accent); }
-  #side { width:320px; padding:15px 18px 16px; background:color-mix(in srgb, var(--color-bg) 97%, var(--color-text)); border-right:1px solid var(--axon-rule); }
+  #side { width:320px; padding:15px 18px 16px; background:color-mix(in srgb, var(--color-bg) 97%, var(--color-text)); border-right:1px solid var(--nocli-rule); }
   #side::before, #home::before { display:none; }
   .brand { padding:0 8px 15px; margin:0; color:var(--color-text); font-size:17px; font-weight:800; letter-spacing:.055em; }
   .brand .logo { width:26px; height:31px; filter:none; }
-  .workspace-switch { margin:0 0 12px; padding:0; gap:0; border:0; border-radius:0; background:transparent; border-bottom:1px solid var(--axon-rule); }
-  .workspace-tab { min-height:42px; border-radius:0; color:var(--axon-muted); font-size:14px; font-weight:700; }
+  .workspace-switch { margin:0 0 12px; padding:0; gap:0; border:0; border-radius:0; background:transparent; border-bottom:1px solid var(--nocli-rule); }
+  .workspace-tab { min-height:42px; border-radius:0; color:var(--nocli-muted); font-size:14px; font-weight:700; }
   .workspace-tab .workspace-mark { width:22px; height:18px; }
-  .workspace-tab:hover { background:var(--axon-soft); color:var(--color-text); }
+  .workspace-tab:hover { background:var(--nocli-soft); color:var(--color-text); }
   .workspace-tab.active { position:relative; background:transparent; color:var(--color-text); box-shadow:inset 0 -2px 0 var(--color-accent); }
   .workspace-tab.active::after { content:''; position:absolute; top:10px; left:13px; width:4px; height:4px; border-radius:50%; background:var(--color-accent); }
-  .workspace-note { min-height:32px; padding:0 8px 10px; color:var(--axon-muted); font-size:11px; font-weight:650; letter-spacing:.05em; text-transform:uppercase; }
+  .workspace-note { min-height:32px; padding:0 8px 10px; color:var(--nocli-muted); font-size:11px; font-weight:650; letter-spacing:.05em; text-transform:uppercase; }
   #side.workspace-work .workspace-note { color:var(--color-accent); }
-  .swarm-launch { width:100%; min-height:42px; display:flex; align-items:center; gap:9px; margin:0 0 10px; padding:6px 9px; border:1px solid var(--axon-rule); border-radius:5px; background:var(--axon-soft); color:var(--color-text); font:inherit; text-align:left; cursor:pointer; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
-  .swarm-launch:hover { background:var(--axon-raised); border-color:color-mix(in srgb, var(--color-accent) 58%, var(--axon-rule)); transform:translateY(-1px); }
+  .swarm-launch { width:100%; min-height:42px; display:flex; align-items:center; gap:9px; margin:0 0 10px; padding:6px 9px; border:1px solid var(--nocli-rule); border-radius:5px; background:var(--nocli-soft); color:var(--color-text); font:inherit; text-align:left; cursor:pointer; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
+  .swarm-launch:hover { background:var(--nocli-raised); border-color:color-mix(in srgb, var(--color-accent) 58%, var(--nocli-rule)); transform:translateY(-1px); }
   .swarm-launch:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
   .swarm-launch img { width:27px; height:27px; flex:none; object-fit:contain; }
   .swarm-launch-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:1px; }
   .swarm-launch strong { font-size:13px; font-weight:780; letter-spacing:.01em; }
-  .swarm-launch small { color:var(--axon-muted); font-size:10px; font-weight:620; letter-spacing:.02em; }
+  .swarm-launch small { color:var(--nocli-muted); font-size:10px; font-weight:620; letter-spacing:.02em; }
   .swarm-launch .swarm-arrow { color:var(--color-accent); font-size:17px; line-height:1; }
-  .newchat { min-height:44px; margin:0 0 10px; padding:0 13px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font-size:14px; font-weight:700; }
-  .newchat:hover { background:var(--axon-raised); border-color:color-mix(in srgb, var(--color-accent) 56%, var(--axon-rule)); color:var(--color-text); }
-  .nav-bar { margin:0; padding:2px 0 12px; border-bottom:1px solid var(--axon-rule); }
-  .nav-item { min-height:40px; margin:1px 0; padding:0 9px; border-radius:5px; color:var(--axon-muted); font-size:14px; font-weight:550; }
+  .newchat { min-height:44px; margin:0 0 10px; padding:0 13px; border:1px solid var(--nocli-rule); border-radius:6px; background:var(--nocli-soft); color:var(--color-text); font-size:14px; font-weight:700; }
+  .newchat:hover { background:var(--nocli-raised); border-color:color-mix(in srgb, var(--color-accent) 56%, var(--nocli-rule)); color:var(--color-text); }
+  .nav-bar { margin:0; padding:2px 0 12px; border-bottom:1px solid var(--nocli-rule); }
+  .nav-item { min-height:40px; margin:1px 0; padding:0 9px; border-radius:5px; color:var(--nocli-muted); font-size:14px; font-weight:550; }
   .nav-item svg { width:18px; height:18px; }
-  .nav-item:hover { background:var(--axon-soft); color:var(--color-text); }
+  .nav-item:hover { background:var(--nocli-soft); color:var(--color-text); }
   .nav-item.active { background:color-mix(in srgb, var(--color-accent) 10%, var(--color-bg)); color:var(--color-text); box-shadow:inset 2px 0 0 var(--color-accent); }
-  .side-section-head, .recents-label { margin-top:17px; padding:0 9px 7px; color:var(--axon-muted); opacity:1; font-size:11px; font-weight:750; letter-spacing:.09em; }
-  .sidebar-project, .recent { min-height:34px; border-radius:4px; padding:7px 10px; color:var(--axon-muted); font-size:13px; }
-  .sidebar-project:hover, .recent:hover { background:var(--axon-soft); color:var(--color-text); }
+  .side-section-head, .recents-label { margin-top:17px; padding:0 9px 7px; color:var(--nocli-muted); opacity:1; font-size:11px; font-weight:750; letter-spacing:.09em; }
+  .sidebar-project, .recent { min-height:34px; border-radius:4px; padding:7px 10px; color:var(--nocli-muted); font-size:13px; }
+  .sidebar-project:hover, .recent:hover { background:var(--nocli-soft); color:var(--color-text); }
   .sidebar-project.active, .recent.active { background:color-mix(in srgb, var(--color-accent) 9%, var(--color-bg)); color:var(--color-text); box-shadow:inset 2px 0 0 var(--color-accent); }
-  .sidebar-model-choice { width:100%; min-height:32px; padding:6px 9px; border:1px solid transparent; border-radius:4px; background:transparent; color:var(--axon-muted); font:inherit; font-size:12px; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .sidebar-model-choice:hover, .sidebar-model-choice:focus-visible { border-color:var(--axon-rule); background:var(--axon-soft); color:var(--color-text); outline:none; }
+  .sidebar-model-choice { width:100%; min-height:32px; padding:6px 9px; border:1px solid transparent; border-radius:4px; background:transparent; color:var(--nocli-muted); font:inherit; font-size:12px; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sidebar-model-choice:hover, .sidebar-model-choice:focus-visible { border-color:var(--nocli-rule); background:var(--nocli-soft); color:var(--color-text); outline:none; }
   .project-count { font-variant-numeric:tabular-nums; }
-  .sidefoot { margin:14px -1px -2px; padding:12px 9px 2px; border-top:1px solid var(--axon-rule); color:var(--axon-muted); opacity:1; }
+  .sidefoot { margin:14px -1px -2px; padding:12px 9px 2px; border-top:1px solid var(--nocli-rule); color:var(--nocli-muted); opacity:1; }
   .mode-badge, .sidebar-update { border-radius:4px; }
 
   #main { background:var(--color-bg); }
@@ -856,68 +856,68 @@
   #home .wrap { width:min(920px, calc(100% - 96px)); max-width:none; margin:0 auto; padding:72px 0 48px; }
   .hero-emblem { width:33px; height:39px; margin:0 0 18px; }
   #greet { max-width:720px; margin:0; font-size:clamp(30px, 3vw, 45px); letter-spacing:-.048em; line-height:1.08; text-wrap:balance; }
-  #home .sub { margin:11px 0 28px; color:var(--axon-muted); font-size:16px; }
-  .swarm-controls { max-width:1080px; margin:0 0 16px; padding:14px; border:1px solid color-mix(in srgb, var(--color-accent) 38%, var(--axon-rule)); border-radius:9px; background:linear-gradient(105deg, color-mix(in srgb, var(--color-accent) 9%, var(--axon-soft)), var(--axon-soft) 38%); }
+  #home .sub { margin:11px 0 28px; color:var(--nocli-muted); font-size:16px; }
+  .swarm-controls { max-width:1080px; margin:0 0 16px; padding:14px; border:1px solid color-mix(in srgb, var(--color-accent) 38%, var(--nocli-rule)); border-radius:9px; background:linear-gradient(105deg, color-mix(in srgb, var(--color-accent) 9%, var(--nocli-soft)), var(--nocli-soft) 38%); }
   .swarm-controls[hidden] { display:none; }
   .swarm-controls-head { display:flex; align-items:center; gap:11px; margin-bottom:12px; }
   .swarm-controls-mark { width:32px; height:32px; object-fit:contain; }
   .swarm-controls-copy { min-width:0; display:flex; flex-direction:column; gap:2px; }
   .swarm-controls-copy strong { font-size:14px; letter-spacing:.02em; }
-  .swarm-controls-copy small, .swarm-limit, .swarm-role-notice { color:var(--axon-muted); font-size:11px; line-height:1.45; }
+  .swarm-controls-copy small, .swarm-limit, .swarm-role-notice { color:var(--nocli-muted); font-size:11px; line-height:1.45; }
   .swarm-roles { display:grid; grid-template-columns:minmax(230px,1fr) minmax(230px,1fr) 126px; gap:9px; }
-  .swarm-role, .swarm-worker-field { min-height:130px; display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:12px; border:1px solid var(--axon-rule); border-radius:7px; background:color-mix(in srgb, var(--color-bg) 66%, transparent); }
-  .swarm-sentry-role { border-color:color-mix(in srgb, var(--color-accent) 55%, var(--axon-rule)); box-shadow:inset 2px 0 0 var(--color-accent); }
+  .swarm-role, .swarm-worker-field { min-height:130px; display:flex; flex-direction:column; align-items:stretch; gap:6px; padding:12px; border:1px solid var(--nocli-rule); border-radius:7px; background:color-mix(in srgb, var(--color-bg) 66%, transparent); }
+  .swarm-sentry-role { border-color:color-mix(in srgb, var(--color-accent) 55%, var(--nocli-rule)); box-shadow:inset 2px 0 0 var(--color-accent); }
   .swarm-role-kicker { color:var(--color-accent); font-size:10px; font-weight:820; letter-spacing:.09em; text-transform:uppercase; }
   .swarm-role strong { font-size:13px; letter-spacing:.01em; }
-  .swarm-role small { min-height:31px; color:var(--axon-muted); font-size:11px; line-height:1.4; }
-  .swarm-role select { width:100%; min-height:34px; margin-top:auto; padding:0 8px; border:1px solid var(--axon-rule); border-radius:5px; background:var(--axon-raised); color:var(--color-text); font:inherit; font-size:12px; }
+  .swarm-role small { min-height:31px; color:var(--nocli-muted); font-size:11px; line-height:1.4; }
+  .swarm-role select { width:100%; min-height:34px; margin-top:auto; padding:0 8px; border:1px solid var(--nocli-rule); border-radius:5px; background:var(--nocli-raised); color:var(--color-text); font:inherit; font-size:12px; }
   .swarm-role select:focus { border-color:var(--color-accent); outline:2px solid color-mix(in srgb, var(--color-accent) 20%, transparent); outline-offset:1px; }
-  .swarm-role select:disabled { cursor:not-allowed; color:var(--axon-muted); opacity:.8; }
+  .swarm-role select:disabled { cursor:not-allowed; color:var(--nocli-muted); opacity:.8; }
   .swarm-worker-field { justify-content:center; color:var(--color-text); font-size:12px; font-weight:740; }
-  .swarm-worker-field span { color:var(--axon-muted); font-size:10px; font-weight:820; letter-spacing:.08em; text-transform:uppercase; }
-  .swarm-worker-field input { width:100%; min-height:40px; padding:4px 8px; border:1px solid var(--axon-rule); border-radius:5px; background:var(--axon-raised); color:var(--color-text); font-size:18px; font-weight:700; text-align:center; }
+  .swarm-worker-field span { color:var(--nocli-muted); font-size:10px; font-weight:820; letter-spacing:.08em; text-transform:uppercase; }
+  .swarm-worker-field input { width:100%; min-height:40px; padding:4px 8px; border:1px solid var(--nocli-rule); border-radius:5px; background:var(--nocli-raised); color:var(--color-text); font-size:18px; font-weight:700; text-align:center; }
   .swarm-role-notice { margin-top:10px; padding-left:2px; }
   #main[data-swarm="true"] #home .wrap { max-width:1080px; }
   #main[data-swarm="true"] #greet { font-size:clamp(32px, 3.2vw, 48px); }
   #main[data-swarm="true"] #composerCard { border-left:2px solid var(--color-accent); }
-  #composerCard { max-width:none; border:1px solid var(--axon-rule); border-radius:9px; background:var(--axon-soft); box-shadow:none; }
-  #composerCard:focus-within { border-color:color-mix(in srgb, var(--color-accent) 62%, var(--axon-rule)); box-shadow:0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent); }
+  #composerCard { max-width:none; border:1px solid var(--nocli-rule); border-radius:9px; background:var(--nocli-soft); box-shadow:none; }
+  #composerCard:focus-within { border-color:color-mix(in srgb, var(--color-accent) 62%, var(--nocli-rule)); box-shadow:0 0 0 3px color-mix(in srgb, var(--color-accent) 12%, transparent); }
   #prompt { min-height:70px; padding:19px 20px 12px; font-size:15px; }
-  .composer-foot { min-height:54px; padding:8px 12px; border-top:1px solid var(--axon-rule); background:color-mix(in srgb, var(--color-bg) 40%, transparent); }
+  .composer-foot { min-height:54px; padding:8px 12px; border-top:1px solid var(--nocli-rule); background:color-mix(in srgb, var(--color-bg) 40%, transparent); }
   .model-btn, .composer-mode { border-radius:5px; }
   #send { width:36px; height:36px; border-radius:7px; background:var(--color-accent); color:var(--color-on-accent); }
   #send:hover { background:var(--color-accent-600); transform:translateX(1px); }
   .chips { max-width:none; gap:7px; margin-top:14px; }
-  .chip { min-height:34px; padding:7px 12px; border:1px solid var(--axon-rule); border-radius:5px; background:transparent; color:var(--axon-muted); font-size:12px; font-weight:650; }
-  .chip:hover { border-color:var(--color-accent); color:var(--color-text); background:var(--axon-soft); }
-  .home-hint { max-width:720px; margin:20px 0 0; color:var(--axon-muted); font-size:12px; line-height:1.7; }
+  .chip { min-height:34px; padding:7px 12px; border:1px solid var(--nocli-rule); border-radius:5px; background:transparent; color:var(--nocli-muted); font-size:12px; font-weight:650; }
+  .chip:hover { border-color:var(--color-accent); color:var(--color-text); background:var(--nocli-soft); }
+  .home-hint { max-width:720px; margin:20px 0 0; color:var(--nocli-muted); font-size:12px; line-height:1.7; }
   #main[data-workspace="work"] #home .wrap { max-width:1080px; }
   #main[data-workspace="work"] #greet { font-size:clamp(32px, 3.2vw, 48px); }
   #main[data-workspace="work"] #composerCard { border-left:2px solid var(--color-accent); }
 
   #log { max-width:900px; padding:52px 52px 40px; }
   .turn { margin-bottom:32px; }
-  .turnhead { color:var(--axon-muted); }
+  .turnhead { color:var(--nocli-muted); }
   .turn.ai .stream { border-left-color:var(--color-accent); }
-  .turn.user .bubble { border-radius:7px; background:color-mix(in srgb, var(--color-accent) 12%, var(--color-bg)); border-color:color-mix(in srgb, var(--color-accent) 38%, var(--axon-rule)); }
-  #browserPanel { width:clamp(390px,34vw,620px); border-left:1px solid var(--axon-rule); background:color-mix(in srgb, var(--color-bg) 98%, var(--color-text)); box-shadow:-18px 0 42px color-mix(in srgb, #000 18%, transparent); }
-  .browserbar { min-height:52px; gap:9px; padding:9px 11px; background:var(--axon-soft); }
+  .turn.user .bubble { border-radius:7px; background:color-mix(in srgb, var(--color-accent) 12%, var(--color-bg)); border-color:color-mix(in srgb, var(--color-accent) 38%, var(--nocli-rule)); }
+  #browserPanel { width:clamp(390px,34vw,620px); border-left:1px solid var(--nocli-rule); background:color-mix(in srgb, var(--color-bg) 98%, var(--color-text)); box-shadow:-18px 0 42px color-mix(in srgb, #000 18%, transparent); }
+  .browserbar { min-height:52px; gap:9px; padding:9px 11px; background:var(--nocli-soft); }
   .browser-nav { display:flex; gap:4px; }
-  .browserbar button { width:31px; height:31px; border-radius:5px; border-color:var(--axon-rule); background:var(--axon-raised); color:var(--color-text); font-size:15px; }
-  .browserbar button:hover { border-color:var(--color-accent); background:color-mix(in srgb, var(--color-accent) 10%, var(--axon-raised)); }
+  .browserbar button { width:31px; height:31px; border-radius:5px; border-color:var(--nocli-rule); background:var(--nocli-raised); color:var(--color-text); font-size:15px; }
+  .browserbar button:hover { border-color:var(--color-accent); background:color-mix(in srgb, var(--color-accent) 10%, var(--nocli-raised)); }
   .browserbar button:disabled { opacity:.42; cursor:not-allowed; }
-  .browserbar input { height:33px; border-color:var(--axon-rule); border-radius:5px; background:var(--color-bg); color:var(--color-text); font-size:12px; }
+  .browserbar input { height:33px; border-color:var(--nocli-rule); border-radius:5px; background:var(--color-bg); color:var(--color-text); font-size:12px; }
   .browserbar input:focus { border-color:var(--color-accent); outline:2px solid color-mix(in srgb, var(--color-accent) 17%, transparent); outline-offset:1px; }
-  .browser-context { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:baseline; gap:4px 9px; min-height:54px; padding:10px 13px; border-bottom:1px solid var(--axon-rule); background:color-mix(in srgb, var(--color-bg) 76%, var(--axon-soft)); }
+  .browser-context { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:baseline; gap:4px 9px; min-height:54px; padding:10px 13px; border-bottom:1px solid var(--nocli-rule); background:color-mix(in srgb, var(--color-bg) 76%, var(--nocli-soft)); }
   .browser-context-kicker { color:var(--color-accent); font-size:9px; font-weight:830; letter-spacing:.1em; text-transform:uppercase; }
   #browserPageTitle { overflow:hidden; color:var(--color-text); font-size:12px; font-weight:720; text-overflow:ellipsis; white-space:nowrap; }
-  #browserContextHint { grid-column:1 / -1; color:var(--axon-muted); font-size:11px; line-height:1.35; }
+  #browserContextHint { grid-column:1 / -1; color:var(--nocli-muted); font-size:11px; line-height:1.35; }
   #browserSlot { background:var(--color-bg); }
-  #subagentsToggle { -webkit-app-region:no-drag; min-height:34px; padding:0 10px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font:750 12px inherit; cursor:pointer; }
+  #subagentsToggle { -webkit-app-region:no-drag; min-height:34px; padding:0 10px; border:1px solid var(--nocli-rule); border-radius:6px; background:var(--nocli-soft); color:var(--color-text); font:750 12px inherit; cursor:pointer; }
   #subagentsToggle.active { border-color:var(--color-accent); color:var(--color-accent); }
-  #subagentsPanel { position:absolute; z-index:11; top:0; right:0; bottom:0; width:min(390px,44vw); display:none; flex-direction:column; background:var(--color-bg); border-left:1px solid var(--axon-rule); }
-  #subagentsPanel.show { display:flex; } #subagentsList { padding:16px; overflow:auto; } .subagent-card { padding:12px; margin-bottom:10px; border:1px solid var(--axon-rule); border-radius:8px; } .subagent-card strong { display:block; margin-bottom:6px; } .subagent-meta { color:var(--color-neutral); font-size:12px; } .subagent-result { margin-top:8px; font-size:13px; white-space:pre-wrap; }
-  .browserbar { min-height:54px; padding:9px; border-bottom:1px solid var(--axon-rule); }
+  #subagentsPanel { position:absolute; z-index:11; top:0; right:0; bottom:0; width:min(390px,44vw); display:none; flex-direction:column; background:var(--color-bg); border-left:1px solid var(--nocli-rule); }
+  #subagentsPanel.show { display:flex; } #subagentsList { padding:16px; overflow:auto; } .subagent-card { padding:12px; margin-bottom:10px; border:1px solid var(--nocli-rule); border-radius:8px; } .subagent-card strong { display:block; margin-bottom:6px; } .subagent-meta { color:var(--color-neutral); font-size:12px; } .subagent-result { margin-top:8px; font-size:13px; white-space:pre-wrap; }
+  .browserbar { min-height:54px; padding:9px; border-bottom:1px solid var(--nocli-rule); }
 
   .sentry-kicker { display:block; color:var(--color-accent); font-size:10px; font-weight:850; letter-spacing:.105em; text-transform:uppercase; }
   /* Swarm turn: rendered inline in #log like any other assistant bubble. */
@@ -927,7 +927,7 @@
   .swarm-sentry-block.clickable:hover { border-color:color-mix(in srgb, var(--color-accent) 45%, var(--color-divider)); }
   .swarm-sentry-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; }
   .swarm-sentry-head strong { color:var(--color-accent); font-size:12px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; }
-  .swarm-status-pill { padding:2px 8px; border-radius:20px; background:var(--elev-2); color:var(--axon-muted); font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+  .swarm-status-pill { padding:2px 8px; border-radius:20px; background:var(--elev-2); color:var(--nocli-muted); font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
   .swarm-status-pill[data-status="completed"] { color:var(--color-success); }
   .swarm-status-pill[data-status="failed"] { color:var(--color-bad); }
   .swarm-sentry-text { color:var(--color-text); font-size:var(--t-body); line-height:1.55; }
@@ -936,53 +936,53 @@
   .swarm-worker-chip:hover { border-color:color-mix(in srgb, var(--color-accent) 45%, var(--color-divider)); }
   .swarm-worker-chip[data-status="working"], .swarm-worker-chip[data-status="launching"], .swarm-worker-chip[data-status="planning"] { border-color:color-mix(in srgb, var(--color-accent) 40%, var(--color-divider)); }
   .swarm-worker-chip .chip-role { font-weight:650; }
-  .swarm-worker-chip .chip-status { color:var(--axon-muted); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+  .swarm-worker-chip .chip-status { color:var(--nocli-muted); font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
   .swarm-worker-chip[data-status="completed"] .chip-status { color:var(--color-success); }
   .swarm-worker-chip[data-status="failed"] .chip-status { color:var(--color-bad); }
   .recent-swarm-mark { width:14px; height:14px; margin-right:6px; vertical-align:-2px; object-fit:contain; }
   .sentry-modal[hidden] { display:none; }
   .sentry-modal { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; }
   .sentry-modal-backdrop { position:absolute; inset:0; background:color-mix(in srgb, black 55%, transparent); }
-  .sentry-modal-panel { position:relative; width:min(720px, calc(100% - 48px)); max-height:min(78vh, 720px); display:flex; flex-direction:column; border:1px solid var(--axon-rule); border-radius:10px; background:var(--color-bg); box-shadow:0 24px 60px rgba(0,0,0,.4); overflow:hidden; }
-  .sentry-modal-head { display:flex; align-items:start; justify-content:space-between; gap:16px; padding:20px 22px 14px; border-bottom:1px solid var(--axon-rule); }
+  .sentry-modal-panel { position:relative; width:min(720px, calc(100% - 48px)); max-height:min(78vh, 720px); display:flex; flex-direction:column; border:1px solid var(--nocli-rule); border-radius:10px; background:var(--color-bg); box-shadow:0 24px 60px rgba(0,0,0,.4); overflow:hidden; }
+  .sentry-modal-head { display:flex; align-items:start; justify-content:space-between; gap:16px; padding:20px 22px 14px; border-bottom:1px solid var(--nocli-rule); }
   .sentry-modal-head h3 { margin:6px 0 4px; font-size:19px; letter-spacing:-.02em; }
-  .sentry-modal-head small { display:block; color:var(--axon-muted); font-size:11px; }
-  .sentry-modal-head button { flex:none; width:30px; height:30px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font-size:15px; line-height:1; }
+  .sentry-modal-head small { display:block; color:var(--nocli-muted); font-size:11px; }
+  .sentry-modal-head button { flex:none; width:30px; height:30px; border:1px solid var(--nocli-rule); border-radius:6px; background:var(--nocli-soft); color:var(--color-text); font-size:15px; line-height:1; }
   .sentry-modal-body { flex:1; min-height:0; overflow:auto; padding:20px 22px; }
   .sentry-modal-body pre { margin:0; white-space:pre-wrap; word-break:break-word; font:12.5px/1.6 inherit; color:var(--color-text); }
-  .sentry-modal-actions { display:flex; justify-content:flex-end; gap:8px; padding:14px 22px; border-top:1px solid var(--axon-rule); }
-  .sentry-modal-actions button { padding:0 14px; min-height:34px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); font:700 12px inherit; }
+  .sentry-modal-actions { display:flex; justify-content:flex-end; gap:8px; padding:14px 22px; border-top:1px solid var(--nocli-rule); }
+  .sentry-modal-actions button { padding:0 14px; min-height:34px; border:1px solid var(--nocli-rule); border-radius:6px; background:var(--nocli-soft); color:var(--color-text); font:700 12px inherit; }
   #sentryModalRetry { border-color:var(--color-accent); background:var(--color-accent); color:var(--color-on-accent); }
 
-  .ops-page-header { display:flex; align-items:end; justify-content:space-between; gap:22px; margin-bottom:30px; padding-bottom:18px; border-bottom:1px solid var(--axon-rule); }
+  .ops-page-header { display:flex; align-items:end; justify-content:space-between; gap:22px; margin-bottom:30px; padding-bottom:18px; border-bottom:1px solid var(--nocli-rule); }
   .ops-eyebrow { margin:0 0 7px; color:var(--color-accent); font-size:11px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
   .ops-page-header h2 { margin:0; }
-  .ops-page-copy { max-width:62ch; margin:8px 0 0; color:var(--axon-muted); font-size:14px; }
+  .ops-page-copy { max-width:62ch; margin:8px 0 0; color:var(--nocli-muted); font-size:14px; }
   .ops-grid { display:grid; gap:10px; }
   .project-grid { grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); }
-  .ops-card { min-height:148px; padding:18px; border:1px solid var(--axon-rule); border-radius:7px; background:var(--axon-soft); }
+  .ops-card { min-height:148px; padding:18px; border:1px solid var(--nocli-rule); border-radius:7px; background:var(--nocli-soft); }
   .project-card { cursor:pointer; transition:border-color .16s ease,background .16s ease; }
-  .project-card:hover { border-color:color-mix(in srgb, var(--color-accent) 58%, var(--axon-rule)); background:var(--axon-raised); }
+  .project-card:hover { border-color:color-mix(in srgb, var(--color-accent) 58%, var(--nocli-rule)); background:var(--nocli-raised); }
   .ops-card-title { margin:0 0 7px; color:var(--color-text); font-size:16px; font-weight:760; }
-  .ops-card-path, .ops-card-note { overflow:hidden; color:var(--axon-muted); font-size:12px; line-height:1.55; }
+  .ops-card-path, .ops-card-note { overflow:hidden; color:var(--nocli-muted); font-size:12px; line-height:1.55; }
   .ops-card-path { text-overflow:ellipsis; white-space:nowrap; }
   .ops-card-note { display:-webkit-box; margin-top:10px; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
-  .ops-card-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px; color:var(--axon-muted); font-size:12px; }
-  .ops-danger { border:1px solid var(--axon-rule); border-radius:4px; background:transparent; color:var(--color-bad); padding:5px 8px; cursor:pointer; }
+  .ops-card-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px; color:var(--nocli-muted); font-size:12px; }
+  .ops-danger { border:1px solid var(--nocli-rule); border-radius:4px; background:transparent; color:var(--color-bad); padding:5px 8px; cursor:pointer; }
   .ops-danger:hover { border-color:var(--color-bad); background:color-mix(in srgb, var(--color-bad) 9%, transparent); }
   .ops-section { margin-top:34px; }
   .ops-section:first-child { margin-top:0; }
   .ops-section-head { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:12px; }
   .ops-section-head h3 { margin:0; font-size:16px; letter-spacing:-.015em; }
-  .ops-section-head p { margin:0; color:var(--axon-muted); font-size:12px; }
+  .ops-section-head p { margin:0; color:var(--nocli-muted); font-size:12px; }
   .ops-list { display:grid; gap:7px; }
-  .model-row { display:grid; grid-template-columns:minmax(200px,1fr) auto auto auto; align-items:center; gap:12px; min-height:58px; padding:10px 14px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); }
+  .model-row { display:grid; grid-template-columns:minmax(200px,1fr) auto auto auto; align-items:center; gap:12px; min-height:58px; padding:10px 14px; border:1px solid var(--nocli-rule); border-radius:6px; background:var(--nocli-soft); }
   .model-name { font-size:14px; font-weight:740; }
-  .model-meta { color:var(--axon-muted); font-size:12px; }
-  .ops-tag { display:inline-flex; align-items:center; min-height:23px; padding:2px 7px; border:1px solid var(--axon-rule); border-radius:4px; color:var(--axon-muted); font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
-  .ops-tag.vision { color:var(--color-info); border-color:color-mix(in srgb, var(--color-info) 46%, var(--axon-rule)); }
-  .ops-tag.installed { color:var(--color-success); border-color:color-mix(in srgb, var(--color-success) 46%, var(--axon-rule)); }
-  .empty-state { padding:22px; border:1px dashed var(--axon-rule); border-radius:7px; color:var(--axon-muted); font-size:14px; }
+  .model-meta { color:var(--nocli-muted); font-size:12px; }
+  .ops-tag { display:inline-flex; align-items:center; min-height:23px; padding:2px 7px; border:1px solid var(--nocli-rule); border-radius:4px; color:var(--nocli-muted); font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+  .ops-tag.vision { color:var(--color-info); border-color:color-mix(in srgb, var(--color-info) 46%, var(--nocli-rule)); }
+  .ops-tag.installed { color:var(--color-success); border-color:color-mix(in srgb, var(--color-success) 46%, var(--nocli-rule)); }
+  .empty-state { padding:22px; border:1px dashed var(--nocli-rule); border-radius:7px; color:var(--nocli-muted); font-size:14px; }
   .modal-card { border-radius:9px; box-shadow:0 28px 80px color-mix(in srgb, #000 48%, transparent); }
 
   /* Operator-console reset: one compact shell, a working-set rail, and drawers
@@ -1015,12 +1015,12 @@
   .browser-context { min-height:47px; padding:8px 10px; }
   #browserContextHint { display:none; }
 
-  .swarm-controls { padding:12px; border-radius:6px; background:var(--axon-soft); }
+  .swarm-controls { padding:12px; border-radius:6px; background:var(--nocli-soft); }
   .swarm-controls-head { margin-bottom:9px; }
   .swarm-roles { gap:7px; }
   .swarm-role, .swarm-worker-field { min-height:116px; padding:10px; border-radius:5px; background:var(--color-bg); }
   /* Ultra polish pass: resolve distribution and interaction defects before
-     adding decoration. Axon's pink remains a signal for state and location. */
+     adding decoration. NoCLI.ai's blue remains a signal for state and location. */
   :root {
     --font-body:"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     --font-display:"Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
@@ -1028,7 +1028,7 @@
     --t-sm:13px;
     --t-xs:12px;
     --t-mono:12px;
-    --axon-muted:color-mix(in srgb, var(--color-text) 70%, var(--color-bg));
+    --nocli-muted:color-mix(in srgb, var(--color-text) 70%, var(--color-bg));
   }
   #greet, .ops-page-header h2, .modal-head h3 { font-family:var(--font-display); }
   code, pre, .turnhead, .cmditem .cmdname, .tool-head .summary, .tool-args, .tool-out pre { font-family:var(--font-mono); }
@@ -1049,7 +1049,7 @@
   .newchat { font-family:inherit; text-align:left; }
   #side .newchat { width:100%; }
   .ops-page-header .newchat { width:auto; align-self:end; }
-  .recents-label { width:100%; min-height:44px; border:0; background:transparent; color:var(--axon-muted); font-family:inherit; text-align:left; cursor:pointer; }
+  .recents-label { width:100%; min-height:44px; border:0; background:transparent; color:var(--nocli-muted); font-family:inherit; text-align:left; cursor:pointer; }
   .recents-label:hover { color:var(--color-text); }
   .recent { min-height:48px; padding-right:96px; }
   .rpin, .rdel { width:44px; height:44px; }
@@ -1076,9 +1076,9 @@
   .composer-mode { padding-inline:12px; }
   #send { width:44px; height:44px; }
   .chip { min-height:44px; padding:9px 13px; font-size:13px; }
-  .home-hint { margin-top:18px; color:var(--axon-muted); font-size:14px; line-height:1.55; }
-  .swarm-controls { background:var(--axon-soft); }
-  .swarm-launch.active { border-color:color-mix(in srgb,var(--color-accent) 64%,var(--axon-rule)); background:color-mix(in srgb,var(--color-accent) 10%,var(--axon-soft)); box-shadow:inset 2px 0 0 var(--color-accent); }
+  .home-hint { margin-top:18px; color:var(--nocli-muted); font-size:14px; line-height:1.55; }
+  .swarm-controls { background:var(--nocli-soft); }
+  .swarm-launch.active { border-color:color-mix(in srgb,var(--color-accent) 64%,var(--nocli-rule)); background:color-mix(in srgb,var(--color-accent) 10%,var(--nocli-soft)); box-shadow:inset 2px 0 0 var(--color-accent); }
   .swarm-controls-copy small, .swarm-limit, .swarm-role-notice, .swarm-role small { font-size:12px; }
   .swarm-role select, .swarm-worker-field input { min-height:44px; }
   .browser-toggle-kicker { font-size:10px; }
@@ -1089,10 +1089,10 @@
   .ops-page-copy, .ops-section-head p, .ops-card-path, .ops-card-note { font-size:13px; }
   .ops-card { min-height:132px; }
   .ops-tag { min-height:26px; font-size:11px; }
-  .ops-empty { display:grid; justify-items:start; gap:9px; max-width:620px; padding:30px; border:1px solid var(--axon-rule); border-left:2px solid var(--color-accent); border-radius:7px; background:var(--axon-soft); }
+  .ops-empty { display:grid; justify-items:start; gap:9px; max-width:620px; padding:30px; border:1px solid var(--nocli-rule); border-left:2px solid var(--color-accent); border-radius:7px; background:var(--nocli-soft); }
   .ops-empty-kicker { color:var(--color-accent); font-size:11px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; }
   .ops-empty h3 { margin:0; font-size:20px; letter-spacing:-.02em; }
-  .ops-empty p { max-width:58ch; margin:0; color:var(--axon-muted); font-size:14px; line-height:1.55; }
+  .ops-empty p { max-width:58ch; margin:0; color:var(--nocli-muted); font-size:14px; line-height:1.55; }
   .ops-empty button { min-height:44px; margin-top:6px; padding:0 14px; border:1px solid var(--color-accent); border-radius:5px; background:var(--color-accent); color:var(--color-on-accent); font:750 13px var(--font-body); cursor:pointer; }
   .ops-empty button:hover { background:var(--color-accent-600); }
 
@@ -1100,7 +1100,7 @@
   #settings .modal-head { padding:16px 20px; z-index:2; }
   #settings .modal-head h3 { font-size:18px; }
   #settings .modal-head .x { width:44px; height:44px; padding:0; border:1px solid transparent; border-radius:5px; }
-  #settings .modal-head .x:hover { border-color:var(--axon-rule); background:var(--axon-soft); }
+  #settings .modal-head .x:hover { border-color:var(--nocli-rule); background:var(--nocli-soft); }
   #settings .modal-body { gap:24px; padding:22px 24px 28px; }
   #settings .fld { font-size:14px; }
   #settings .lan-info, #settings .settings-copy, #settings .provider-import-status { font-size:13px; line-height:1.55; }
@@ -1136,7 +1136,7 @@
     .brand .logo { width:27px; height:32px; }
     .workspace-switch { grid-template-columns:1fr; margin:8px 0; border:0; }
     .workspace-tab { min-height:58px; flex-direction:column; gap:3px; border-radius:5px; box-shadow:none; font-size:10px; }
-    .workspace-tab.active { background:var(--axon-raised); box-shadow:inset 2px 0 0 var(--color-accent); }
+    .workspace-tab.active { background:var(--nocli-raised); box-shadow:inset 2px 0 0 var(--color-accent); }
     .workspace-tab .workspace-mark { width:24px; height:20px; }
     .swarm-launch { justify-content:center; min-height:52px; margin-top:4px; padding:0; }
     .swarm-launch img { width:28px; height:28px; }
@@ -1179,8 +1179,8 @@
 
   /* Product shell: local-first identity, compact utilities, and one-action
      defaults. Advanced controls remain available without owning the screen. */
-  .utility-icon { width:44px; height:44px; display:inline-grid; place-items:center; justify-content:center; padding:0 !important; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-soft); color:var(--color-text); cursor:pointer; }
-  .utility-icon:hover { border-color:var(--color-accent); background:var(--axon-raised); }
+  .utility-icon { width:44px; height:44px; display:inline-grid; place-items:center; justify-content:center; padding:0 !important; border:1px solid var(--nocli-rule); border-radius:6px; background:var(--nocli-soft); color:var(--color-text); cursor:pointer; }
+  .utility-icon:hover { border-color:var(--color-accent); background:var(--nocli-raised); }
   .utility-icon img { width:22px; height:22px; object-fit:contain; }
   .utility-icon svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.8; }
   .utility-icon.active { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 12%,var(--color-bg)); color:var(--color-accent); }
@@ -1190,36 +1190,36 @@
   .local-workspace-mark { width:30px; height:30px; flex:none; object-fit:contain; }
   .local-workspace-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:2px; }
   .local-workspace-copy strong { overflow:hidden; color:var(--color-text); font-size:12px; font-weight:760; text-overflow:ellipsis; white-space:nowrap; }
-  .local-workspace-copy small { color:var(--axon-muted); font-size:10px; }
-  .side-settings { width:100%; min-height:44px; display:flex; align-items:center; gap:9px; padding:0 9px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--axon-muted); font:720 12px var(--font-body); text-align:left; cursor:pointer; }
-  .side-settings:hover { border-color:var(--axon-rule); background:var(--axon-soft); color:var(--color-text); }
+  .local-workspace-copy small { color:var(--nocli-muted); font-size:10px; }
+  .side-settings { width:100%; min-height:44px; display:flex; align-items:center; gap:9px; padding:0 9px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--nocli-muted); font:720 12px var(--font-body); text-align:left; cursor:pointer; }
+  .side-settings:hover { border-color:var(--nocli-rule); background:var(--nocli-soft); color:var(--color-text); }
   .side-settings svg { width:17px; height:17px; flex:none; fill:none; stroke:currentColor; stroke-width:1.8; }
   .side-settings .profile-update-badge { margin-left:auto; }
   .swarm-controls { display:grid; gap:12px; }
   .swarm-controls-head { margin-bottom:0; }
-  .swarm-defaults { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid var(--axon-rule); border-radius:6px; background:var(--color-bg); }
-  .swarm-default { min-height:58px; display:flex; flex-direction:column; justify-content:center; gap:2px; padding:9px 12px; border-right:1px solid var(--axon-rule); }
+  .swarm-defaults { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid var(--nocli-rule); border-radius:6px; background:var(--color-bg); }
+  .swarm-default { min-height:58px; display:flex; flex-direction:column; justify-content:center; gap:2px; padding:9px 12px; border-right:1px solid var(--nocli-rule); }
   .swarm-default:last-child { border-right:0; }
   .swarm-default strong { color:var(--color-text); font-size:12px; }
-  .swarm-default small { color:var(--axon-muted); font-size:10px; }
-  .swarm-advanced { border-top:1px solid var(--axon-rule); padding-top:10px; }
-  .swarm-advanced > summary { width:max-content; min-height:32px; display:flex; align-items:center; gap:6px; color:var(--axon-muted); font-size:11px; font-weight:760; cursor:pointer; list-style:none; }
+  .swarm-default small { color:var(--nocli-muted); font-size:10px; }
+  .swarm-advanced { border-top:1px solid var(--nocli-rule); padding-top:10px; }
+  .swarm-advanced > summary { width:max-content; min-height:32px; display:flex; align-items:center; gap:6px; color:var(--nocli-muted); font-size:11px; font-weight:760; cursor:pointer; list-style:none; }
   .swarm-advanced > summary::before { content:'+'; color:var(--color-accent); font-size:15px; }
   .swarm-advanced[open] > summary::before { content:'−'; }
   .swarm-advanced .swarm-roles { margin-top:9px; }
   .provider-hub { order:-1; display:grid; gap:13px; }
   .provider-choice { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
-  .provider-choice button { min-height:68px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:3px; padding:10px 12px; border:1px solid var(--axon-rule); border-radius:7px; background:var(--elev-1); color:var(--color-text); font:inherit; text-align:left; cursor:pointer; }
+  .provider-choice button { min-height:68px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:3px; padding:10px 12px; border:1px solid var(--nocli-rule); border-radius:7px; background:var(--elev-1); color:var(--color-text); font:inherit; text-align:left; cursor:pointer; }
   .provider-choice button:hover { border-color:var(--color-accent); }
   .provider-choice button strong { font-size:13px; }
-  .provider-choice button small { color:var(--axon-muted); font-size:11px; }
+  .provider-choice button small { color:var(--nocli-muted); font-size:11px; }
   .provider-choice button.active { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 10%,var(--elev-1)); box-shadow:inset 2px 0 0 var(--color-accent); }
   .provider-current { display:grid; grid-template-columns:minmax(0,230px) 1fr; gap:10px; align-items:center; }
-  .provider-api-setup { border:1px solid var(--axon-rule); border-radius:8px; background:var(--elev-1); }
+  .provider-api-setup { border:1px solid var(--nocli-rule); border-radius:8px; background:var(--elev-1); }
   .provider-api-setup > summary { min-height:44px; display:flex; align-items:center; padding:0 12px; color:var(--color-text); font-size:12px; font-weight:780; cursor:pointer; list-style:none; }
   .provider-api-setup > summary::after { content:'+'; margin-left:auto; color:var(--color-accent); font-size:17px; }
   .provider-api-setup[open] > summary::after { content:'−'; }
-  .provider-api-body { display:grid; gap:10px; padding:0 12px 13px; border-top:1px solid var(--axon-rule); }
+  .provider-api-body { display:grid; gap:10px; padding:0 12px 13px; border-top:1px solid var(--nocli-rule); }
   .provider-api-body .provider-quick { margin-top:12px; }
   @media (max-width:760px) {
     #subagentsToggle, #browserToggle { width:44px; }
@@ -1227,45 +1227,45 @@
     .local-workspace { justify-content:center; padding:4px 0 8px; }
     .side-settings { justify-content:center; padding:0; }
     .swarm-defaults, .provider-choice, .provider-current { grid-template-columns:1fr; }
-    .swarm-default { border-right:0; border-bottom:1px solid var(--axon-rule); }
+    .swarm-default { border-right:0; border-bottom:1px solid var(--nocli-rule); }
     .swarm-default:last-child { border-bottom:0; }
   }
   /* Swarm uses the same shell, spacing, and controls as Chat/Work/Code. */
   .swarm-launch { min-height:44px; margin:0 0 8px; padding:0 10px; border-color:transparent; border-radius:6px; background:transparent; transform:none; }
-  .swarm-launch:hover { border-color:var(--axon-rule); background:var(--axon-soft); transform:none; }
-  .swarm-launch.active { border-color:var(--axon-rule); background:var(--axon-raised); box-shadow:inset 2px 0 0 var(--color-accent); }
+  .swarm-launch:hover { border-color:var(--nocli-rule); background:var(--nocli-soft); transform:none; }
+  .swarm-launch.active { border-color:var(--nocli-rule); background:var(--nocli-raised); box-shadow:inset 2px 0 0 var(--color-accent); }
   .swarm-launch img { width:21px; height:21px; }
   .swarm-launch strong { font-size:12px; font-weight:740; }
   .swarm-launch small { font-size:10px; }
-  .swarm-launch .swarm-arrow { color:var(--axon-muted); font-size:14px; }
+  .swarm-launch .swarm-arrow { color:var(--nocli-muted); font-size:14px; }
   #main[data-swarm="true"] #home .wrap { max-width:760px; }
   #main[data-swarm="true"] #greet { font-size:clamp(34px,3.5vw,52px); }
-  #main[data-swarm="true"] #composerCard { border-left:1px solid var(--axon-rule); }
-  .swarm-controls { display:block; max-width:none; margin:0 0 12px; padding:0; border:1px solid var(--axon-rule); border-radius:8px; background:var(--axon-soft); }
+  #main[data-swarm="true"] #composerCard { border-left:1px solid var(--nocli-rule); }
+  .swarm-controls { display:block; max-width:none; margin:0 0 12px; padding:0; border:1px solid var(--nocli-rule); border-radius:8px; background:var(--nocli-soft); }
   .swarm-controls-head { min-height:56px; display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0; padding:8px 10px; }
   .swarm-controls-mark { width:24px; height:24px; }
   .swarm-controls-copy { flex:1; gap:1px; }
   .swarm-controls-copy strong { font-size:12px; font-weight:760; }
-  .swarm-controls-copy small { color:var(--axon-muted); font-size:11px; }
+  .swarm-controls-copy small { color:var(--nocli-muted); font-size:11px; }
   .swarm-advanced { margin-left:auto; padding:0; border:0; }
-  .swarm-advanced > summary { min-height:44px; padding:0 12px; border:1px solid var(--axon-rule); border-radius:6px; background:var(--axon-raised); color:var(--color-text); font-size:11px; font-weight:720; list-style:none; }
+  .swarm-advanced > summary { min-height:44px; padding:0 12px; border:1px solid var(--nocli-rule); border-radius:6px; background:var(--nocli-raised); color:var(--color-text); font-size:11px; font-weight:720; list-style:none; }
   .swarm-advanced > summary::before { display:none; }
-  .swarm-advanced[open] { flex-basis:100%; margin:0; padding-top:8px; border-top:1px solid var(--axon-rule); }
+  .swarm-advanced[open] { flex-basis:100%; margin:0; padding-top:8px; border-top:1px solid var(--nocli-rule); }
   .swarm-advanced[open] > summary { width:max-content; margin-left:auto; }
   .swarm-advanced .swarm-roles { grid-template-columns:minmax(0,1fr) minmax(0,1fr) 104px; gap:8px; margin-top:8px; }
   .swarm-role, .swarm-worker-field { min-height:0; gap:6px; padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; }
-  .swarm-role > span, .swarm-worker-field > span { color:var(--axon-muted); font-size:10px; font-weight:760; letter-spacing:.04em; text-transform:uppercase; }
-  .swarm-role select, .swarm-worker-field input { min-height:40px; margin:0; border-color:var(--axon-rule); border-radius:5px; background:var(--color-bg); font-size:12px; }
+  .swarm-role > span, .swarm-worker-field > span { color:var(--nocli-muted); font-size:10px; font-weight:760; letter-spacing:.04em; text-transform:uppercase; }
+  .swarm-role select, .swarm-worker-field input { min-height:40px; margin:0; border-color:var(--nocli-rule); border-radius:5px; background:var(--color-bg); font-size:12px; }
   .swarm-worker-field input { padding:4px 8px; font-size:14px; }
   .swarm-role-notice { margin:8px 0 0; padding:0; font-size:11px; }
   .swarm-defaults { display:none; }
   .swarm-bubble { gap:8px; }
-  .swarm-sentry-block { padding:10px 0; border:0; border-bottom:1px solid var(--axon-rule); border-radius:0; background:transparent; }
+  .swarm-sentry-block { padding:10px 0; border:0; border-bottom:1px solid var(--nocli-rule); border-radius:0; background:transparent; }
   .swarm-sentry-block.clickable:hover { border-color:var(--color-accent); background:transparent; }
   .swarm-sentry-head strong { color:var(--color-text); font-size:11px; letter-spacing:.04em; }
   .swarm-status-pill { padding:0; border-radius:0; background:transparent; }
   .swarm-workers-row { gap:6px; }
-  .swarm-worker-chip { min-height:34px; padding:0 10px; border-color:var(--axon-rule); border-radius:5px; background:var(--axon-soft); }
+  .swarm-worker-chip { min-height:34px; padding:0 10px; border-color:var(--nocli-rule); border-radius:5px; background:var(--nocli-soft); }
   @media (max-width:760px) {
     .swarm-controls-head { flex-wrap:wrap; }
     .swarm-advanced[open] { width:100%; }
@@ -1323,10 +1323,10 @@
   .tool-head { min-height:40px; }
   #composerSlot {
     padding:14px max(24px, calc((100% - 980px) / 2)) 18px;
-    border-top:1px solid var(--axon-rule);
+    border-top:1px solid var(--nocli-rule);
     background:color-mix(in srgb, var(--color-bg) 97%, var(--color-text));
   }
-  #composerCard { border-radius:7px; background:var(--axon-soft); }
+  #composerCard { border-radius:7px; background:var(--nocli-soft); }
   #prompt { min-height:58px; padding:15px 16px 9px; }
   .composer-foot { min-height:52px; padding:7px 10px; }
   .model-btn { max-width:270px; }
@@ -1349,19 +1349,19 @@
 </style>
 </head>
 <body>
-<div id="loading" role="status" aria-live="polite"><div class="loading-mark"><img src="../assets/icon.png" alt="" /><strong>Axon</strong><span id="loadingText">Starting local workspace…</span></div></div>
+<div id="loading" role="status" aria-live="polite"><div class="loading-mark"><img src="../assets/icon.png" alt="" /><strong>NoCLI.ai</strong><span id="loadingText">Starting local workspace…</span></div></div>
 <canvas id="grid"></canvas>
-<header class="titlebar" aria-label="Axon window controls">
+<header class="titlebar" aria-label="NoCLI.ai window controls">
   <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button><button class="top-nav-btn" data-view="projects" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Projects</span></button><button class="top-nav-btn" data-view="models" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span>Models</span></button><button class="top-nav-btn" data-view="settings" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg><span>Settings</span></button></nav>
   <div class="window-spacer"></div>
   <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
-  <div class="title-actions"><button id="subagentsToggle" class="utility-icon" title="Subagents" aria-label="Open subagents" aria-expanded="false"><img src="../assets/axon-swarm-terminal.png" alt="" /><span>Subagents</span></button><button id="browserToggle" class="utility-icon" title="Open agent browser" aria-label="Open agent browser" aria-expanded="false"><img src="../assets/browser-googlechrome.svg" alt="" /><span>Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
+  <div class="title-actions"><button id="subagentsToggle" class="utility-icon" title="Subagents" aria-label="Open subagents" aria-expanded="false"><img src="../assets/icon.png" alt="" /><span>Subagents</span></button><button id="browserToggle" class="utility-icon" title="Open agent browser" aria-label="Open agent browser" aria-expanded="false"><img src="../assets/browser-googlechrome.svg" alt="" /><span>Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
 </header>
 <div id="app">
   <div id="side">
-    <div class="brand"><img class="logo" src="../assets/icon.png" alt="Axon" /><span style="flex:1">Axon</span></div>
-    <button id="swarmLaunch" class="swarm-launch" type="button" aria-label="Open Axon Swarm">
-      <img src="../assets/axon-swarm-terminal.png" alt="" /><span class="swarm-launch-copy"><strong>Axon Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
+    <div class="brand"><img class="logo" src="../assets/icon.png" alt="NoCLI.ai" /><span style="flex:1">NoCLI.ai</span></div>
+    <button id="swarmLaunch" class="swarm-launch" type="button" aria-label="Open NoCLI.ai Swarm">
+      <img src="../assets/icon.png" alt="" /><span class="swarm-launch-copy"><strong>NoCLI.ai Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
     </button>
     <div class="workspace-note" id="workspaceNote">One conversation · scope is per turn</div>
     <button class="newchat" id="newchat" type="button"><span aria-hidden="true" style="opacity:.6">+</span><span id="newChatLabel">New chat</span></button>
@@ -1379,12 +1379,12 @@
     <!-- home (empty) -->
     <div id="home">
       <div class="wrap">
-        <div class="hero-emblem"><img src="../assets/axon-nervous-system.png" alt="Axon nervous-system mark" /></div>
+        <div class="hero-emblem"><img src="../assets/icon.png" alt="NoCLI.ai mark" /></div>
         <h1 id="greet">Good afternoon.</h1>
         <p class="sub">What are we working on?</p>
         <section id="swarmControls" class="swarm-controls" hidden aria-label="Swarm settings">
           <div class="swarm-controls-head">
-            <img class="swarm-controls-mark" src="../assets/axon-swarm-terminal.png" alt="" />
+            <img class="swarm-controls-mark" src="../assets/icon.png" alt="" />
             <div class="swarm-controls-copy"><strong>Swarm</strong><small>One Sentry · three parallel workers · one answer</small></div>
             <details class="swarm-advanced"><summary>Settings</summary><div class="swarm-roles"><label class="swarm-role"><span>Sentry model</span><select id="swarmSentryModel" aria-label="Sentry model"></select></label><label class="swarm-role"><span>Worker model</span><select id="swarmWorkerModel" aria-label="Worker model"></select></label><label class="swarm-worker-field"><span>Workers</span><input id="swarmCount" type="number" min="1" value="3" inputmode="numeric" /></label></div><div id="swarmRoleNotice" class="swarm-role-notice"></div></details>
           </div>
@@ -1394,7 +1394,7 @@
         <div id="composerCard" class="card">
           <div id="cmdlist"></div>
           <div id="attachRow"></div>
-          <textarea id="prompt" placeholder="Message Axon…" rows="1" aria-describedby="composerHelp"></textarea>
+          <textarea id="prompt" placeholder="Message NoCLI.ai…" rows="1" aria-describedby="composerHelp"></textarea>
           <span id="composerHelp" class="sr-only">Enter sends. Shift plus Enter adds a new line. Type slash help for commands.</span>
           <div class="composer-foot">
             <span class="left">
@@ -1480,9 +1480,9 @@
   <div class="modal-card">
     <div class="modal-head"><h3 id="settingsTitle">Settings</h3><button class="x" id="settingsClose" type="button" aria-label="Close settings">×</button></div>
     <div class="modal-body">
-      <label class="fld"><span>Axon instructions</span>
+      <label class="fld"><span>NoCLI.ai instructions</span>
         <textarea id="sysPrompt" placeholder="Define the assistant's behavior, tone, identity, and constraints…"></textarea>
-        <div class="lan-info">Applied to every new Axon session. Axon owns its identity, instructions, workspace, and tool policy.</div>
+        <div class="lan-info">Applied to every new NoCLI.ai session. NoCLI.ai owns its identity, instructions, workspace, and tool policy.</div>
       </label>
       <div class="fld"><span>What this conversation can do</span>
         <div class="modes" id="modes" role="radiogroup" aria-label="Conversation scope">
@@ -1506,10 +1506,10 @@
         <div class="lan-info">Enforced by the selected engine, not by instructions a model can talk itself out of. Scope can change mid-conversation without starting over.</div>
       </div>
       <div class="fld"><span>Agent engine</span><div class="row"><label class="fld"><select id="engineSel"></select></label></div><div class="lan-info" id="engineInfo">The harness that drives a turn once it can touch the workspace. Chat streams direct unless its sign-in belongs to OpenCode.</div></div>
-      <div class="fld provider-hub"><span>Model provider</span><p class="settings-copy">Stay local with Ollama, use an OpenCode Go or Zen account, or connect an API. The engine that drives agent turns is chosen separately. Switching back never deletes saved connections.</p><div class="provider-choice"><button id="providerUseOllama" type="button"><strong>Use Ollama</strong><small>Local-first default · no API key</small></button><button id="providerNew" type="button"><strong>Add a connection</strong><small>OpenCode, OpenRouter, or another API</small></button></div><div class="provider-current"><label class="fld"><span>Active connection</span><select id="providerProfileSel"></select></label><div id="providerStatus" class="lan-info">Ollama uses the current local runtime.</div></div><details id="providerApiSetup" class="provider-api-setup"><summary>Connection details</summary><div class="provider-api-body"><div class="provider-quick"><div class="provider-quick-head"><strong>Start with a preset</strong><span>API keys remain in the OS credential store.</span></div><div class="row"><label class="fld"><select id="providerPreset"><option value="custom">Custom compatible API</option><option value="openai">OpenAI Responses API</option><option value="openrouter">OpenRouter API through OpenCode</option><option value="opencodeGo">OpenCode Go subscription</option><option value="opencodeZen">OpenCode Zen</option></select></label><button id="providerApplyPreset" class="settings-action" type="button">Apply preset</button></div><label class="fld"><textarea id="providerImport" rows="3" spellcheck="false" placeholder='Optional: paste an OpenCode provider JSON entry'></textarea></label><div class="row"><button id="providerImportOpenCode" class="settings-action" type="button">Import config</button><span id="providerImportStatus" class="provider-import-status">Imports the endpoint and model. API keys are never imported.</span></div></div><div class="row"><label class="fld"><span>Name</span><input id="providerName" type="text" placeholder="OpenAI" /></label><label class="fld"><span>Route</span><select id="providerKind"><option value="ollama">Ollama</option><option value="opencode">OpenCode Go / Zen sign-in</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option></select></label></div><div class="row"><label class="fld"><span>Endpoint</span><input id="providerEndpoint" type="url" placeholder="https://api.example.com/v1" /></label><label class="fld"><span>Model</span><input id="providerModel" type="text" placeholder="Model ID" /></label></div><div class="row"><label class="fld"><span>API key</span><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="Paste key" /></label><button id="providerSave" class="settings-action primary" type="button">Save and use</button></div></div></details></div>
-      <div class="fld"><span>Inference runtime</span><div class="row"><label class="fld"><select id="runtimeSel"><option value="ollama">Local Ollama</option><option value="exo">Exo cluster</option><option value="llamacpp">llama.cpp RPC (2-PC VRAM pool)</option></select></label><label class="fld"><input id="exoUrl" type="url" placeholder="http://192.168.50.1:52415" /></label><button id="exoCheck" type="button">Test Exo</button></div><div id="exoStatus" class="lan-info">Local Ollama runs on this device. Exo connects to a separately running cluster coordinator.</div>
+      <div class="fld provider-hub"><span>Model provider</span><p class="settings-copy">Start with the local runtime, use an OpenCode Go or Zen account, or connect an API. The engine that drives agent turns is chosen separately. Switching back never deletes saved connections.</p><div class="provider-choice"><button id="providerUseOllama" type="button"><strong>Use local runtime</strong><small>Local-first default · no API key</small></button><button id="providerNew" type="button"><strong>Add a connection</strong><small>OpenCode, OpenRouter, or another API</small></button></div><div class="provider-current"><label class="fld"><span>Active connection</span><select id="providerProfileSel"></select></label><div id="providerStatus" class="lan-info">The local runtime is ready on this device.</div></div><details id="providerApiSetup" class="provider-api-setup"><summary>Connection details</summary><div class="provider-api-body"><div class="provider-quick"><div class="provider-quick-head"><strong>Start with a preset</strong><span>API keys remain in the OS credential store.</span></div><div class="row"><label class="fld"><select id="providerPreset"><option value="custom">Custom compatible API</option><option value="openai">OpenAI Responses API</option><option value="openrouter">OpenRouter API through OpenCode</option><option value="opencodeGo">OpenCode Go subscription</option><option value="opencodeZen">OpenCode Zen</option></select></label><button id="providerApplyPreset" class="settings-action" type="button">Apply preset</button></div><label class="fld"><textarea id="providerImport" rows="3" spellcheck="false" placeholder='Optional: paste an OpenCode provider JSON entry'></textarea></label><div class="row"><button id="providerImportOpenCode" class="settings-action" type="button">Import config</button><span id="providerImportStatus" class="provider-import-status">Imports the endpoint and model. API keys are never imported.</span></div></div><div class="row"><label class="fld"><span>Name</span><input id="providerName" type="text" placeholder="OpenAI" /></label><label class="fld"><span>Route</span><select id="providerKind"><option value="ollama">Local runtime (Ollama)</option><option value="opencode">OpenCode Go / Zen sign-in</option><option value="openai-compatible">OpenAI-compatible API</option><option value="responses">Responses-compatible API</option></select></label></div><div class="row"><label class="fld"><span>Endpoint</span><input id="providerEndpoint" type="url" placeholder="https://api.example.com/v1" /></label><label class="fld"><span>Model</span><input id="providerModel" type="text" placeholder="Model ID" /></label></div><div class="row"><label class="fld"><span>API key</span><input id="providerApiKey" type="password" autocomplete="new-password" placeholder="Paste key" /></label><button id="providerSave" class="settings-action primary" type="button">Save and use</button></div></div></details></div>
+      <div class="fld"><span>Inference runtime</span><div class="row"><label class="fld"><select id="runtimeSel"><option value="ollama">Local runtime (Ollama)</option><option value="exo">Exo cluster</option><option value="llamacpp">llama.cpp RPC (2-PC VRAM pool)</option></select></label><label class="fld"><input id="exoUrl" type="url" placeholder="http://192.168.50.1:52415" /></label><button id="exoCheck" type="button">Test Exo</button></div><div id="exoStatus" class="lan-info">The local runtime runs on this device. Exo connects to a separately running cluster coordinator.</div>
         <div id="llamaCppFields" style="display:none">
-          <div class="lan-info">Experimental and unauthenticated (llama.cpp's own RPC docs call it out) — bind only to a direct, isolated Ethernet link between two PCs, never a routable network. Run Axon on both machines: one Host, one Worker.</div>
+          <div class="lan-info">Experimental and unauthenticated (llama.cpp's own RPC docs call it out) — bind only to a direct, isolated Ethernet link between two PCs, never a routable network. Run NoCLI.ai on both machines: one Host, one Worker.</div>
           <div class="row"><label class="fld"><select id="llamaCppRole"><option value="host">This PC: Host — loads the model, pools in a remote GPU over --rpc</option><option value="worker">This PC: Worker — exposes this PC's GPU to a remote Host</option></select></label><button id="llamaCppInstallBtn" type="button">Install llama.cpp CUDA runtime</button></div>
           <div id="llamaCppInstallStatus" class="lan-info"></div>
           <div class="row" id="llamaCppHostFields"><label class="fld"><input id="llamaCppModelPath" type="text" placeholder="Choose a local .gguf model file" readonly /></label><button id="llamaCppBrowseBtn" type="button">Browse…</button></div>
@@ -1538,14 +1538,14 @@
       <div class="color-system" aria-label="Color system">
         <div class="color-system-head"><div><strong>Accent colour</strong><span>Used for selection, focus, and primary actions.</span></div><span id="accentContrast" class="contrast-chip">Checking contrast…</span></div>
         <div class="color-picker-row"><input id="accentColor" type="color" aria-label="Accent colour" /><label class="hex-field"><span>#</span><input id="accentHex" type="text" inputmode="text" maxlength="7" autocomplete="off" spellcheck="false" aria-label="Accent colour hex code" /></label><button class="palette-reset" id="paletteReset" type="button">Reset</button></div>
-        <details class="appearance-advanced"><summary>Advanced surface tuning</summary><p>Only change these when you want a custom theme. Axon keeps text, borders, and controls tied to them.</p><div class="appearance-grid"><label class="color-field"><span>Background</span><input id="backgroundColor" type="color" /><input id="backgroundHex" type="text" maxlength="7" aria-label="Background hex code" /></label><label class="color-field"><span>Surface</span><input id="surfaceColor" type="color" /><input id="surfaceHex" type="text" maxlength="7" aria-label="Surface hex code" /></label><label class="color-field"><span>Text</span><input id="textColor" type="color" /><input id="textHex" type="text" maxlength="7" aria-label="Text hex code" /></label></div></details>
+        <details class="appearance-advanced"><summary>Advanced surface tuning</summary><p>Only change these when you want a custom theme. NoCLI.ai keeps text, borders, and controls tied to them.</p><div class="appearance-grid"><label class="color-field"><span>Background</span><input id="backgroundColor" type="color" /><input id="backgroundHex" type="text" maxlength="7" aria-label="Background hex code" /></label><label class="color-field"><span>Surface</span><input id="surfaceColor" type="color" /><input id="surfaceHex" type="text" maxlength="7" aria-label="Surface hex code" /></label><label class="color-field"><span>Text</span><input id="textColor" type="color" /><input id="textHex" type="text" maxlength="7" aria-label="Text hex code" /></label></div></details>
       </div></div>
       <div class="fld"><span>Default workspace</span>
         <div class="proj-row">
           <input id="workspacePath" type="text" readonly aria-label="Default workspace path" />
           <button id="workspacePick">Choose folderâ€¦</button>
         </div>
-        <div class="lan-info">Axon creates <code>Documents\\Axon Workspace</code> automatically. New chats use it unless you select a project.</div>
+        <div class="lan-info">NoCLI.ai creates <code>Documents\\NoCLI.ai Workspace</code> automatically. New chats use it unless you select a project.</div>
       </div>
       <div class="fld"><span>Projects</span>
         <div class="proj-list" id="projList"></div>
@@ -1576,10 +1576,10 @@
         <div id="updateInfo" class="lan-info">Updates require an explicit approval from both devices.</div>
       </div>
       <div class="maintenance">
-        <h4>Axon maintenance</h4>
+        <h4>NoCLI.ai maintenance</h4>
         <div id="versionInfo" class="lan-info">Checking version and dependencies…</div>
-        <div class="update-actions" style="margin-top:8px"><button id="appUpdateBtn">Check for Axon update</button><button id="depsBtn">Download missing dependencies</button></div>
-        <div id="maintenanceInfo" class="lan-info">Axon uses your local Ollama runtime and installed official CLIs.</div>
+        <div class="update-actions" style="margin-top:8px"><button id="appUpdateBtn">Check for NoCLI.ai update</button><button id="depsBtn">Download missing dependencies</button></div>
+        <div id="maintenanceInfo" class="lan-info">NoCLI.ai uses your local Ollama runtime and installed official CLIs.</div>
       </div>
     </div>
   </div>
@@ -1623,9 +1623,9 @@
   </div>
 </div>
 <div class="modal" id="updateModal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
-  <div class="update-dialog"><h3 id="updateTitle">Axon update</h3><p id="updateBody"></p><div class="buttons" id="updateButtons"></div></div>
+  <div class="update-dialog"><h3 id="updateTitle">NoCLI.ai update</h3><p id="updateBody"></p><div class="buttons" id="updateButtons"></div></div>
 </div>
-<aside class="update-toast" id="updateToast" role="status" aria-live="polite"><div class="update-toast-copy"><strong id="updateToastTitle">Axon update ready</strong><span id="updateToastBody"></span></div><button id="updateToastAction" class="update-toast-action" type="button">Review</button><button id="updateToastDismiss" class="update-toast-dismiss" type="button" aria-label="Dismiss update notice">×</button></aside>
+<aside class="update-toast" id="updateToast" role="status" aria-live="polite"><div class="update-toast-copy"><strong id="updateToastTitle">NoCLI.ai update ready</strong><span id="updateToastBody"></span></div><button id="updateToastAction" class="update-toast-action" type="button">Review</button><button id="updateToastDismiss" class="update-toast-dismiss" type="button" aria-label="Dismiss update notice">×</button></aside>
 <script src="model-logos.js"></script>
 <script src="app.js"></script>
 </body>

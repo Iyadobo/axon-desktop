@@ -1,8 +1,8 @@
-# Axon Agent Handoff
+# NoCLI.ai Agent Handoff
 
 ## Product shape
 
-Axon is **one interface**. A single conversation list, a single active chat, and
+NoCLI.ai is **one interface**. A single conversation list, a single active chat, and
 one **scope** control that says what the current turn may touch:
 
 | Scope | Means | Resolves to |
@@ -21,7 +21,7 @@ Scope can change mid-conversation without forking the context.
 `capabilities.js`, the native loop, and the engines keep their contract — but
 scope is the only thing a user sets. `src/engines.js` owns that mapping.
 
-Preserve the Axon dark/pink desktop identity and the top-right Browser and
+Preserve the NoCLI.ai dark/pink desktop identity and the top-right Browser and
 Agents controls.
 
 ## Engines
@@ -37,7 +37,7 @@ produced combinations that failed at inference time.
 | `qwen` | `qwen` | Ollama, OpenAI-compatible |
 | `claude` | `claude` | Ollama (Anthropic-shaped `/v1/messages`) |
 | `codex` | `codex` | Ollama, Responses-compatible |
-| `none` | — | Ollama (Axon's own function-call loop) |
+| `none` | — | Ollama (NoCLI.ai's own function-call loop) |
 
 `engineSupportsProvider` / `engineRefusal` refuse an invalid pair **before
 spawn**, with a sentence the user can act on. Add a rule there rather than
@@ -54,7 +54,7 @@ variables and never rewrites Kimi's config. Codex uses its own schema and keeps
 `runOfficialCodex`.
 
 Kimi Code print mode always runs with its own automatic permission policy, so
-Axon refuses Kimi for the `read` scope rather than claiming a read-only boundary
+NoCLI.ai refuses Kimi for the `read` scope rather than claiming a read-only boundary
 that the CLI cannot enforce. It remains the default for `edit` and `full`.
 
 Known-bad pair kept as a guard: Ollama Cloud rejects Codex's freeform tool
@@ -68,7 +68,7 @@ schema before inference. See `engineModelRefusal`.
 - `src/renderer/app.js`: scope control, engine picker, single conversation list, persistence.
 - `src/renderer/index.html`: renderer layout and CSS.
 - `src/capabilities.js`: honest capability language; never let models claim unimplemented abilities or another product identity.
-- `src/axon-browser-mcp.js`: Browser MCP bridge.
+- `src/nocli-browser-mcp.js`: Browser MCP bridge.
 
 ## Persistence
 
@@ -87,13 +87,13 @@ panel in `app.js`.
 
 Use source Preview for iterative work, not an installer every change:
 
-`node_modules\electron\dist\electron.exe . --user-data-dir=C:\Users\Iyad\AppData\Local\Temp\axon-preview`
+`node_modules\electron\dist\electron.exe . --user-data-dir=C:\Users\Iyad\AppData\Local\Temp\nocli-preview`
 
 Restart Preview after source edits. Package only at a tested checkpoint with `npm run dist:win`.
 
 ## Git state
 
-Remote is `origin` = `Iyadobo/axon-desktop`. Work happens on feature branches;
+Remote is `origin` = `Iyadobo/nocli-desktop`. Work happens on feature branches;
 `main` is only moved deliberately.
 
 As of 2026-09-10 the current line is `claude/one-interface-engine-registry`,
@@ -110,28 +110,28 @@ commits with no upstream at all, so a machine loss would have taken all of them.
 
 ## Storage and safety
 
-`axon-terminal/` is a **retired** Rust fork, ~7.4 GB, untracked and no longer
-referenced by any code path (`findAxonTerminal` was removed). It is kept only
+`nocli-terminal/` is a **retired** Rust fork, ~7.4 GB, untracked and no longer
+referenced by any code path (`findNocliTerminal` was removed). It is kept only
 because it is user-owned; deleting it is the user's call. Do not stage
 user-owned untracked terminal/assets/preview files.
 
 Also untracked and deliberately unstaged: `worker-viewmodel-1840/` and
 `minecraft-rotten-flesh-leather/` (unrelated asset projects), `_to_delete/`
 (stale git index locks only), and the three
-`src/assets/axon-neural-paintbrush-v*.png` candidates — no code path
+`src/assets/nocli-neural-paintbrush-v*.png` candidates — no code path
 references them.
 
-`src/main.js` still writes an `axon-terminal.cmd` CLI shim in `cliDirectory()`.
+`src/main.js` still writes an `nocli-terminal.cmd` CLI shim in `cliDirectory()`.
 That shim points at a binary this build no longer ships — clean it up when the
 CLI entry points are next revisited.
 
 ## Required checks
 
 Run `node --check src/main.js`, `node --check src/engines.js`, `node --check
-src/renderer/app.js`, `npm run check` (25 Axon checks + 11 llama.cpp), and `git
+src/renderer/app.js`, `npm run check` (25 NoCLI.ai checks + 11 llama.cpp), and `git
 diff --check`. For engine changes, run a real turn through the affected engine.
 For UI changes, inspect the Preview window.
 
 Kimi Code `0.42.0` was installed from the official npm package on Windows and a
 real `kimi-k3:cloud` turn through Ollama's OpenAI-compatible route returned
-`KIMI_AXON_OK`, including a resumable session id in the JSONL stream.
+`KIMI_NOCLI_OK`, including a resumable session id in the JSONL stream.

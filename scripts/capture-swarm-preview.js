@@ -1,13 +1,13 @@
 const fs = require('fs');
 
 const DEBUG_URL = 'http://127.0.0.1:9223/json/list';
-const OUTPUT_DIR = 'C:/Users/Iyad/AppData/Local/Temp/axon-swarm-qa';
+const OUTPUT_DIR = 'C:/Users/Iyad/AppData/Local/Temp/nocli-swarm-qa';
 
 async function main() {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   const pages = await (await fetch(DEBUG_URL)).json();
   const page = pages.find((entry) => entry.type === 'page' && entry.url.includes('/src/renderer/index.html'));
-  if (!page) throw new Error('Axon renderer target was not found.');
+  if (!page) throw new Error('NoCLI.ai renderer target was not found.');
   const socket = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
   let id = 0;

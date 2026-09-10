@@ -1,9 +1,9 @@
-const DEFAULT_WINDOWS_REPOSITORY = 'Iyadobo/Axon';
-const DEFAULT_DEBIAN_REPOSITORY = 'Iyadobo/Axon-Debian';
+const DEFAULT_WINDOWS_REPOSITORY = 'Iyadobo/nocli.ai-releases';
+const DEFAULT_DEBIAN_REPOSITORY = 'Iyadobo/nocli.ai-debian';
 
 function updateRepository(platform, env = process.env) {
-  return env.AXON_UPDATE_REPOSITORY
-    || (platform === 'linux' ? (env.AXON_LINUX_UPDATE_REPOSITORY || DEFAULT_DEBIAN_REPOSITORY) : DEFAULT_WINDOWS_REPOSITORY);
+  return env.NOCLI_UPDATE_REPOSITORY
+    || (platform === 'linux' ? (env.NOCLI_LINUX_UPDATE_REPOSITORY || DEFAULT_DEBIAN_REPOSITORY) : DEFAULT_WINDOWS_REPOSITORY);
 }
 
 function updatePackageLabel(platform) {
@@ -17,8 +17,8 @@ function installerExtensions(platform) {
 }
 
 function releaseInstallerNames(platform, version) {
-  if (platform === 'win32') return [`Axon-Setup-${version}.exe`];
-  if (platform === 'linux') return [`Axon_${version}_amd64.deb`];
+  if (platform === 'win32') return [`nocli.ai-Setup-${version}.exe`];
+  if (platform === 'linux') return [`nocli.ai_${version}_amd64.deb`];
   return [];
 }
 

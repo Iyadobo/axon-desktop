@@ -19,8 +19,8 @@ function openCodeLaunchConfig({ provider, model, scope, apiKey }) {
   const config = {
     $schema: 'https://opencode.ai/config.json',
     agent: {
-      axon: {
-        description: 'Axon desktop conversation engine',
+      nocli: {
+        description: 'NoCLI.ai desktop conversation engine',
         mode: 'primary',
         permission: openCodePermission(scope),
       },
@@ -29,17 +29,17 @@ function openCodeLaunchConfig({ provider, model, scope, apiKey }) {
   let launchModel = requestedModel;
   const env = {};
   if (kind !== 'opencode') {
-    const id = kind === 'ollama' ? 'axon-ollama' : 'axon-api';
+    const id = kind === 'ollama' ? 'nocli-ollama' : 'nocli-api';
     const baseURL = kind === 'ollama'
       ? String(provider?.endpoint || 'http://127.0.0.1:11434/v1').replace(/\/$/, '')
       : String(provider?.endpoint || '').replace(/\/$/, '');
     if (!baseURL) throw new Error('This OpenCode route needs an API endpoint.');
-    env.AXON_OPENCODE_API_KEY = apiKey || (kind === 'ollama' ? 'ollama' : '');
+    env.NOCLI_OPENCODE_API_KEY = apiKey || (kind === 'ollama' ? 'ollama' : '');
     config.provider = {
       [id]: {
         npm: '@ai-sdk/openai-compatible',
-        name: kind === 'ollama' ? 'Axon Ollama' : (provider?.name || 'Axon API'),
-        options: { baseURL, apiKey: '{env:AXON_OPENCODE_API_KEY}' },
+        name: kind === 'ollama' ? 'NoCLI.ai Ollama' : (provider?.name || 'NoCLI.ai API'),
+        options: { baseURL, apiKey: '{env:NOCLI_OPENCODE_API_KEY}' },
         models: { [requestedModel]: { name: requestedModel } },
       },
     };

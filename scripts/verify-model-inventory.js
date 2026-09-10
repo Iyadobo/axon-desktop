@@ -1,13 +1,13 @@
 const fs = require('fs');
 
 const DEBUG_URL = 'http://127.0.0.1:9223/json/list';
-const OUTPUT = 'C:/Users/Iyad/AppData/Local/Temp/axon-model-inventory.png';
-const RECOVERY_OUTPUT = 'C:/Users/Iyad/AppData/Local/Temp/axon-model-recovery.png';
+const OUTPUT = 'C:/Users/Iyad/AppData/Local/Temp/nocli-model-inventory.png';
+const RECOVERY_OUTPUT = 'C:/Users/Iyad/AppData/Local/Temp/nocli-model-recovery.png';
 
 async function main() {
   const pages = await (await fetch(DEBUG_URL)).json();
   const page = pages.find((entry) => entry.type === 'page' && entry.url.includes('/src/renderer/index.html'));
-  if (!page) throw new Error('Axon renderer target was not found.');
+  if (!page) throw new Error('NoCLI.ai renderer target was not found.');
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let id = 0;
@@ -39,10 +39,10 @@ async function main() {
       if (await evaluate("typeof switchView === 'function'")) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    if (!(await evaluate("typeof switchView === 'function'"))) throw new Error('Axon renderer did not finish loading.');
+    if (!(await evaluate("typeof switchView === 'function'"))) throw new Error('NoCLI.ai renderer did not finish loading.');
     const result = await evaluate(`(async()=>{
       switchView('chat');
-      const direct = await window.ollama.listModels();
+      const direct = await window.nocli.listModels();
       await loadModels();
       document.querySelector('#modelBtn').click();
       await new Promise((resolve) => setTimeout(resolve, 250));

@@ -1,6 +1,6 @@
 // src/lan.js -- same-WiFi link between two app instances.
 // ponytail: raw TCP + newline-delimited JSON. No HTTP, no web GUI.
-// The server runs Axon locally and streams events back over the socket; the
+// The server runs NoCLI.ai locally and streams events back over the socket; the
 // client forwards chats to the server and maps events back to the renderer, so
 // the renderer UI is unchanged on either side.
 const net = require('net');
@@ -51,12 +51,12 @@ function createDiscovery({ id, name, getAdvertisement, onDevices, port = DISCOVE
     if (stopped) return;
     prune();
     const ad = getAdvertisement() || {};
-    const message = Buffer.from(JSON.stringify({ type: 'axon-discovery', id, name: String(name || 'Axon device').slice(0, 80), port: ad.port || PORT, available: !!ad.available }));
+    const message = Buffer.from(JSON.stringify({ type: 'nocli-discovery', id, name: String(name || 'NoCLI.ai device').slice(0, 80), port: ad.port || PORT, available: !!ad.available }));
     for (const address of broadcastIPs()) socket.send(message, port, address, () => {});
   };
   socket.on('message', (buffer, remote) => {
     let msg; try { msg = JSON.parse(buffer.toString('utf8')); } catch { return; }
-    if (!msg || msg.type !== 'axon-discovery' || !msg.id || msg.id === id || typeof msg.name !== 'string' || !Number.isInteger(msg.port) || msg.port < 1 || msg.port > 65535) return;
+    if (!msg || msg.type !== 'nocli-discovery' || !msg.id || msg.id === id || typeof msg.name !== 'string' || !Number.isInteger(msg.port) || msg.port < 1 || msg.port > 65535) return;
     const key = String(msg.id);
     const next = { id: key, name: msg.name.slice(0, 80), host: remote.address, port: msg.port, available: !!msg.available, seenAt: Date.now() };
     const previous = seen.get(key); seen.set(key, next);

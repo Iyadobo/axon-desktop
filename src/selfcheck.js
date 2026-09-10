@@ -1,4 +1,4 @@
-// Axon self-check: pure browser/config contracts plus local runtime probes.
+// NoCLI.ai self-check: pure browser/config contracts plus local runtime probes.
 const http = require('http');
 const fs = require('fs');
 const os = require('os');
@@ -19,10 +19,10 @@ const ok = (name, condition) => {
 
 ok('browser open normalizes a URL', browserInvocation('browser_open', { url: 'https://example.com/docs' })?.url === 'https://example.com/docs');
 ok('browser navigation aliases normalize', browserInvocation('browser_navigate', { href: 'https://example.com/next' })?.url === 'https://example.com/next');
-ok('browser search opens a query', browserInvocation('web_search', { query: 'Axon agent browser' })?.url === 'https://www.google.com/search?q=Axon%20agent%20browser');
+ok('browser search opens a query', browserInvocation('web_search', { query: 'NoCLI.ai agent browser' })?.url === 'https://www.google.com/search?q=NoCLI.ai%20agent%20browser');
 ok('non-browser tools leave the browser alone', browserInvocation('Read', { file_path: 'notes.md' }) === null);
-ok('Windows updates use the Windows installer feed', updateRepository('win32', {}) === 'Iyadobo/Axon' && releaseInstallerNames('win32', '1.2.3').join() === 'Axon-Setup-1.2.3.exe');
-ok('Linux updates use only the Debian package feed', updateRepository('linux', {}) === 'Iyadobo/Axon-Debian' && updatePackageLabel('linux') === 'Debian package' && installerExtensions('linux').join() === 'deb' && releaseInstallerNames('linux', '1.2.3').join() === 'Axon_1.2.3_amd64.deb');
+ok('Windows updates use the Windows installer feed', updateRepository('win32', {}) === 'Iyadobo/nocli.ai-releases' && releaseInstallerNames('win32', '1.2.3').join() === 'nocli.ai-Setup-1.2.3.exe');
+ok('Linux updates use only the Debian package feed', updateRepository('linux', {}) === 'Iyadobo/nocli.ai-debian' && updatePackageLabel('linux') === 'Debian package' && installerExtensions('linux').join() === 'deb' && releaseInstallerNames('linux', '1.2.3').join() === 'nocli.ai_1.2.3_amd64.deb');
 {
   const textOnly = modelCapabilityReport({ model: 'qwen3:4b', productMode: 'agent', advertisedVision: false });
   const vision = modelCapabilityReport({ model: 'llava', productMode: 'code', advertisedVision: true });
@@ -66,24 +66,24 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
 {
   const go = openCodeLaunchConfig({ provider: { kind: 'opencode' }, model: 'opencode-go/kimi-k3', scope: 'chat' });
   const router = openCodeLaunchConfig({ provider: { kind: 'openai-compatible', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1' }, model: 'moonshotai/kimi-k2.5', scope: 'edit', apiKey: 'test-only' });
-  ok('OpenCode Go and Zen keep credentials in OpenCode', go.launchModel === 'opencode-go/kimi-k3' && !go.config.provider && go.config.agent.axon.permission['*'] === 'deny');
-  ok('OpenRouter is injected process-locally for OpenCode', router.launchModel === 'axon-api/moonshotai/kimi-k2.5'
-    && router.config.provider['axon-api'].options.baseURL === 'https://openrouter.ai/api/v1'
-    && router.config.provider['axon-api'].options.apiKey === '{env:AXON_OPENCODE_API_KEY}'
-    && router.env.AXON_OPENCODE_API_KEY === 'test-only');
+  ok('OpenCode Go and Zen keep credentials in OpenCode', go.launchModel === 'opencode-go/kimi-k3' && !go.config.provider && go.config.agent.nocli.permission['*'] === 'deny');
+  ok('OpenRouter is injected process-locally for OpenCode', router.launchModel === 'nocli-api/moonshotai/kimi-k2.5'
+    && router.config.provider['nocli-api'].options.baseURL === 'https://openrouter.ai/api/v1'
+    && router.config.provider['nocli-api'].options.apiKey === '{env:NOCLI_OPENCODE_API_KEY}'
+    && router.env.NOCLI_OPENCODE_API_KEY === 'test-only');
   ok('OpenCode scope permissions are enforced by configuration', openCodePermission('read').edit === undefined
     && openCodePermission('read')['*'] === 'deny' && openCodePermission('edit').task === 'deny'
     && openCodePermission('full')['*'] === 'allow');
 }
 
 (function () {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'axon-config-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nocli-config-'));
   try {
     const store = createConfigStore(dir);
     const workspace = path.join(dir, 'workspace');
     store.save({ osettings: { productMode: 'agent', systemPrompt: 'Be concise.' }, omodel: 'qwen3:4b', oRuntime: 'ollama', oactiveView: 'chat', odraft: 'unfinished note', oworkspace: workspace, blocked: 'nope' });
     const loaded = store.load();
-    ok('config persists Axon mode and prompt', loaded.osettings.productMode === 'agent' && loaded.osettings.systemPrompt === 'Be concise.');
+    ok('config persists NoCLI.ai mode and prompt', loaded.osettings.productMode === 'agent' && loaded.osettings.systemPrompt === 'Be concise.');
     ok('config persists active view', loaded.oactiveView === 'chat');
     ok('config persists workspace and draft', loaded.oworkspace === workspace && loaded.odraft === 'unfinished note');
     ok('config rejects unapproved state keys', !Object.hasOwn(loaded, 'blocked'));
@@ -123,7 +123,7 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
 
   await new Promise((resolve) => {
     const req = http.get('http://127.0.0.1:11434/api/tags', (res) => { res.resume(); console.log(`  ℹ ollama /api/tags -> ${res.statusCode}`); resolve(); });
-    req.on('error', () => { console.log('  ℹ ollama not reachable (start it to use Axon Chat)'); resolve(); });
+    req.on('error', () => { console.log('  ℹ ollama not reachable (start it to use NoCLI.ai Chat)'); resolve(); });
     req.setTimeout(2000, () => { req.destroy(); resolve(); });
   });
 

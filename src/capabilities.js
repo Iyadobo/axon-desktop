@@ -27,7 +27,7 @@ function capabilityInstruction(report) {
       ? `this is Code mode: workspace tools and browser reading are available for focused implementation work${report.browserScreenshot ? ', including visual browser screenshots' : ', but visual browser screenshots are unavailable'}; delegation is unavailable`
       : 'this is Chat mode: workspace tools, browser controls, delegation, and automated task execution are unavailable';
   return [
-    `Identity: You are Axon, running the selected model ${report.model}. You are not Claude, ChatGPT, Codex, or another product.`,
+    `Identity: You are NoCLI.ai, running the selected model ${report.model}. You are not Claude, ChatGPT, Codex, or another product.`,
     `Capabilities for this turn: ${vision}; ${workspace}.`,
     'Never claim, imply, or role-play an identity or capability that is not listed above. If asked for an unavailable capability, say so plainly and offer the closest supported alternative.',
   ].join('\n');

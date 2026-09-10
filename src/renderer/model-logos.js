@@ -6,7 +6,7 @@
 // Paths are 24x24 and meant to be FILLED, not stroked.
 //
 // Microsoft (Phi), IBM (Granite) and OpenAI are intentionally absent: the CC0
-// set does not carry them, so those families keep Axon's own neutral glyph
+// set does not carry them, so those families keep NoCLI.ai's own neutral glyph
 // rather than an imitation.
 const BRAND_LOGOS = {
   "meta": {

@@ -1,4 +1,4 @@
-// Axon's desktop workspace: direct chat plus official-CLI Code and Work modes.
+// NoCLI.ai's desktop workspace: direct chat plus official-CLI Code and Work modes.
 // Style: "Relay" modernist (light/dark, sidebar, surface composer card). Features:
 // slash-command autocomplete, system prompt + appearance settings, file attachments,
 // folder-workspace projects, markdown rendering, copy, per-turn model labels.
@@ -82,10 +82,10 @@ function syncWorkspaceShell() {
 }
 // ---- settings / appearance --------------------------------------------------
 const THEME_PALETTES = {
-  light: { accent: '#f45f96', background: '#ffffff', surface: '#f4f5f7', text: '#17131a' },
-  dark: { accent: '#f45f96', background: '#141216', surface: '#1f1b20', text: '#f6f1f4' },
-  midnight: { accent: '#f45f96', background: '#0c0d0f', surface: '#151316', text: '#f7f2f4' },
-  paper: { accent: '#d95185', background: '#fbfaf7', surface: '#f3f0e9', text: '#25231f' },
+  light: { accent: '#4ea1ff', background: '#ffffff', surface: '#f4f5f7', text: '#17131a' },
+  dark: { accent: '#4ea1ff', background: '#141216', surface: '#1f1b20', text: '#f6f1f4' },
+  midnight: { accent: '#4ea1ff', background: '#0c0d0f', surface: '#151316', text: '#f7f2f4' },
+  paper: { accent: '#2668ad', background: '#fbfaf7', surface: '#f3f0e9', text: '#25231f' },
 };
 const FONT_STACKS = {
   system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
@@ -93,24 +93,24 @@ const FONT_STACKS = {
   mono: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
   serif: 'Georgia, "Times New Roman", serif',
 };
-const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', kind: 'ollama', engine: 'kimi', endpoint: '', model: '', credentialId: '' };
+const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Local runtime', kind: 'ollama', engine: 'kimi', endpoint: '', model: '', credentialId: '' };
 // Scope is the single control that replaced the Chat/Code/Work split and the
 // separate permission selector. It still resolves to the productMode and
 // permission the capability contract and the engines expect.
 const SCOPE_ORDER = ['chat', 'read', 'edit', 'full'];
 const SCOPE_META = {
   chat: { label: 'Just chat', productMode: 'chat', permission: 'approve', hint: 'A no-tools conversation. API routes stream directly; OpenCode sign-in stays inside its CLI.' },
-  read: { label: 'Read', productMode: 'code', permission: 'approve', hint: 'Axon can read the selected workspace and browse. Writes and commands are blocked.' },
-  edit: { label: 'Edit', productMode: 'code', permission: 'auto', hint: 'Axon can edit files and run ordinary commands in the selected workspace.' },
-  full: { label: 'Full', productMode: 'agent', permission: 'full', hint: 'Nothing is withheld, and Axon may delegate focused sub-tasks.' },
+  read: { label: 'Read', productMode: 'code', permission: 'approve', hint: 'NoCLI.ai can read the selected workspace and browse. Writes and commands are blocked.' },
+  edit: { label: 'Edit', productMode: 'code', permission: 'auto', hint: 'NoCLI.ai can edit files and run ordinary commands in the selected workspace.' },
+  full: { label: 'Full', productMode: 'agent', permission: 'full', hint: 'Nothing is withheld, and NoCLI.ai may delegate focused sub-tasks.' },
 };
 const ENGINE_META = {
-  kimi: { label: 'Kimi Code', hint: 'Official Kimi Code CLI. Axon supplies this connection and model for each turn without changing Kimi configuration.' },
+  kimi: { label: 'Kimi Code', hint: 'Official Kimi Code CLI. NoCLI.ai supplies this connection and model for each turn without changing Kimi configuration.' },
   opencode: { label: 'OpenCode', hint: 'Official OpenCode CLI. Uses OpenCode Go or Zen sign-in, Ollama, or an OpenAI-compatible API such as OpenRouter.' },
   qwen: { label: 'Qwen Code', hint: 'Official Qwen Code CLI over any OpenAI-compatible route.' },
   claude: { label: 'Claude Code', hint: 'Official Claude Code CLI. Needs an Anthropic-compatible route.' },
   codex: { label: 'Codex CLI', hint: 'Official Codex CLI. Needs a Responses-compatible route.' },
-  none: { label: 'Axon native', hint: "Axon's own tool loop over Ollama function calls. No external CLI." },
+  none: { label: 'NoCLI.ai native', hint: "NoCLI.ai's own tool loop over the selected local runtime. No external CLI." },
 };
 const ENGINE_ORDER = ['kimi', 'opencode', 'qwen', 'claude', 'codex', 'none'];
 let engineAvailability = {};
@@ -118,7 +118,7 @@ function scopeMeta(value = settings?.scope) { return SCOPE_META[SCOPE_ORDER.incl
 // Derived, not stored twice: the rest of the app and every engine still read
 // productMode/permissionMode, so scope stays the only thing a user sets.
 function applyScope() { const meta = scopeMeta(); settings.productMode = meta.productMode; settings.permissionMode = meta.permission; }
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#f45f96', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#4ea1ff', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
 function swarmProviderLimit() { return (currentProviderProfile()?.kind || 'ollama') === 'ollama' ? 3 : null; }
@@ -152,14 +152,14 @@ function syncSwarmRoles() {
 function syncSwarmLimit() {
   const limit = swarmProviderLimit(); const input = $('swarmCount');
   if (limit) { input.max = String(limit); if (Number(input.value) > limit) input.value = String(limit); $('swarmLimitInfo').textContent = 'Ollama routes allow up to 3 concurrent workers.'; }
-  else { input.removeAttribute('max'); $('swarmLimitInfo').textContent = 'This provider has no Axon concurrency cap; its API limits still apply.'; }
+  else { input.removeAttribute('max'); $('swarmLimitInfo').textContent = 'This provider has no NoCLI.ai concurrency cap; its API limits still apply.'; }
 }
 // Starts a fresh swarm config screen -- to reopen a past swarm, use the
 // entry it gets in the sidebar's chat list instead (see openSwarmSession).
 function openSwarm() {
   swarmMode = true; activeId = null; activeSwarmId = null; swarmLogOpen = false;
   $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = true; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
-  showHomeView(); $('greet').textContent = 'Give the swarm one outcome.'; document.querySelector('#home .sub')?.replaceChildren('Axon splits the work and returns one answer.'); document.querySelector('.home-hint')?.replaceChildren('Describe the result you want. Swarm handles the rest.');
+  showHomeView(); $('greet').textContent = 'Give the swarm one outcome.'; document.querySelector('#home .sub')?.replaceChildren('NoCLI.ai splits the work and returns one answer.'); document.querySelector('.home-hint')?.replaceChildren('Describe the result you want. Swarm handles the rest.');
   const chips = [...document.querySelectorAll('#chips .chip')]; ['Explore approaches', 'Review a codebase', 'Research a topic', 'Compare options'].forEach((label, index) => { if (chips[index]) chips[index].textContent = label; });
   syncSwarmRoles(); $('prompt').focus();
 }
@@ -170,7 +170,7 @@ async function launchSwarm(entry) {
     const selectable = swarmSelectableModels();
     const sentryModel = $('swarmSentryModel').value || entry.model;
     const workerModel = selectable.length <= 1 ? sentryModel : ($('swarmWorkerModel').value || entry.model);
-    const result = await window.ollama.swarmStart({ sentryModel, workerModel, prompt: entry.combined, images: entry.images, workers: Number($('swarmCount').value), systemPrompt: projectSystemPrompt(), cwd: projectCwd(), provider, mode: settings.permissionMode });
+    const result = await window.nocli.swarmStart({ sentryModel, workerModel, prompt: entry.combined, images: entry.images, workers: Number($('swarmCount').value), systemPrompt: projectSystemPrompt(), cwd: projectCwd(), provider, mode: settings.permissionMode });
     if (!result?.ok) throw new Error(result?.error || 'Could not launch the swarm.');
     $('swarmStatus').textContent = result.capped ? `Ollama limited this swarm to ${result.count} workers.` : `${result.count} worker${result.count === 1 ? '' : 's'} launched.`;
     activeSwarmId = result.swarmId;
@@ -188,7 +188,7 @@ function loadSettings() {
   try {
     const saved = persisted.osettings || {};
     settings = { ...DEFAULT_SETTINGS, ...saved, colors: { ...THEME_PALETTES[saved.theme] || THEME_PALETTES.midnight, ...(saved.colors || {}) } };
-    // The old stock blue was Axon's default, not a deliberate brand choice.
+    // The old stock blue was NoCLI.ai's default, not a deliberate brand choice.
     if (!saved.colors && (!saved.accent || saved.accent.toLowerCase() === '#2a4bd6')) settings.colors.accent = DEFAULT_SETTINGS.accent;
     else if (!saved.colors && saved.accent) settings.colors.accent = saved.accent;
     settings.accent = settings.colors.accent;
@@ -206,7 +206,7 @@ function loadSettings() {
     if (!settings.providerProfiles.some((profile) => profile.id === settings.activeProviderProfileId)) settings.activeProviderProfileId = settings.providerProfiles[0].id;
   } catch {}
 }
-function saveState(key, value) { persisted[key] = value; window.ollama.saveState({ [key]: value }).catch(() => {}); }
+function saveState(key, value) { persisted[key] = value; window.nocli.saveState({ [key]: value }).catch(() => {}); }
 function saveSettings() { saveState('osettings', settings); }
 function applyAppearance() {
   const r = document.documentElement;
@@ -272,7 +272,7 @@ function syncRuntimeFields() {
   const kind = $('runtimeSel').value; const exo = kind === 'exo'; const llamaCpp = kind === 'llamacpp';
   $('exoUrl').parentElement.style.display = exo ? '' : 'none'; $('exoCheck').style.display = exo ? '' : 'none';
   $('exoStatus').textContent = exo
-    ? 'Exo is an optional cluster runtime. Axon connects to its coordinator API; it does not install or emulate a cluster.'
+    ? 'Exo is an optional cluster runtime. NoCLI.ai connects to its coordinator API; it does not install or emulate a cluster.'
     : 'Local Ollama runs on this device.';
   $('llamaCppFields').style.display = llamaCpp ? '' : 'none';
   if (llamaCpp) syncLlamaCppRoleFields();
@@ -280,7 +280,7 @@ function syncRuntimeFields() {
 async function selectRuntime() {
   const kind = $('runtimeSel').value; const url = $('exoUrl').value.trim();
   $('exoStatus').textContent = kind === 'exo' ? 'Connecting to Exo…' : kind === 'llamacpp' ? '' : 'Switching to local Ollama…';
-  const result = await window.ollama.setRuntime({ kind, url });
+  const result = await window.nocli.setRuntime({ kind, url });
   if (result?.error) { $('exoStatus').textContent = 'Exo connection failed: ' + result.error; $('runtimeSel').value = ['exo', 'llamacpp'].includes(persisted.oRuntime) ? persisted.oRuntime : 'ollama'; syncRuntimeFields(); return; }
   saveState('oRuntime', result.kind); saveState('oExoUrl', result.url || '');
   $('exoStatus').textContent = result.kind === 'exo' ? 'Exo connected — ' + (result.url || url) + '.' : result.kind === 'llamacpp' ? '' : 'Using local Ollama.';
@@ -289,15 +289,15 @@ async function selectRuntime() {
 }
 async function testExo() {
   $('exoStatus').textContent = 'Testing Exo coordinator…';
-  const result = await window.ollama.checkExo($('exoUrl').value.trim());
+  const result = await window.nocli.checkExo($('exoUrl').value.trim());
   $('exoStatus').textContent = result?.ok ? `Exo ready — ${result.models} model${result.models === 1 ? '' : 's'} exposed.` : 'Exo check failed: ' + (result?.error || 'unknown error');
 }
 
 // ---- llama.cpp RPC runtime (two-PC VRAM pool) ------------------------------
-// Axon manages the local half only: install the CUDA binaries, spawn either
+// NoCLI.ai manages the local half only: install the CUDA binaries, spawn either
 // llama-server (Host, using --rpc to reach a remote GPU) or rpc-server (Worker,
 // exposing this PC's GPU). The other PC needs the same setup done there by hand
-// -- Axon cannot reach across the isolated link to configure it.
+// -- NoCLI.ai cannot reach across the isolated link to configure it.
 let llamaCppInstalling = false;
 function syncLlamaCppRoleFields() {
   const host = $('llamaCppRole').value !== 'worker';
@@ -306,7 +306,7 @@ function syncLlamaCppRoleFields() {
   $('llamaCppWorkerFields').style.display = host ? 'none' : '';
 }
 async function refreshLlamaCppStatus() {
-  const status = await window.ollama.llamaCppStatus();
+  const status = await window.nocli.llamaCppStatus();
   if (!status) return;
   const cfg = status.config || {};
   $('llamaCppRole').value = cfg.role === 'worker' ? 'worker' : 'host';
@@ -326,7 +326,7 @@ async function refreshLlamaCppStatus() {
   $('llamaCppStatus').textContent = status.hostRunning ? 'Host running — llama-server is loading/serving the model.' : status.workerRunning ? 'Worker running — this GPU is exposed to the isolated link.' : 'Stopped.';
 }
 async function saveLlamaCppConfigFromFields() {
-  await window.ollama.llamaCppSetConfig({
+  await window.nocli.llamaCppSetConfig({
     role: $('llamaCppRole').value,
     modelPath: $('llamaCppModelPath').value.trim(),
     rpcPeers: $('llamaCppRpcPeers').value.trim(),
@@ -340,12 +340,12 @@ async function installLlamaCppRuntime() {
   llamaCppInstalling = true; $('llamaCppInstallBtn').disabled = true;
   $('llamaCppInstallStatus').textContent = 'Downloading llama.cpp CUDA runtime (~640 MB)…';
   try {
-    const result = await window.ollama.llamaCppInstall();
+    const result = await window.nocli.llamaCppInstall();
     $('llamaCppInstallStatus').textContent = result?.error ? 'Install failed: ' + result.error : 'llama.cpp CUDA runtime installed at ' + result.status.dir + '.';
   } finally { llamaCppInstalling = false; await refreshLlamaCppStatus(); }
 }
 async function pickLlamaCppModel() {
-  const picked = await window.ollama.llamaCppPickModel();
+  const picked = await window.nocli.llamaCppPickModel();
   if (!picked) return;
   $('llamaCppModelPath').value = picked;
   await saveLlamaCppConfigFromFields();
@@ -355,18 +355,18 @@ async function testLlamaCppPeer() {
   const peer = $('llamaCppRpcPeers').value.trim().split(',')[0]?.trim();
   if (!peer) { $('llamaCppStatus').textContent = 'Enter the remote PC\'s rpc-server address first, e.g. 192.168.50.2:50052.'; return; }
   $('llamaCppStatus').textContent = 'Testing ' + peer + '…';
-  const result = await window.ollama.llamaCppCheckPeer(peer);
-  $('llamaCppStatus').textContent = result?.ok ? peer + ' is reachable.' : peer + ' is not reachable: ' + (result?.error || 'unknown error') + '. Confirm the other PC is running Axon as a Worker on its isolated-Ethernet IP.';
+  const result = await window.nocli.llamaCppCheckPeer(peer);
+  $('llamaCppStatus').textContent = result?.ok ? peer + ' is reachable.' : peer + ' is not reachable: ' + (result?.error || 'unknown error') + '. Confirm the other PC is running NoCLI.ai as a Worker on its isolated-Ethernet IP.';
 }
 async function startLlamaCppRuntime() {
   await saveLlamaCppConfigFromFields();
   $('llamaCppStatus').textContent = 'Starting…';
-  const result = await window.ollama.llamaCppStart();
+  const result = await window.nocli.llamaCppStart();
   $('llamaCppStatus').textContent = result?.error ? 'Could not start: ' + result.error : 'Starting…';
   await refreshLlamaCppStatus();
   if (!result?.error) await loadModels();
 }
-async function stopLlamaCppRuntime() { await window.ollama.llamaCppStop(); await refreshLlamaCppStatus(); }
+async function stopLlamaCppRuntime() { await window.nocli.llamaCppStop(); await refreshLlamaCppStatus(); }
 
 // ---- projects (folder workspaces) -----------------------------------------
 let projects = [];        // [{id, name, path, instructions}]
@@ -389,7 +389,7 @@ function projectSystemPrompt() {
 }
 async function createProject() {
   let name = $('projName').value.trim();
-  const path = await window.ollama.pickFolder();
+  const path = await window.nocli.pickFolder();
   if (!path) return;
   if (!name) name = path.split(/[\\/]/).pop();
   const p = { id: rid(), name, path, instructions: '' };
@@ -443,7 +443,7 @@ function renderProjectsPage() {
   const box = $('projectsPageContent'); if (!box) return;
   box.innerHTML = '';
   if (!projects.length) {
-    box.innerHTML = '<div class="ops-empty"><span class="ops-empty-kicker">First workspace</span><h3>Give Axon a place to work</h3><p>Connect a folder once, then keep its chats, instructions, and repository context together.</p><button id="projectsEmptyAdd" type="button">Create a project</button></div>';
+    box.innerHTML = '<div class="ops-empty"><span class="ops-empty-kicker">First workspace</span><h3>Give NoCLI.ai a place to work</h3><p>Connect a folder once, then keep its chats, instructions, and repository context together.</p><button id="projectsEmptyAdd" type="button">Create a project</button></div>';
     $('projectsEmptyAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
     return;
   }
@@ -518,7 +518,7 @@ async function renderModelsPage() {
   box.appendChild(installed);
   // Recommended models
   const rec = document.createElement('section'); rec.className = 'ops-section';
-  rec.innerHTML = '<div class="ops-section-head"><div><h3>Recommended for Axon</h3><p>Local picks calibrated for Chat, Code, and Work.</p></div></div>';
+  rec.innerHTML = '<div class="ops-section-head"><div><h3>Recommended for NoCLI.ai</h3><p>Local picks calibrated for Chat, Code, and Work.</p></div></div>';
   const recList = document.createElement('div'); recList.className = 'ops-grid project-grid';
   for (const m of RECOMMENDED_MODELS) {
     const isInstalled = models.some((x) => x.name === m.name || x.name.startsWith(m.name + ':'));
@@ -648,7 +648,7 @@ async function refreshCloudCatalogue() {
   const button = $('cloudModelsRefresh'); button.disabled = true;
   $('cloudModelsInfo').textContent = 'Refreshing the official Ollama download list…';
   try {
-    const cache = await window.ollama.refreshCloudModels();
+    const cache = await window.nocli.refreshCloudModels();
     if (!Array.isArray(cache?.models) || !cache.models.length) throw new Error('No cloud models were returned.');
     saveState('ocloudModels', { models: cache.models, fetchedAt: cache.fetchedAt || new Date().toISOString() });
     await loadModels(); renderCloudCatalogueInfo();
@@ -675,7 +675,7 @@ function describeModelInventoryError(value) {
   if (missingStore) return `Ollama's model storage at ${missingStore[1]} is unavailable. Reconnect that drive or update OLLAMA_MODELS, then retry.`;
   return message;
 }
-async function loadModels(loader = () => window.ollama.listModels()) {
+async function loadModels(loader = () => window.nocli.listModels()) {
   modelInventoryState = 'loading';
   modelInventoryError = '';
   setLoading('Checking local models…');
@@ -777,7 +777,7 @@ function renderModelDownloads() {
 async function refreshModelDownloads() {
   $('modelDownloadProgress').textContent = 'Scanning installed models and Ollama…';
   try {
-    const [installed, catalogue, hardware] = await Promise.all([window.ollama.listModels(), window.ollama.downloadCatalogue(), window.ollama.hardwareProfile()]);
+    const [installed, catalogue, hardware] = await Promise.all([window.nocli.listModels(), window.nocli.downloadCatalogue(), window.nocli.hardwareProfile()]);
     downloadedModelNames = new Set((installed?.models || []).map((model) => canonicalModelName(model?.name)));
     downloadCatalogue = Array.isArray(catalogue?.models) ? catalogue.models : [];
     modelHardware = hardware || null; renderModelHardware();
@@ -791,7 +791,7 @@ async function downloadModel(name) {
   if (downloadingModel) return;
   downloadingModel = name; $('modelDownloadProgress').textContent = 'Starting ' + name + '…'; renderModelDownloads();
   try {
-    const result = await window.ollama.pullModel(name);
+    const result = await window.nocli.pullModel(name);
     if (result?.error) throw new Error(result.error);
     downloadedModelNames.add(canonicalModelName(name));
     $('modelDownloadProgress').textContent = name + ' is ready locally.';
@@ -804,7 +804,7 @@ function openModelDownloads() {
   $('modelDownload').classList.add('show'); $('modelDownloadSearch').value = ''; modelDownloadPage = 1; $('modelDownloadSearch').focus(); refreshModelDownloads();
 }
 function closeModelDownloads() { if (!downloadingModel) $('modelDownload').classList.remove('show'); }
-window.ollama.on('model-pull-progress', (update) => {
+window.nocli.on('model-pull-progress', (update) => {
   if (!update || update.model !== downloadingModel) return;
   const percent = update.total > 0 ? ' · ' + Math.min(100, Math.round(update.completed / update.total * 100)) + '%' : '';
   $('modelDownloadProgress').textContent = String(update.status || 'Downloading…') + percent;
@@ -820,7 +820,7 @@ let modelInventoryError = '';
 let pickerCursor = 0;
 // Family marks. Where a vendor's mark is available under a free licence it is
 // used (see model-logos.js); where it is not — Microsoft's Phi, IBM's Granite,
-// OpenAI — the family keeps an Axon glyph rather than an imitation of theirs.
+// OpenAI — the family keeps an NoCLI.ai glyph rather than an imitation of theirs.
 const MODEL_FAMILIES = [
   { test: /^llama|^codellama/i, name: 'Llama', brand: 'meta' },
   { test: /^qwen/i, name: 'Qwen', brand: 'qwen' },
@@ -846,7 +846,7 @@ function brandColor(hex) {
   const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return lum < 0.22 ? `color-mix(in srgb, ${hex} 35%, var(--color-text))` : hex;
 }
-// Brand marks are single filled paths; Axon's own glyphs are stroked.
+// Brand marks are single filled paths; NoCLI.ai's own glyphs are stroked.
 function familyMarkup(family) {
   const brand = family.brand && typeof BRAND_LOGOS !== 'undefined' ? BRAND_LOGOS[family.brand] : null;
   if (brand) {
@@ -885,7 +885,7 @@ async function refreshModelCapabilityBadge() {
   const badge = $('modelCapabilityBadge'); const model = $('model').value;
   if (!badge || !model) { if (badge) badge.hidden = true; return; }
   try {
-    const report = await window.ollama.modelCapabilities(model, settings.productMode, currentProviderProfile());
+    const report = await window.nocli.modelCapabilities(model, settings.productMode, currentProviderProfile());
     if ($('model').value !== model) return;
     badge.hidden = false;
     badge.textContent = report.vision ? 'Vision checked' : 'Text-only';
@@ -1052,7 +1052,7 @@ async function retrySwarmWorker(session, agent) {
   if (!ctx) { agent.result = "This session's original task isn't available to retry (it predates this app session) -- launch a new swarm instead."; agent.status = 'failed'; renderSwarmTurn(session); return; }
   agent.status = 'working'; agent.result = 'Retrying…'; renderSwarmTurn(session);
   if (sentryModalTarget?.agent?.id === agent.id) openSentryModal({ kind: 'Worker', title: agent.task, meta: (agent.model || session.workerModel || '') + ' · working', text: agent.result, session, agent });
-  const result = await window.ollama.swarmRetryWorker({ swarmId: session.id, agentId: agent.id, lane: agent.brief || agent.task, model: agent.model, prompt: ctx.outcome, systemPrompt: ctx.systemPrompt, cwd: ctx.cwd, provider: ctx.provider, mode: ctx.mode, images: ctx.images });
+  const result = await window.nocli.swarmRetryWorker({ swarmId: session.id, agentId: agent.id, lane: agent.brief || agent.task, model: agent.model, prompt: ctx.outcome, systemPrompt: ctx.systemPrompt, cwd: ctx.cwd, provider: ctx.provider, mode: ctx.mode, images: ctx.images });
   if (!result?.ok) { agent.status = 'failed'; agent.result = result?.error || 'Could not retry this worker.'; renderSwarmTurn(session); }
 }
 function openSentryModal({ kind, title, meta, text, session, agent }) {
@@ -1075,7 +1075,7 @@ function renderSwarmTurn(session) {
   let el = $('log').querySelector('.swarm-turn[data-swarm-id="' + session.id + '"]');
   if (!el) {
     el = document.createElement('div'); el.className = 'turn ai swarm-turn'; el.dataset.swarmId = session.id;
-    const head = document.createElement('div'); head.className = 'turnhead'; head.textContent = 'Axon Swarm · ' + (session.sentryModel || '');
+    const head = document.createElement('div'); head.className = 'turnhead'; head.textContent = 'NoCLI.ai Swarm · ' + (session.sentryModel || '');
     const bubble = document.createElement('div'); bubble.className = 'bubble swarm-bubble';
     el.append(head, bubble);
     $('log').appendChild(el);
@@ -1168,7 +1168,7 @@ function trimSteps(steps) {
 function publishConversation(conv) {
   if (!conv || (!lanServerOn && !lanClientConnected)) return;
   conv.updatedAt = Date.now();
-  window.ollama.workspaceUpsert(conv).catch(() => {});
+  window.nocli.workspaceUpsert(conv).catch(() => {});
 }
 function applySharedConversations(items) {
   if (!Array.isArray(items)) return;
@@ -1204,7 +1204,7 @@ function renderRecentPopup() {
     const row = document.createElement('div'); row.className = 'recent-popover-item' + (chat.id === activeId ? ' active' : '');
     row.tabIndex = 0; row.setAttribute('role', 'button');
     row.innerHTML = '<span class="recent-popover-title">' + esc(chat.title || '(empty)') + '</span><span class="recent-popover-meta">'
-      + esc(chat.projectId ? (projects.find((p) => p.id === chat.projectId)?.name || 'Project') : 'All chats') + ' · ' + esc(chat.model || chat.productMode || 'Axon') + '</span>';
+      + esc(chat.projectId ? (projects.find((p) => p.id === chat.projectId)?.name || 'Project') : 'All chats') + ' · ' + esc(chat.model || chat.productMode || 'NoCLI.ai') + '</span>';
     row.onclick = () => { openConv(chat.id); closeRecentPopup(); };
     row.onkeydown = (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openConv(chat.id); closeRecentPopup(); } };
     const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'recent-popover-pin'; pin.textContent = chat.pinned ? '★' : '☆'; pin.title = chat.pinned ? 'Unpin chat' : 'Pin chat';
@@ -1224,7 +1224,7 @@ function renderRecents() {
   const visible = (lanServerOn || lanClientConnected || !activeProjectId) ? workspaceConversations : workspaceConversations.filter((c) => c.projectId === activeProjectId);
   const swarms = swarmSessionOrder();
   if (!visible.length && !swarms.length) {
-    const e = document.createElement('div'); e.style.cssText = 'font-size:13px;color:var(--axon-muted);padding:9px 8px';
+    const e = document.createElement('div'); e.style.cssText = 'font-size:13px;color:var(--nocli-muted);padding:9px 8px';
     e.textContent = activeProjectId ? (workspace === 'work' ? 'No work sessions in this workspace yet.' : workspace === 'code' ? 'No code sessions in this project yet.' : 'No chats in this project yet.') : (workspace === 'work' ? 'No work sessions yet.' : workspace === 'code' ? 'No code sessions yet.' : 'No chats yet.'); box.appendChild(e);
   }
   for (const c of conversationOrder(visible)) {
@@ -1246,7 +1246,7 @@ function renderRecents() {
     for (const s of swarms) {
       const d = document.createElement('div');
       d.className = 'recent swarm-recent' + (s.id === activeSwarmId && swarmLogOpen ? ' active' : '');
-      d.innerHTML = '<img class="recent-swarm-mark" src="../assets/axon-swarm-terminal.png" alt="" />' + esc(s.title || '(untitled swarm)');
+      d.innerHTML = '<img class="recent-swarm-mark" src="../assets/icon.png" alt="" />' + esc(s.title || '(untitled swarm)');
       d.title = s.title || '';
       d.tabIndex = 0; d.setAttribute('role', 'button');
       d.onclick = () => openSwarmSession(s.id);
@@ -1496,7 +1496,7 @@ function addToolCall(turn, s) {
   if (s.id) turn.tools.set(s.id, block);
   turn.pendingTool = block;
   record(turn, { k: 'tool', id: s.id, fn: s.fn, args: s.args });
-  const browser = window.ollama.browserInvocation(s.fn, s.args);
+  const browser = window.nocli.browserInvocation(s.fn, s.args);
   if (!turn.replaying && browser?.type === 'navigate') openBrowserAt(browser.url);
 }
 function currentProviderProfile() {
@@ -1516,7 +1516,7 @@ function providerModelChoices() {
 }
 async function refreshOpenCodeModels() {
   try {
-    const data = await window.ollama.openCodeModels();
+    const data = await window.nocli.openCodeModels();
     openCodeModelCatalogue = Array.isArray(data?.models) ? data.models : [];
   } catch { openCodeModelCatalogue = []; }
   if (currentProviderProfile()?.kind === 'opencode') applyProviderModelChoices();
@@ -1552,13 +1552,13 @@ function renderProviderProfiles() {
   $('providerUseOllama')?.classList.toggle('active', profile.kind === 'ollama');
   $('providerNew')?.classList.toggle('active', profile.kind !== 'ollama');
   $('providerStatus').textContent = profile.kind === 'ollama'
-    ? 'Using Ollama. Local models and signed-in Ollama cloud models are available without an Axon API key.'
+    ? 'Using the local runtime. Ollama-compatible local models and signed-in cloud models are available without a NoCLI.ai API key.'
     : profile.kind === 'opencode'
-      ? 'Using the OpenCode CLI credential store. Run opencode auth login for OpenCode Go or Zen; Axon never copies that credential.'
+      ? 'Using the OpenCode CLI credential store. Run opencode auth login for OpenCode Go or Zen; NoCLI.ai never copies that credential.'
     : profile.kind === 'codex-cli'
-      ? 'Using your signed-in official Codex CLI. Axon does not inject its own Codex config or tools.'
+      ? 'Using your signed-in official Codex CLI. NoCLI.ai does not inject its own Codex config or tools.'
       : profile.kind === 'claude-cli'
-        ? 'Using your signed-in official Claude Code. Axon does not store a Claude API key.'
+        ? 'Using your signed-in official Claude Code. NoCLI.ai does not store a Claude API key.'
     : (profile.credentialId ? `${profile.name} is active. Its API key is stored securely.` : `${profile.name} is selected. Add its API key below to finish setup.`);
   if ($('providerApiSetup')) $('providerApiSetup').open = profile.kind !== 'ollama';
 }
@@ -1568,7 +1568,7 @@ async function useLocalOllama() {
   settings.activeProviderProfileId = profile.id;
   saveSettings(); renderProviderProfiles(); applyProviderModelChoices();
   if ($('runtimeSel')?.value !== 'ollama') { $('runtimeSel').value = 'ollama'; await selectRuntime(); }
-  $('providerStatus').textContent = 'Using Ollama on this device.';
+  $('providerStatus').textContent = 'Using the local runtime on this device.';
   if (swarmMode) syncSwarmRoles();
 }
 function startApiProviderSetup() {
@@ -1637,7 +1637,7 @@ function importOpenCodeProviderConfig() {
       endpoint,
       model: modelNames[0] || '',
     });
-    $('providerImportStatus').textContent = `Imported ${source.name || id}. Add its API key in Axon, then save the profile.`;
+    $('providerImportStatus').textContent = `Imported ${source.name || id}. Add its API key in NoCLI.ai, then save the profile.`;
   } catch (error) { $('providerImportStatus').textContent = error.message || 'Could not import that OpenCode config.'; }
 }
 async function saveProviderProfile() {
@@ -1653,7 +1653,7 @@ async function saveProviderProfile() {
   };
   if (['openai-compatible', 'responses'].includes(profile.kind) && !/^https?:\/\//i.test(profile.endpoint)) { $('providerStatus').textContent = 'Enter a full http:// or https:// API endpoint.'; return; }
   try {
-    const saved = await window.ollama.providerSave(profile, $('providerApiKey').value);
+    const saved = await window.nocli.providerSave(profile, $('providerApiKey').value);
     const index = settings.providerProfiles.findIndex((item) => item.id === saved.id);
     if (index >= 0) settings.providerProfiles[index] = saved; else settings.providerProfiles.push(saved);
     settings.activeProviderProfileId = saved.id; saveSettings(); renderProviderProfiles(); syncEngineSelect();
@@ -1790,21 +1790,21 @@ function renderMarkdown(el, text) {
 }
 
 // ---- stream events ---------------------------------------------------------
-window.ollama.on('chat-delta', ({ requestId, text }) => {
+window.nocli.on('chat-delta', ({ requestId, text }) => {
   const turn = activeTurns.get(requestId); if (!turn) return;
   startContent(turn);
   feedText(turn, text);
   if (turn.conversationId === activeId) scrollBottom();
 });
-window.ollama.on('chat-step', ({ requestId, step }) => addStep(step, activeTurns.get(requestId)));
-window.ollama.on('chat-error', ({ requestId, message }) => {
+window.nocli.on('chat-step', ({ requestId, step }) => addStep(step, activeTurns.get(requestId)));
+window.nocli.on('chat-error', ({ requestId, message }) => {
   const turn = activeTurns.get(requestId); if (!turn || stopping.has(requestId)) return;
   if (turn.generation) { turn.generation.remove(); turn.generation = null; }
   turn.turnEl.classList.remove('streaming');
   turn.turnEl.classList.add('error');
   turn.streamEl.innerHTML = '<div class="block text">[error] ' + esc(message) + '</div>';
 });
-window.ollama.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
+window.nocli.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   const turn = activeTurns.get(requestId); if (!turn) return;
   if (turn.generation) { turn.generation.remove(); turn.generation = null; }
   turn.turnEl.classList.remove('streaming');
@@ -1840,7 +1840,7 @@ function addCopyBtn(turnEl, text) {
 async function showHelp() {
   showChatView();
   const lines = [
-    'Axon commands',
+    'NoCLI.ai commands',
     ...CORE_COMMANDS.map((command) => `  /${command.name}${command.args ? ' ' + command.args : ''}  — ${command.description}`),
     '',
     'Modes:',
@@ -1917,18 +1917,18 @@ async function startMessage(entry) {
   const systemPrompt = projectSystemPrompt();
   const fingerprint = instructionFingerprint(conv.productMode || entry.productMode, systemPrompt);
   // Terminal sessions preserve their initial instruction context, so a changed
-  // Axon/project instruction set must start a clean session to apply.
+  // NoCLI.ai/project instruction set must start a clean session to apply.
   if (conv.instructionFingerprint !== fingerprint) { conv.sessionId = null; conv.instructionFingerprint = fingerprint; saveConvs(); }
   showChatView();
   addUserTurn(text, images);
   const requestId = rid() + rid();
-  const turn = newAiTurn(model || 'Axon');
+  const turn = newAiTurn(model || 'NoCLI.ai');
   turn.conversationId = conv.id;
   activeTurns.set(requestId, turn);
   renderRecents(); syncComposerState();
   const provider = settings.providerProfiles.find((profile) => profile.id === (conv.providerProfileId || entry.providerProfileId)) || currentProviderProfile();
   const history = (conv.turns || []).filter((turn) => turn && (turn.role === 'user' || turn.role === 'assistant') && typeof turn.content === 'string').slice(-40).map((turn) => ({ role: turn.role, content: turn.content }));
-  const result = await window.ollama.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, productMode: conv.productMode || entry.productMode, provider, mode: settings.permissionMode, scope: settings.scope, grants: conv.grants || [], history });
+  const result = await window.nocli.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, productMode: conv.productMode || entry.productMode, provider, mode: settings.permissionMode, scope: settings.scope, grants: conv.grants || [], history });
   if (!result?.ok) {
     const failed = activeTurns.get(requestId);
     if (failed) { failed.turnEl.classList.add('error'); failed.streamEl.innerHTML = '<div class="block text">[error] ' + esc(result?.error || 'Could not start this chat.') + '</div>'; activeTurns.delete(requestId); renderRecents(); syncComposerState(); }
@@ -1946,17 +1946,17 @@ const CORE_COMMANDS = [
   { name: 'goal', args: '[goal]', description: 'Set or view the task goal', tag: 'Work' },
   { name: 'skills', description: 'List relevant skills for this task', tag: 'Code' },
   { name: 'mcp', args: '[verbose]', description: 'List configured MCP tools', tag: 'Code' },
-  { name: 'pwd', description: 'Show the current workspace path', tag: 'Axon' },
-  { name: 'cwd', description: 'Alias for /pwd', tag: 'Axon' },
-  { name: 'status', description: 'Show session, model, and permission status', tag: 'Axon' },
-  { name: 'compact', description: 'Start a fresh model context', tag: 'Axon' },
-  { name: 'new', description: 'Start a new chat', tag: 'Axon' },
-  { name: 'clear', description: 'Clear the current chat', tag: 'Axon' },
-  { name: 'help', description: 'Show commands and shortcuts', tag: 'Axon' },
-  { name: 'export', description: 'Copy this conversation as Markdown', tag: 'Axon' },
-  { name: 'rename', args: '<title>', description: 'Rename this conversation', tag: 'Axon' },
-  { name: 'agents', description: 'Open all active subagents', tag: 'Axon' },
-  { name: 'subagents', description: 'Open this chat’s subagents', tag: 'Axon' },
+  { name: 'pwd', description: 'Show the current workspace path', tag: 'NoCLI.ai' },
+  { name: 'cwd', description: 'Alias for /pwd', tag: 'NoCLI.ai' },
+  { name: 'status', description: 'Show session, model, and permission status', tag: 'NoCLI.ai' },
+  { name: 'compact', description: 'Start a fresh model context', tag: 'NoCLI.ai' },
+  { name: 'new', description: 'Start a new chat', tag: 'NoCLI.ai' },
+  { name: 'clear', description: 'Clear the current chat', tag: 'NoCLI.ai' },
+  { name: 'help', description: 'Show commands and shortcuts', tag: 'NoCLI.ai' },
+  { name: 'export', description: 'Copy this conversation as Markdown', tag: 'NoCLI.ai' },
+  { name: 'rename', args: '<title>', description: 'Rename this conversation', tag: 'NoCLI.ai' },
+  { name: 'agents', description: 'Open all active subagents', tag: 'NoCLI.ai' },
+  { name: 'subagents', description: 'Open this chat’s subagents', tag: 'NoCLI.ai' },
   { name: 'mention', args: '<file>', description: 'Add a file to the task context', tag: 'Code' },
 ];
 const COMMAND_PROMPTS = {
@@ -1971,7 +1971,7 @@ const COMMAND_PROMPTS = {
 };
 function conversationMarkdown(conv) {
   if (!conv) return '';
-  return (conv.turns || []).map((turn) => `## ${turn.role === 'user' ? 'You' : 'Axon'}\n\n${turn.content || ''}`).join('\n\n');
+  return (conv.turns || []).map((turn) => `## ${turn.role === 'user' ? 'You' : 'NoCLI.ai'}\n\n${turn.content || ''}`).join('\n\n');
 }
 function runSlashCommand(input) {
   // A slash token can appear after context in the prompt, not only at column 1.
@@ -2025,7 +2025,7 @@ function showCoreCommands(prefix) {
   if (!matches.length) return closeCmdList();
   cmdItems = matches; cmdSel = 0;
   const box = $('cmdlist');
-  box.innerHTML = '<div class="cmdhead">Axon commands</div>' + matches.map((c, i) =>
+  box.innerHTML = '<div class="cmdhead">NoCLI.ai commands</div>' + matches.map((c, i) =>
     '<div class="cmditem' + (i === 0 ? ' sel' : '') + '" data-i="' + i + '"><span class="cmdname">/' + c.name + '</span><span class="cmddesc">' + c.description + '</span><span class="cmdtag">' + c.tag + '</span></div>'
   ).join('');
   box.classList.add('show'); cmdOpen = true;
@@ -2075,14 +2075,14 @@ $('send').onclick = () => {
   const turn = currentTurn();
   if (!turn) return send();
   const requestId = [...activeTurns.entries()].find(([, value]) => value === turn)?.[0];
-  if (requestId) { stopping.add(requestId); window.ollama.stop(requestId); }
+  if (requestId) { stopping.add(requestId); window.nocli.stop(requestId); }
 };
 $('steer').onclick = () => {
   const turn = currentTurn(); const entry = takeComposerEntry();
   if (!turn || !entry) return;
   const requestId = [...activeTurns.entries()].find(([, value]) => value === turn)?.[0];
   if (!requestId) return;
-  queueMessage(activeId, entry, true); steering.add(requestId); window.ollama.steer(requestId);
+  queueMessage(activeId, entry, true); steering.add(requestId); window.nocli.steer(requestId);
 };
 $('newchat').onclick = () => newChat();
 $('model').onchange = () => {
@@ -2114,16 +2114,16 @@ function setSubagentsOpen(open) { subagentsOpen = open; $('subagentsPanel').clas
 function syncBrowserBounds() {
   if (!browserOpen) return;
   const r = $('browserSlot').getBoundingClientRect();
-  window.ollama.browserShow({ x: r.x, y: r.y, width: r.width, height: r.height });
+  window.nocli.browserShow({ x: r.x, y: r.y, width: r.width, height: r.height });
 }
 function setBrowserOpen(open) {
   browserOpen = open; $('browserPanel').classList.toggle('show', open); $('browserToggle').classList.toggle('active', open);
   $('browserToggle').setAttribute('aria-expanded', String(open));
   $('browserToggle').title = open ? 'Close agent browser' : 'Open agent browser';
-  if (open) requestAnimationFrame(syncBrowserBounds); else window.ollama.browserHide();
+  if (open) requestAnimationFrame(syncBrowserBounds); else window.nocli.browserHide();
 }
 function openBrowserAt(url) {
-  setBrowserOpen(true); $('browserUrl').value = url; window.ollama.browserNavigate(url);
+  setBrowserOpen(true); $('browserUrl').value = url; window.nocli.browserNavigate(url);
 }
 $('browserToggle').onclick = () => setBrowserOpen(!browserOpen);
 $('subagentsToggle').onclick = () => setSubagentsOpen(!subagentsOpen); $('subagentsClose').onclick = () => setSubagentsOpen(false);
@@ -2132,22 +2132,22 @@ $('sentryModalBackdrop').onclick = closeSentryModal;
 $('sentryModalCopy').onclick = () => copyToClipboard($('sentryModalText').textContent || '', $('sentryModalCopy'));
 $('sentryModalRetry').onclick = () => { if (sentryModalTarget) retrySwarmWorker(sentryModalTarget.session, sentryModalTarget.agent); };
 document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !$('sentryAgentModal').hidden) closeSentryModal(); });
-$('windowMinimize').onclick = () => window.ollama.windowControl('minimize');
-$('windowMaximize').onclick = () => window.ollama.windowControl('maximize');
-$('windowClose').onclick = () => window.ollama.windowControl('close');
+$('windowMinimize').onclick = () => window.nocli.windowControl('minimize');
+$('windowMaximize').onclick = () => window.nocli.windowControl('maximize');
+$('windowClose').onclick = () => window.nocli.windowControl('close');
 $('browserClose').onclick = () => setBrowserOpen(false);
-$('browserBack').onclick = () => window.ollama.browserAction('back');
-$('browserForward').onclick = () => window.ollama.browserAction('forward');
-$('browserReload').onclick = () => window.ollama.browserAction('reload');
+$('browserBack').onclick = () => window.nocli.browserAction('back');
+$('browserForward').onclick = () => window.nocli.browserAction('forward');
+$('browserReload').onclick = () => window.nocli.browserAction('reload');
 $('browserUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') openBrowserAt($('browserUrl').value.trim()); });
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l' && browserOpen) { event.preventDefault(); $('browserUrl').focus(); $('browserUrl').select(); }
   if (event.key === 'Escape' && browserOpen && document.activeElement === $('browserUrl')) { $('browserUrl').blur(); }
 });
 window.addEventListener('resize', () => requestAnimationFrame(syncBrowserBounds));
-window.ollama.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; if (s.title) $('browserPageTitle').textContent = s.title; $('browserBack').disabled = !s.canBack; $('browserForward').disabled = !s.canForward; });
-window.ollama.on('browser-invoked', (s) => { setBrowserOpen(true); if (s?.url) $('browserUrl').value = s.url; });
-window.ollama.on('subagent-update', (agent) => {
+window.nocli.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; if (s.title) $('browserPageTitle').textContent = s.title; $('browserBack').disabled = !s.canBack; $('browserForward').disabled = !s.canForward; });
+window.nocli.on('browser-invoked', (s) => { setBrowserOpen(true); if (s?.url) $('browserUrl').value = s.url; });
+window.nocli.on('subagent-update', (agent) => {
   if (agent?.swarmId) { upsertSwarmAgent(agent); if (!activeSwarmId) activeSwarmId = agent.swarmId; if (activeSwarmId === agent.swarmId) showSentryConsole(); return; }
   const prior = subagents.get(agent.id) || {}; subagents.set(agent.id, { ...prior, ...agent }); setSubagentsOpen(true); renderSubagents();
 });
@@ -2205,7 +2205,7 @@ function syncEngineSelect() {
   if ($('engineInfo')) $('engineInfo').textContent = ENGINE_META[active].hint;
 }
 async function loadEngineAvailability() {
-  try { engineAvailability = await window.ollama.engineAvailability() || {}; } catch { engineAvailability = {}; }
+  try { engineAvailability = await window.nocli.engineAvailability() || {}; } catch { engineAvailability = {}; }
   syncEngineSelect();
 }
 // Permission mode: a segmented control rather than a <select>, because the
@@ -2256,14 +2256,14 @@ $('llamaCppRpcPort').onchange = saveLlamaCppConfigFromFields;
 $('llamaCppTestPeerBtn').onclick = testLlamaCppPeer;
 $('llamaCppStartBtn').onclick = startLlamaCppRuntime;
 $('llamaCppStopBtn').onclick = stopLlamaCppRuntime;
-window.ollama.on('llamacpp-install-progress', (p) => {
+window.nocli.on('llamacpp-install-progress', (p) => {
   if (!p) return;
   if (p.phase === 'download') {
     const pct = p.total ? Math.round((p.received / p.total) * 100) + '%' : formatBytes(p.received);
     $('llamaCppInstallStatus').textContent = `Downloading ${p.label}… ${pct}`;
   } else if (p.phase === 'extract') $('llamaCppInstallStatus').textContent = 'Extracting…';
 });
-window.ollama.on('llamacpp-status-change', (update) => {
+window.nocli.on('llamacpp-status-change', (update) => {
   if (!update) return;
   $('llamaCppStatus').textContent = `${update.role === 'worker' ? 'Worker' : 'Host'} stopped${update.code ? ' (exit ' + update.code + ')' : ''}.${update.tail ? ' ' + update.tail.trim().slice(-300) : ''}`;
   if ($('settings').classList.contains('show')) refreshLlamaCppStatus();
@@ -2314,7 +2314,7 @@ for (const filter of document.querySelectorAll('#modelDownloadFilters .download-
 }
 $('cloudModelsRefresh').onclick = refreshCloudCatalogue;
 $('workspacePick').onclick = async () => {
-  const picked = await window.ollama.pickFolder();
+  const picked = await window.nocli.pickFolder();
   if (!picked) return;
   defaultWorkspace = picked;
   $('workspacePath').value = picked;
@@ -2323,49 +2323,49 @@ $('workspacePick').onclick = async () => {
 $('projInstr').addEventListener('input', () => { const p = activeProject(); if (p) { p.instructions = $('projInstr').value; saveProjects(); } });
 function describeDependency(name, value) { return name + ': ' + (value ? value.replace(/\s+/g, ' ').slice(0, 48) : 'missing'); }
 async function refreshAppInfo() {
-  const info = await window.ollama.appInfo();
-  $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Kimi Code', info.dependencies.kimi), describeDependency('Codex CLI', info.dependencies.codex), describeDependency('Claude Code', info.dependencies.claude), describeDependency('Node', info.dependencies.node)].join(' · ');
+  const info = await window.nocli.appInfo();
+  $('versionInfo').textContent = 'NoCLI.ai v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Kimi Code', info.dependencies.kimi), describeDependency('Codex CLI', info.dependencies.codex), describeDependency('Claude Code', info.dependencies.claude), describeDependency('Node', info.dependencies.node)].join(' · ');
 }
 let availableAppUpdate = null;
 function showUpdateToast(update) {
   availableAppUpdate = update;
   $('profileUpdateBadge').hidden = false;
-  $('updateToastTitle').textContent = 'Axon ' + update.version + ' is ready';
+  $('updateToastTitle').textContent = 'NoCLI.ai ' + update.version + ' is ready';
   $('updateToastBody').textContent = 'A verified update is ready to download.';
   $('updateToast').classList.add('show');
 }
 function showAvailableUpdate(update) {
   availableAppUpdate = update;
   $('profileUpdateBadge').hidden = false;
-  $('maintenanceInfo').textContent = 'Axon v' + update.version + ' is ready to download.';
+  $('maintenanceInfo').textContent = 'NoCLI.ai v' + update.version + ' is ready to download.';
   const packageLabel = update.packageLabel || 'installer';
-  showUpdateDialog('Axon ' + update.version + ' is ready', 'Download the verified ' + packageLabel + ' now? Axon checks its SHA-256 before it can open it.', [
+  showUpdateDialog('NoCLI.ai ' + update.version + ' is ready', 'Download the verified ' + packageLabel + ' now? NoCLI.ai checks its SHA-256 before it can open it.', [
     { label: 'Later', run: () => {} },
-    { label: 'Download and open', primary: true, onStart: () => { $('updateBody').textContent = 'Downloading Axon ' + update.version + '…\n\nThis can take a minute. The ' + packageLabel + ' is verified before Axon opens it.'; }, run: async () => { const file = await window.ollama.downloadAppUpdate(); if (file?.error) return file; return window.ollama.openUpdateInstaller(file.path); } },
+    { label: 'Download and open', primary: true, onStart: () => { $('updateBody').textContent = 'Downloading NoCLI.ai ' + update.version + '…\n\nThis can take a minute. The ' + packageLabel + ' is verified before NoCLI.ai opens it.'; }, run: async () => { const file = await window.nocli.downloadAppUpdate(); if (file?.error) return file; return window.nocli.openUpdateInstaller(file.path); } },
   ]);
 }
 async function checkAppUpdate({ manual = false } = {}) {
-  const button = $('appUpdateBtn'); if (manual) { button.disabled = true; $('maintenanceInfo').textContent = 'Checking for an Axon update…'; }
+  const button = $('appUpdateBtn'); if (manual) { button.disabled = true; $('maintenanceInfo').textContent = 'Checking for an NoCLI.ai update…'; }
   try {
-    const update = await window.ollama.checkAppUpdate();
+    const update = await window.nocli.checkAppUpdate();
     if (update?.error) { $('maintenanceInfo').textContent = 'Update check failed: ' + update.error; return; }
-    if (!update.available) { $('maintenanceInfo').textContent = 'Axon is up to date (v' + update.current + ').'; return; }
+    if (!update.available) { $('maintenanceInfo').textContent = 'NoCLI.ai is up to date (v' + update.current + ').'; return; }
     showUpdateToast(update); if (manual) showAvailableUpdate(update);
   } catch (error) { $('maintenanceInfo').textContent = 'Update check failed: ' + (error?.message || 'Unknown error'); }
   finally { if (manual) button.disabled = false; }
 }
 $('appUpdateBtn').onclick = () => checkAppUpdate({ manual: true });
-window.ollama.on('app-update-available', (update) => { if (update?.available) showUpdateToast(update); });
+window.nocli.on('app-update-available', (update) => { if (update?.available) showUpdateToast(update); });
 $('updateToastAction').onclick = () => { $('updateToast').classList.remove('show'); if (availableAppUpdate) showAvailableUpdate(availableAppUpdate); };
 $('updateToastDismiss').onclick = () => $('updateToast').classList.remove('show');
-window.ollama.on('app-update-progress', (p) => {
-  const status = 'Downloading Axon update: ' + Math.min(100, Math.round(p.received / p.total * 100)) + '%';
+window.nocli.on('app-update-progress', (p) => {
+  const status = 'Downloading NoCLI.ai update: ' + Math.min(100, Math.round(p.received / p.total * 100)) + '%';
   $('maintenanceInfo').textContent = status;
-  if ($('updateModal').classList.contains('show')) $('updateBody').textContent = status + '\n\nVerifying the ' + (availableAppUpdate?.packageLabel || 'installer') + ' before Axon opens it.';
+  if ($('updateModal').classList.contains('show')) $('updateBody').textContent = status + '\n\nVerifying the ' + (availableAppUpdate?.packageLabel || 'installer') + ' before NoCLI.ai opens it.';
 });
 $('depsBtn').onclick = async () => {
   $('depsBtn').disabled = true; $('maintenanceInfo').textContent = 'Downloading missing dependencies…';
-  try { const result = await window.ollama.installDependencies(); $('maintenanceInfo').textContent = result.steps.join(' · ') || 'Everything required is already installed.'; await refreshAppInfo(); }
+  try { const result = await window.nocli.installDependencies(); $('maintenanceInfo').textContent = result.steps.join(' · ') || 'Everything required is already installed.'; await refreshAppInfo(); }
   catch (e) { $('maintenanceInfo').textContent = 'Setup error: ' + e.message; }
   $('depsBtn').disabled = false;
 };
@@ -2417,7 +2417,7 @@ function updateLan(s) {
     else if (s.server.startsWith('error')) { info.textContent = 'Host error: ' + s.server; chk.checked = false; copy.disabled = true; copy.dataset.address = ''; }
     else info.textContent = s.server;
     lanServerOn = s.server === 'listening';
-    if (lanServerOn) window.ollama.workspaceSeed(conversations).catch(() => {});
+    if (lanServerOn) window.nocli.workspaceSeed(conversations).catch(() => {});
     setModeBadge();
   }
   if (s.client !== undefined) {
@@ -2442,16 +2442,16 @@ function updateLan(s) {
     setModeBadge();
   }
 }
-window.ollama.on('lan-status', updateLan);
-window.ollama.on('models-changed', () => loadModels());
-window.ollama.on('workspace-init', ({ host, conversations: shared }) => {
+window.nocli.on('lan-status', updateLan);
+window.nocli.on('models-changed', () => loadModels());
+window.nocli.on('workspace-init', ({ host, conversations: shared }) => {
   $('lanWorkspaceInfo').textContent = 'Shared with ' + host + ': host models, shared chat history, and remote runs.';
   applySharedConversations(shared);
 });
-window.ollama.on('workspace-snapshot', ({ conversations: shared }) => applySharedConversations(shared));
+window.nocli.on('workspace-snapshot', ({ conversations: shared }) => applySharedConversations(shared));
 function renderLanDevices(devices) {
   const box = $('lanDevices'); box.innerHTML = '';
-  if (!devices?.length) { const empty = document.createElement('div'); empty.className = 'lan-info'; empty.textContent = 'No other Axon devices found yet. Open Axon on the other device and keep both on the same Wi-Fi.'; box.appendChild(empty); return; }
+  if (!devices?.length) { const empty = document.createElement('div'); empty.className = 'lan-info'; empty.textContent = 'No other NoCLI.ai devices found yet. Open NoCLI.ai on the other device and keep both on the same Wi-Fi.'; box.appendChild(empty); return; }
   for (const device of devices) {
     const row = document.createElement('div'); row.className = 'device-row';
     const meta = document.createElement('div'); meta.className = 'device-meta';
@@ -2462,21 +2462,21 @@ function renderLanDevices(devices) {
     const connect = document.createElement('button'); connect.textContent = device.available ? 'Connect' : 'Needs Host'; connect.disabled = !device.available;
     connect.title = device.available ? 'Use this Host for models and shared chats' : 'Turn on Host mode on that device first';
     connect.onclick = async () => {
-      const result = await window.ollama.lanConnectDevice(device);
+      const result = await window.nocli.lanConnectDevice(device);
       if (result?.ok) { $('lanHost').value = device.host + ':' + device.port; saveState('olanHost', $('lanHost').value); }
       setUpdateInfo(result?.error ? result.error : 'Connecting to ' + device.name + '…');
     };
     const request = document.createElement('button'); request.textContent = 'Request update'; request.disabled = !device.available;
-    request.title = 'Ask this Host to share an Axon installer';
+    request.title = 'Ask this Host to share an NoCLI.ai installer';
     request.onclick = async () => {
-      const result = await window.ollama.lanRequestDeviceUpdate(device);
-      setUpdateInfo(result?.error ? result.error : 'Request sent to ' + device.name + '. It will appear in that device\'s Axon window.');
+      const result = await window.nocli.lanRequestDeviceUpdate(device);
+      setUpdateInfo(result?.error ? result.error : 'Request sent to ' + device.name + '. It will appear in that device\'s NoCLI.ai window.');
     };
     actions.append(connect, request); row.append(meta, actions); box.appendChild(row);
   }
 }
-window.ollama.on('lan-devices', renderLanDevices);
-$('lanServerChk').onchange = (e) => { saveState('olanHostEnabled', e.target.checked); window.ollama.lanServer(e.target.checked); };
+window.nocli.on('lan-devices', renderLanDevices);
+$('lanServerChk').onchange = (e) => { saveState('olanHostEnabled', e.target.checked); window.nocli.lanServer(e.target.checked); };
 $('lanCopyHost').onclick = async () => {
   const address = $('lanCopyHost').dataset.address;
   if (!address) return;
@@ -2484,40 +2484,40 @@ $('lanCopyHost').onclick = async () => {
   catch { setUpdateInfo('Could not copy the Host address — use ' + address + '.'); }
 };
 $('lanConnBtn').onclick = () => {
-  if ($('lanConnBtn').dataset.mode === 'disc') window.ollama.lanDisconnect();
-  else { const h = $('lanHost').value.trim(); if (h) { saveState('olanHost', h); window.ollama.lanConnect(h); } }
+  if ($('lanConnBtn').dataset.mode === 'disc') window.nocli.lanDisconnect();
+  else { const h = $('lanHost').value.trim(); if (h) { saveState('olanHost', h); window.nocli.lanConnect(h); } }
 };
 $('updatePickBtn').onclick = async () => {
-  const result = await window.ollama.selectUpdateInstaller();
+  const result = await window.nocli.selectUpdateInstaller();
   setUpdateInfo(result?.error ? result.error : (result ? 'Ready to share ' + result.name + ' (' + formatBytes(result.bytes) + ').' : 'No installer selected.'));
 };
 $('updateOfferBtn').onclick = async () => {
-  const result = await window.ollama.offerUpdate();
+  const result = await window.nocli.offerUpdate();
   setUpdateInfo(result?.error ? result.error : 'Offer sent to linked clients. They must accept before transfer starts.');
 };
 $('updateRequestBtn').onclick = async () => {
-  const result = await window.ollama.requestUpdate();
+  const result = await window.nocli.requestUpdate();
   setUpdateInfo(result?.error ? result.error : 'Request sent. The Host must approve it first.');
 };
-window.ollama.on('lan-update-request', (request) => {
-  const actions = [{ label: 'Decline', run: () => window.ollama.respondUpdateRequest(request.id, false) }];
-  if (request.hasInstaller) actions.push({ label: 'Offer update', primary: true, run: () => window.ollama.respondUpdateRequest(request.id, true) });
+window.nocli.on('lan-update-request', (request) => {
+  const actions = [{ label: 'Decline', run: () => window.nocli.respondUpdateRequest(request.id, false) }];
+  if (request.hasInstaller) actions.push({ label: 'Offer update', primary: true, run: () => window.nocli.respondUpdateRequest(request.id, true) });
   const requester = request.requester || 'A linked client';
   showUpdateDialog(requester + ' requested an update', request.hasInstaller ? requester + ' is asking for the installer you selected. Share it?' : requester + ' is asking for an update, but this Host has not selected an installer.', actions);
 });
-window.ollama.on('lan-update-offer', (offer) => {
-  showUpdateDialog('Update available', 'The Host offers ' + offer.name + ' (' + formatBytes(offer.bytes) + ').\n\nAxon verifies its SHA-256 before the installer can open.', [
-    { label: 'Decline', run: () => window.ollama.acceptUpdateOffer(offer.id, false) },
-    { label: 'Download update', primary: true, run: () => window.ollama.acceptUpdateOffer(offer.id, true) },
+window.nocli.on('lan-update-offer', (offer) => {
+  showUpdateDialog('Update available', 'The Host offers ' + offer.name + ' (' + formatBytes(offer.bytes) + ').\n\nNoCLI.ai verifies its SHA-256 before the installer can open.', [
+    { label: 'Decline', run: () => window.nocli.acceptUpdateOffer(offer.id, false) },
+    { label: 'Download update', primary: true, run: () => window.nocli.acceptUpdateOffer(offer.id, true) },
   ]);
 });
-window.ollama.on('lan-update-progress', (p) => setUpdateInfo((p.role === 'host' ? 'Sending' : 'Receiving') + ' update: ' + Math.min(100, Math.round(p.received / p.total * 100)) + '%'));
-window.ollama.on('lan-update-error', (e) => setUpdateInfo('Update error: ' + (e.message || 'Transfer failed.')));
-window.ollama.on('lan-update-ready', (update) => {
+window.nocli.on('lan-update-progress', (p) => setUpdateInfo((p.role === 'host' ? 'Sending' : 'Receiving') + ' update: ' + Math.min(100, Math.round(p.received / p.total * 100)) + '%'));
+window.nocli.on('lan-update-error', (e) => setUpdateInfo('Update error: ' + (e.message || 'Transfer failed.')));
+window.nocli.on('lan-update-ready', (update) => {
   setUpdateInfo('Verified update ready: ' + update.name);
   showUpdateDialog('Verified update ready', update.name + ' passed its SHA-256 check. Open the installer now?', [
     { label: 'Later', run: () => {} },
-    { label: 'Open installer', primary: true, run: () => window.ollama.openUpdateInstaller(update.path) },
+    { label: 'Open installer', primary: true, run: () => window.nocli.openUpdateInstaller(update.path) },
   ]);
 });
 
@@ -2566,7 +2566,7 @@ function refreshGridColor() {
 
 (async function initialize() {
   try {
-    Object.assign(persisted, await window.ollama.loadState());
+    Object.assign(persisted, await window.nocli.loadState());
     // One-time migration from the original renderer-only store.
     for (const key of ['osettings', 'oprojects', 'oconvs', 'oswarmSessions', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels', 'ouserProfile']) {
       if (persisted[key] === undefined) {
@@ -2576,11 +2576,11 @@ function refreshGridColor() {
         catch { continue; }
       }
     }
-    window.ollama.saveState(persisted).catch(() => {});
+    window.nocli.saveState(persisted).catch(() => {});
   } catch {}
   loadSettings();
   loadProjects();
-  defaultWorkspace = await window.ollama.ensureWorkspace();
+  defaultWorkspace = await window.nocli.ensureWorkspace();
   if (persisted.oworkspace !== defaultWorkspace) saveState('oworkspace', defaultWorkspace);
   $('workspacePath').value = defaultWorkspace;
   loadConvs();
@@ -2596,7 +2596,7 @@ function refreshGridColor() {
   renderRecents();
   updateProjectLabel();
   refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
-  if ($('lanServerChk').checked) window.ollama.lanServer(true);
+  if ($('lanServerChk').checked) window.nocli.lanServer(true);
   // Restore last active view
   const savedView = ['chat', 'projects', 'models'].includes(persisted.oactiveView) ? persisted.oactiveView : 'chat';
   if (savedView !== 'chat') switchView(savedView);
@@ -2604,7 +2604,7 @@ function refreshGridColor() {
   // Open the workspace first. LAN discovery and local model inventory can be
   // slow on first launch, so let them hydrate without blocking the UI.
   setTimeout(async () => {
-    try { renderLanDevices(await window.ollama.lanRefresh()); } catch {}
+    try { renderLanDevices(await window.nocli.lanRefresh()); } catch {}
     try { await loadModels(); } catch {}
   }, 0);
 })();
