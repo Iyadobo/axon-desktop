@@ -104,9 +104,30 @@ function findQwenCli() {
   const resolved = whereFirst(process.platform === 'win32' ? 'qwen.cmd' : 'qwen') || whereFirst('qwen');
   return resolved ? { command: resolved, prefix: [] } : null;
 }
+function findKimiCli() {
+  if (process.platform !== 'win32') {
+    const resolved = whereFirst('kimi');
+    return resolved ? { command: resolved, prefix: [] } : null;
+  }
+  try {
+    const candidates = execSync('where.exe kimi', { encoding: 'utf8', windowsHide: true })
+      .split(/\r?\n/).map((item) => item.trim()).filter((item) => item && fs.existsSync(item));
+    const native = candidates.find((item) => /\.exe$/i.test(item));
+    if (native) return { command: native, prefix: [] };
+    // npm's .cmd shim cannot be spawned with shell:false on Windows. Launch
+    // the package entry through Node so arguments stay unquoted and no shell
+    // is introduced into a workspace-writing engine.
+    for (const shim of candidates.filter((item) => /\.cmd$/i.test(item))) {
+      const entry = path.join(path.dirname(shim), 'node_modules', '@moonshot-ai', 'kimi-code', 'dist', 'main.mjs');
+      const node = whereFirst('node.exe');
+      if (node && fs.existsSync(entry)) return { command: node, prefix: [entry] };
+    }
+  } catch {}
+  return null;
+}
 // One lookup per engine id so the picker can report what is actually installed
 // instead of failing at spawn time.
-const ENGINE_LAUNCHERS = { codex: findOfficialCodexCli, claude: findClaudeCli, qwen: findQwenCli, none: () => ({ command: null, prefix: [] }) };
+const ENGINE_LAUNCHERS = { codex: findOfficialCodexCli, claude: findClaudeCli, qwen: findQwenCli, kimi: findKimiCli, none: () => ({ command: null, prefix: [] }) };
 function findEngineCli(engineId) { return (ENGINE_LAUNCHERS[normalizeEngine(engineId)] || (() => null))(); }
 function runQuiet(command, args, timeout = 15000) {
   return new Promise((resolve) => {
@@ -121,14 +142,16 @@ async function dependencyStatus() {
   const codexLaunch = findOfficialCodexCli();
   const claudeLaunch = findClaudeCli();
   const qwenLaunch = findQwenCli();
-  const [ollama, node, codex, claude, qwen] = await Promise.all([
+  const kimiLaunch = findKimiCli();
+  const [ollama, node, codex, claude, qwen, kimi] = await Promise.all([
     runQuiet(whereFirst(process.platform === 'win32' ? 'ollama.exe' : 'ollama') || 'ollama', ['--version']),
     runQuiet(whereFirst(process.platform === 'win32' ? 'node.exe' : 'node') || 'node', ['--version']),
     codexLaunch ? runQuiet(codexLaunch.command, [...codexLaunch.prefix, '--version']) : Promise.resolve(null),
     claudeLaunch ? runQuiet(claudeLaunch.command, [...claudeLaunch.prefix, '--version']) : Promise.resolve(null),
     qwenLaunch ? runQuiet(qwenLaunch.command, [...qwenLaunch.prefix, '--version']) : Promise.resolve(null),
+    kimiLaunch ? runQuiet(kimiLaunch.command, [...kimiLaunch.prefix, '--version']) : Promise.resolve(null),
   ]);
-  return { ollama, node, codex, claude, qwen };
+  return { ollama, node, codex, claude, qwen, kimi };
 }
 // The engine picker asks for this so an unavailable harness is greyed out with
 // a reason instead of spawning and failing.
@@ -1029,6 +1052,25 @@ const STREAM_JSON_ENGINES = {
       return args;
     },
   },
+  kimi: {
+    label: 'Kimi Code',
+    find: findKimiCli,
+    // KIMI_MODEL_* creates an in-memory provider for this process. It keeps
+    // Axon's selected route/model truthful without rewriting ~/.kimi-code.
+    env: ({ model, baseUrl, apiKey }) => ({
+      KIMI_MODEL_NAME: model,
+      KIMI_MODEL_API_KEY: apiKey || 'ollama',
+      KIMI_MODEL_PROVIDER_TYPE: 'openai',
+      KIMI_MODEL_BASE_URL: baseUrl,
+      KIMI_CODE_IDENTITY_NAME: 'Axon',
+      KIMI_CODE_IDENTITY_SLUG: 'axon',
+    }),
+    args({ sessionId, instruction }) {
+      const args = ['--prompt', instruction, '--output-format', 'stream-json'];
+      if (sessionId) args.push('--session', sessionId);
+      return args;
+    },
+  },
 };
 
 // Ollama's OpenAI-compatible surface is what Qwen Code talks to for a local model.
@@ -1058,9 +1100,10 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
     const identity = [systemPrompt?.trim(), `You are Axon, running through ${spec.label}. ${scopeLine}`].filter(Boolean).join('\n\n');
     const mode = normalizeMode(permissionMode);
     const route = openAiRouteFor(provider);
-    const args = spec.args({ model, mode, sessionId, instruction: [identity, prompt].filter(Boolean).join('\n\n'), systemPrompt: identity, prompt, ...route });
+    const instruction = [identity, prompt].filter(Boolean).join('\n\n');
+    const args = spec.args({ model, mode, sessionId, instruction, systemPrompt: identity, prompt, ...route });
     const child = spawn(launch.command, [...launch.prefix, ...args], {
-      cwd: root, env: { ...process.env, ...spec.env({ ...route }) }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: root, env: { ...process.env, ...spec.env({ model, ...route }) }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
     });
     holder.child = child;
     let buffer = '', resultSid = sessionId || null, stderr = '', failed = false, delivered = '';
@@ -1078,6 +1121,19 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
         const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
         let event; try { event = JSON.parse(line); } catch { continue; }
         if (event.session_id) resultSid = event.session_id;
+        // Kimi Code emits OpenAI-shaped message lines plus meta records rather
+        // than Claude's event envelope.
+        if (event.role === 'assistant') {
+          if (typeof event.content === 'string' && event.content) send('chat-delta', event.content);
+          for (const call of event.tool_calls || []) {
+            let args = call?.function?.arguments || {};
+            if (typeof args === 'string') { try { args = JSON.parse(args); } catch { args = { input: args }; } }
+            send('chat-step', { type: 'tool_call', fn: call?.function?.name || 'tool', args });
+          }
+        }
+        if (event.role === 'tool') {
+          send('chat-step', { type: 'tool_result', result: String(event.content ?? '').slice(0, 4000), isError: false });
+        }
         if (event.type === 'assistant') {
           const parts = event.message?.content || [];
           emitText(parts.filter((part) => part?.type === 'text').map((part) => part.text).join(''));
@@ -1111,9 +1167,13 @@ function runOfficialClaude(model, prompt, sessionId, send, systemPrompt, cwd, ho
 function runQwenCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, _images = [], permissionMode = 'auto', productMode = 'code', provider = null) {
   return runStreamJsonCli('qwen', { model, prompt, sessionId, send, systemPrompt, cwd, holder, permissionMode, productMode, provider });
 }
+function runKimiCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, _images = [], permissionMode = 'auto', productMode = 'code', provider = null) {
+  return runStreamJsonCli('kimi', { model, prompt, sessionId, send, systemPrompt, cwd, holder, permissionMode, productMode, provider });
+}
 // The adapter table.  Adding a spawn-and-stream engine is an entry here plus
 // one in STREAM_JSON_ENGINES; nothing else in the routing has to know about it.
 const ENGINE_RUNNERS = {
+  kimi: (a) => runKimiCode(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
   qwen: (a) => runQwenCode(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
   claude: (a) => runOfficialClaude(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
   codex: (a) => runOfficialCodex(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider, a.capabilities),
@@ -1147,7 +1207,9 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
     send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not have verified vision support.` });
   }
   const decided = resolveRoute({ scope: active.id, engine: provider?.engine, providerKind: provider?.kind });
-  const refusal = decided.reason || (decided.runner === 'refused' ? 'Unsupported engine.' : engineModelRefusal(decided.engine, model, provider));
+  const refusal = decided.reason
+    || (decided.engine === 'kimi' && active.id === 'read' ? 'Kimi Code print mode cannot enforce a read-only workspace. Choose Qwen Code, Claude Code, Codex CLI, or Axon native for Read scope.' : null)
+    || (decided.runner === 'refused' ? 'Unsupported engine.' : engineModelRefusal(decided.engine, model, provider));
   if (refusal) { send('chat-error', refusal); send('chat-done', { sessionId: sessionId || null, ok: false }); return { ok: true }; }
   const holder = {}; localHolders.set(requestId, holder);
   const args = { model, prompt: expanded, sessionId, send, systemPrompt: bound.systemPrompt, cwd, holder, images: usableImages, permission, productMode: selectedMode, provider, capabilities: bound.report };

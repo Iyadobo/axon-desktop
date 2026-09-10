@@ -85,6 +85,14 @@ const ENGINES = {
     schema: 'stream-json',
     providers: ['ollama', 'openai-compatible'],
   },
+  kimi: {
+    id: 'kimi',
+    label: 'Kimi Code',
+    hint: 'Official Kimi Code CLI. Axon supplies the selected Ollama or OpenAI-compatible model without changing Kimi configuration.',
+    binary: 'kimi',
+    schema: 'kimi-json',
+    providers: ['ollama', 'openai-compatible'],
+  },
   claude: {
     id: 'claude',
     label: 'Claude Code',
@@ -102,11 +110,11 @@ const ENGINES = {
     providers: ['ollama', 'responses'],
   },
 };
-const ENGINE_ORDER = ['qwen', 'claude', 'codex', 'none'];
+const ENGINE_ORDER = ['kimi', 'qwen', 'claude', 'codex', 'none'];
 const PROVIDER_KINDS = ['ollama', 'openai-compatible', 'responses'];
 
 function normalizeEngine(value) {
-  return Object.prototype.hasOwnProperty.call(ENGINES, value) ? value : 'qwen';
+  return Object.prototype.hasOwnProperty.call(ENGINES, value) ? value : 'kimi';
 }
 function normalizeProviderKind(value) {
   return PROVIDER_KINDS.includes(value) ? value : 'ollama';
@@ -143,7 +151,7 @@ function migrateProvider(profile) {
   return {
     ...profile,
     kind: normalizeProviderKind(profile.kind),
-    engine: normalizeEngine(profile.engine ?? 'none'),
+    engine: normalizeEngine(profile.engine ?? 'kimi'),
   };
 }
 

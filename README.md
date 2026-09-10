@@ -1,18 +1,20 @@
 # Axon
 
-Axon is a local-first workspace with three deliberately separate ways to work:
+Axon is a local-first workspace with one conversation surface and a per-turn scope:
 
-- **Axon Chat** — direct streamed conversation with Ollama or a configured API profile.
-- **Axon Code** — project work through the bundled **Axon Terminal**.
-- **Axon Agent** — Axon Terminal with scoped native subagents enabled.
+- **Just chat** — direct streamed conversation with Ollama or a configured API profile.
+- **Read** — workspace and browser access without writes.
+- **Edit** — project work through the selected agent engine.
+- **Full** — multi-step work with delegation available.
 
-It does not require Claude Code, Codex CLI, or OpenCode to be installed.
+Kimi Code is the default agent engine. Qwen Code, Claude Code, Codex CLI, and
+Axon's native Ollama loop remain selectable alternatives.
 
 ## What is included
 
 - Local Ollama, Exo, and llama.cpp RPC inference runtimes.
 - Separate provider profiles, system prompts, model choices, and encrypted API-key storage.
-- An isolated Axon Terminal home (`AXON_HOME`), independent of Codex configuration.
+- A swappable engine registry kept separate from model-provider routing.
 - A native browser sidebar that opens automatically when an agent invokes the Axon Browser MCP.
   Browser reading is text-first; screenshots are withheld from text-only models.
 - Native desktop window controls, projects, recents, themes, model downloads, tray behavior, and LAN workspace sharing.
@@ -25,36 +27,30 @@ npm start
 npm run check
 ```
 
-For Code and Agent modes, build the terminal fork first:
+Build a Windows installer after the source checks pass:
 
 ```powershell
-Set-Location axon-terminal\codex-rs
-& "$env:USERPROFILE\.cargo\bin\cargo.exe" build --release -p codex-cli --bin axon
-Set-Location ..\..
 npm run dist:win
 ```
 
-`dist:win` bundles the release `axon.exe` plus the Axon Browser MCP script in the Windows installer.
+Agent engines are official external CLIs. Install the ones you want available in
+the engine picker; Kimi Code can be installed with
+`npm install -g @moonshot-ai/kimi-code`.
 
 ### Debian / Linux
 
-On Debian or Ubuntu, install the standard Electron build prerequisites, build the
-native Axon Terminal binary, then produce a Debian package:
+On Debian or Ubuntu, install the standard Electron build prerequisites, then
+produce a Debian package:
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential libgtk-3-dev libnss3-dev libasound2-dev libxss1 libxtst6 libnotify-dev libatspi2.0-dev libdrm-dev libgbm-dev
-cd axon-terminal/codex-rs
-cargo build --release -p codex-cli --bin axon
-cd ../..
 npm ci
 npm run dist:deb
 ```
 
-The package is written to `dist/Axon_<version>_amd64.deb`. The packaging hook copies
-the Linux `axon` binary into the app resources and fails clearly if it has not been
-built, so Code and Work cannot ship as empty shells. `npm run dist:linux` still emits
-both the `.deb` and AppImage variants.
+The package is written to `dist/Axon_<version>_amd64.deb`.
+`npm run dist:linux` emits both the `.deb` and AppImage variants.
 
 Linux updates use the separate `Iyadobo/Axon-Debian` release feed by default, while
 Windows continues to use `Iyadobo/Axon`. Axon checks the appropriate feed shortly
@@ -65,9 +61,9 @@ with `AXON_DEB_RELEASE_REPOSITORY` set to the target GitHub repository.
 ## Runtime design
 
 ```text
-Axon Chat    → selected Ollama/API provider
-Axon Code    → Axon Terminal → workspace + Axon Browser MCP
-Axon Agent   → Axon Terminal → workspace + native subagents + Axon Browser MCP
+Just chat    → selected Ollama/API provider directly
+Read/Edit    → selected provider + selected engine → workspace/browser tools
+Full         → selected provider + selected engine → workspace/browser/delegation
 ```
 
 The browser bridge is loopback-only, uses a fresh per-launch bearer token, and accepts only bounded POST requests. Its MCP gives agents `browser_open`, `browser_read`, `browser_click`, `browser_type`, and a guarded `browser_screenshot` tool. A read returns page text and stable control IDs; a model has to be identified as vision-capable before screenshots are enabled.
@@ -88,15 +84,19 @@ The composer has a small set of Axon-owned commands:
 | `src/main.js` | Electron main process, providers, native modes, browser bridge |
 | `src/axon-browser-mcp.js` | stdio MCP adapter for the native browser |
 | `src/renderer/` | desktop UI, themes, projects, settings |
-| `axon-terminal/` | Axon Terminal fork; provenance is preserved in `PROVENANCE.md` |
+| `src/engines.js` | scope definitions, engine registry, compatibility rules |
 | `src/selfcheck.js` | browser/config/runtime checks |
 
 ## Safety notes
 
-Code and Agent use Axon Terminal sandbox levels: **Approve** maps to read-only, **Auto** to workspace write, and **Full** to unrestricted local work. Full mode is powerful; use it only in a workspace you intend the agent to change.
+Each official engine enforces permissions through its own supported controls.
+Kimi Code's non-interactive mode cannot enforce a read-only workspace, so Axon
+refuses that engine in **Read** scope. **Full** is powerful; use it only in a
+workspace you intend the agent to change.
 
 The optional llama.cpp RPC worker is an experimental, unauthenticated direct-LAN transport. Use it only on a physically isolated link between machines; never expose it on a shared or routable network.
 
 ## License
 
-The desktop app is [MIT](LICENSE). Axon Terminal is a tailored fork with its upstream Apache-2.0 provenance and notices kept in its own directory.
+The desktop app is [MIT](LICENSE). External agent engines keep their own licenses
+and are installed separately.

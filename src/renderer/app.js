@@ -93,7 +93,7 @@ const FONT_STACKS = {
   mono: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
   serif: 'Georgia, "Times New Roman", serif',
 };
-const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', kind: 'ollama', engine: 'qwen', endpoint: '', model: '', credentialId: '' };
+const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', kind: 'ollama', engine: 'kimi', endpoint: '', model: '', credentialId: '' };
 // Scope is the single control that replaced the Chat/Code/Work split and the
 // separate permission selector. It still resolves to the productMode and
 // permission the capability contract and the engines expect.
@@ -105,12 +105,13 @@ const SCOPE_META = {
   full: { label: 'Full', productMode: 'agent', permission: 'full', hint: 'Nothing is withheld, and Axon may delegate focused sub-tasks.' },
 };
 const ENGINE_META = {
+  kimi: { label: 'Kimi Code', hint: 'Official Kimi Code CLI. Axon supplies this connection and model for each turn without changing Kimi configuration.' },
   qwen: { label: 'Qwen Code', hint: 'Official Qwen Code CLI over any OpenAI-compatible route.' },
   claude: { label: 'Claude Code', hint: 'Official Claude Code CLI. Needs an Anthropic-compatible route.' },
   codex: { label: 'Codex CLI', hint: 'Official Codex CLI. Needs a Responses-compatible route.' },
   none: { label: 'Axon native', hint: "Axon's own tool loop over Ollama function calls. No external CLI." },
 };
-const ENGINE_ORDER = ['qwen', 'claude', 'codex', 'none'];
+const ENGINE_ORDER = ['kimi', 'qwen', 'claude', 'codex', 'none'];
 let engineAvailability = {};
 function scopeMeta(value = settings?.scope) { return SCOPE_META[SCOPE_ORDER.includes(value) ? value : 'chat']; }
 // Derived, not stored twice: the rest of the app and every engine still read
@@ -197,7 +198,7 @@ function loadSettings() {
     }
     settings.providerProfiles = (settings.providerProfiles || []).map((profile) => ({
       ...profile,
-      engine: ENGINE_ORDER.includes(profile.engine) ? profile.engine : (profile.kind === 'claude-cli' ? 'claude' : profile.kind === 'codex-cli' ? 'codex' : 'qwen'),
+      engine: ENGINE_ORDER.includes(profile.engine) ? profile.engine : (profile.kind === 'claude-cli' ? 'claude' : profile.kind === 'codex-cli' ? 'codex' : 'kimi'),
       kind: ['ollama', 'openai-compatible', 'responses'].includes(profile.kind) ? profile.kind : 'ollama',
     }));
     applyScope();
@@ -1953,7 +1954,7 @@ function runSlashCommand(input) {
   if (command === 'pwd') { showChatView(); addSysNote(projectCwd() || 'No workspace selected.'); scrollBottom(); return true; }
   if (command === 'status') {
     const conv = activeId && conversations.find((item) => item.id === activeId);
-    showChatView(); addSysNote(`Scope: ${scopeMeta().label}\nEngine: ${ENGINE_META[currentProviderProfile()?.engine || 'qwen'].label}\nModel: ${$('model').value || 'none'}\nWorkspace: ${projectCwd() || 'none'}\nSession: ${conv?.sessionId ? 'resumable' : 'new context'}`); scrollBottom(); return true;
+    showChatView(); addSysNote(`Scope: ${scopeMeta().label}\nEngine: ${ENGINE_META[currentProviderProfile()?.engine || 'kimi'].label}\nModel: ${$('model').value || 'none'}\nWorkspace: ${projectCwd() || 'none'}\nSession: ${conv?.sessionId ? 'resumable' : 'new context'}`); scrollBottom(); return true;
   }
   if (command === 'compact') {
     const conv = activeId && conversations.find((item) => item.id === activeId);
@@ -2149,7 +2150,7 @@ function syncEngineSelect() {
   const select = $('engineSel');
   if (!select) return;
   const provider = currentProviderProfile();
-  const active = ENGINE_ORDER.includes(provider?.engine) ? provider.engine : 'qwen';
+  const active = ENGINE_ORDER.includes(provider?.engine) ? provider.engine : 'kimi';
   select.innerHTML = '';
   for (const id of ENGINE_ORDER) {
     const state = engineAvailability[id];
@@ -2281,7 +2282,7 @@ $('projInstr').addEventListener('input', () => { const p = activeProject(); if (
 function describeDependency(name, value) { return name + ': ' + (value ? value.replace(/\s+/g, ' ').slice(0, 48) : 'missing'); }
 async function refreshAppInfo() {
   const info = await window.ollama.appInfo();
-  $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Codex CLI', info.dependencies.codex), describeDependency('Claude Code', info.dependencies.claude), describeDependency('Node', info.dependencies.node)].join(' · ');
+  $('versionInfo').textContent = 'Axon v' + info.version + ' · ' + [describeDependency('Ollama', info.dependencies.ollama), describeDependency('Kimi Code', info.dependencies.kimi), describeDependency('Codex CLI', info.dependencies.codex), describeDependency('Claude Code', info.dependencies.claude), describeDependency('Node', info.dependencies.node)].join(' · ');
 }
 let availableAppUpdate = null;
 function showUpdateToast(update) {

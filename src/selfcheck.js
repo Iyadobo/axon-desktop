@@ -41,12 +41,14 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
   ok('unknown scope falls back to chat', scopeInfo('nonsense').id === 'chat');
   // An engine on a route it cannot speak is refused before spawn, with a reason.
   ok('engines declare the routes they can drive', engineSupportsProvider('qwen', 'openai-compatible')
+    && engineSupportsProvider('kimi', 'ollama') && engineSupportsProvider('kimi', 'openai-compatible')
     && !engineSupportsProvider('claude', 'openai-compatible') && engineSupportsProvider('codex', 'responses')
     && !engineSupportsProvider('codex', 'openai-compatible'));
   ok('an unsupported engine pair is refused with a reason', /Responses-compatible/.test(engineRefusal('codex', 'openai-compatible') || '')
     && engineRefusal('qwen', 'ollama') === null);
   ok('chat scope never spawns an engine', resolveRoute({ scope: 'chat', engine: 'codex', providerKind: 'openai-compatible' }).runner === 'direct');
   ok('workspace scope routes to the selected engine', resolveRoute({ scope: 'edit', engine: 'qwen', providerKind: 'ollama' }).runner === 'qwen'
+    && resolveRoute({ scope: 'edit', engine: 'kimi', providerKind: 'ollama' }).runner === 'kimi'
     && resolveRoute({ scope: 'full', engine: 'none', providerKind: 'ollama' }).runner === 'native'
     && resolveRoute({ scope: 'edit', engine: 'claude', providerKind: 'openai-compatible' }).runner === 'refused');
   // The old single field mixed route and harness; saved profiles must survive.
@@ -54,7 +56,7 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
     && migrateProvider({ kind: 'codex-cli' }).kind === 'ollama'
     && migrateProvider({ kind: 'claude-cli' }).engine === 'claude'
     && migrateProvider({ kind: 'openai-compatible' }).kind === 'openai-compatible'
-    && normalizeEngine('bogus') === 'qwen');
+    && normalizeEngine('bogus') === 'kimi' && migrateProvider({ kind: 'ollama' }).engine === 'kimi');
 }
 
 (function () {

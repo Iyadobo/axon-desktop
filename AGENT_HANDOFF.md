@@ -33,7 +33,8 @@ produced combinations that failed at inference time.
 
 | Engine | Binary | Valid routes |
 | --- | --- | --- |
-| `qwen` (default) | `qwen` | Ollama, OpenAI-compatible |
+| `kimi` (default) | `kimi` | Ollama, OpenAI-compatible |
+| `qwen` | `qwen` | Ollama, OpenAI-compatible |
 | `claude` | `claude` | Ollama (Anthropic-shaped `/v1/messages`) |
 | `codex` | `codex` | Ollama, Responses-compatible |
 | `none` | — | Ollama (Axon's own function-call loop) |
@@ -46,8 +47,15 @@ writing another one-off guard at a call site.
 (`src/main.js`) and one in `STREAM_JSON_ENGINES`. Claude Code and Qwen Code emit
 the *same* stream-json schema (`system/init`, `assistant` with
 text/thinking/tool_use parts, `user` carrying `tool_result`, final `result`), so
-`runStreamJsonCli` parses both and only argv differs. Codex uses its own schema
-and keeps `runOfficialCodex`.
+`runStreamJsonCli` parses both and only argv differs. Kimi Code uses OpenAI-shaped
+assistant/tool JSONL plus meta records for version and session resume; its
+adapter supplies the selected route through process-local `KIMI_MODEL_*`
+variables and never rewrites Kimi's config. Codex uses its own schema and keeps
+`runOfficialCodex`.
+
+Kimi Code print mode always runs with its own automatic permission policy, so
+Axon refuses Kimi for the `read` scope rather than claiming a read-only boundary
+that the CLI cannot enforce. It remains the default for `edit` and `full`.
 
 Known-bad pair kept as a guard: Ollama Cloud rejects Codex's freeform tool
 schema before inference. See `engineModelRefusal`.
@@ -88,10 +96,11 @@ Restart Preview after source edits. Package only at a tested checkpoint with `np
 Remote is `origin` = `Iyadobo/axon-desktop`. Work happens on feature branches;
 `main` is only moved deliberately.
 
-As of 2026-09-07 the current line is `claude/one-interface-engine-registry`,
+As of 2026-09-10 the current line is `claude/one-interface-engine-registry`,
 pushed and tracking `origin/claude/one-interface-engine-registry`. The
 one-interface + engine-registry work is commit `29de7a1`; the branch sits 20
-commits ahead of `main` (`50ffb34`) and has **not** been merged, and no PR is
+commits ahead of `main` (`50ffb34`) before the later handoff/default-engine
+updates and has **not** been merged, and no PR is
 open. `codex/model-picker-hover-fix` is 16 commits ahead of its upstream and
 unpushed, and `experimental` (`bfe7161`) is a deliberately local-only WIP
 snapshot — leave both alone unless asked.
@@ -122,3 +131,7 @@ Run `node --check src/main.js`, `node --check src/engines.js`, `node --check
 src/renderer/app.js`, `npm run check` (25 Axon checks + 11 llama.cpp), and `git
 diff --check`. For engine changes, run a real turn through the affected engine.
 For UI changes, inspect the Preview window.
+
+Kimi Code `0.42.0` was installed from the official npm package on Windows and a
+real `kimi-k3:cloud` turn through Ollama's OpenAI-compatible route returned
+`KIMI_AXON_OK`, including a resumable session id in the JSONL stream.
