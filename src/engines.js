@@ -93,6 +93,14 @@ const ENGINES = {
     schema: 'kimi-json',
     providers: ['ollama', 'openai-compatible'],
   },
+  opencode: {
+    id: 'opencode',
+    label: 'OpenCode',
+    hint: 'Official OpenCode CLI. Uses OpenCode Go or Zen sign-in, Ollama, or an OpenAI-compatible API such as OpenRouter.',
+    binary: 'opencode',
+    schema: 'opencode-json',
+    providers: ['ollama', 'openai-compatible', 'opencode'],
+  },
   claude: {
     id: 'claude',
     label: 'Claude Code',
@@ -110,8 +118,8 @@ const ENGINES = {
     providers: ['ollama', 'responses'],
   },
 };
-const ENGINE_ORDER = ['kimi', 'qwen', 'claude', 'codex', 'none'];
-const PROVIDER_KINDS = ['ollama', 'openai-compatible', 'responses'];
+const ENGINE_ORDER = ['kimi', 'opencode', 'qwen', 'claude', 'codex', 'none'];
+const PROVIDER_KINDS = ['ollama', 'openai-compatible', 'responses', 'opencode'];
 
 function normalizeEngine(value) {
   return Object.prototype.hasOwnProperty.call(ENGINES, value) ? value : 'kimi';
@@ -136,6 +144,7 @@ const PROVIDER_LABELS = {
   ollama: 'Ollama',
   'openai-compatible': 'an OpenAI-compatible API',
   responses: 'a Responses-compatible API',
+  opencode: 'OpenCode Go or Zen',
 };
 
 // The old single field mixed route and harness.  Map the retired values onto
@@ -160,6 +169,9 @@ function migrateProvider(profile) {
 // not a cloud-only path.
 function resolveRoute({ scope, engine, providerKind }) {
   const info = scopeInfo(scope);
+  // Go and Zen credentials belong to OpenCode, so even a no-tools chat must
+  // pass through its CLI. The Axon adapter supplies a deny-all tool policy.
+  if (!info.usesEngine && normalizeProviderKind(providerKind) === 'opencode') return { runner: 'opencode', scope: info, engine: 'opencode', reason: null };
   if (!info.usesEngine) return { runner: 'direct', scope: info, engine: 'none', reason: null };
   const selected = normalizeEngine(engine);
   const refusal = engineRefusal(selected, providerKind);

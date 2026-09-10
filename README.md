@@ -7,7 +7,7 @@ Axon is a local-first workspace with one conversation surface and a per-turn sco
 - **Edit** — project work through the selected agent engine.
 - **Full** — multi-step work with delegation available.
 
-Kimi Code is the default agent engine. Qwen Code, Claude Code, Codex CLI, and
+Kimi Code is the default agent engine. OpenCode, Qwen Code, Claude Code, Codex CLI, and
 Axon's native Ollama loop remain selectable alternatives.
 
 ## What is included
@@ -35,7 +35,9 @@ npm run dist:win
 
 Agent engines are official external CLIs. Install the ones you want available in
 the engine picker; Kimi Code can be installed with
-`npm install -g @moonshot-ai/kimi-code`.
+`npm install -g @moonshot-ai/kimi-code`, and OpenCode with
+`npm install -g opencode-ai`. OpenCode profiles can use an existing Go or Zen
+login, or Axon's encrypted OpenRouter/OpenAI-compatible API profile.
 
 ### Debian / Linux
 
@@ -61,7 +63,7 @@ with `AXON_DEB_RELEASE_REPOSITORY` set to the target GitHub repository.
 ## Runtime design
 
 ```text
-Just chat    → selected Ollama/API provider directly
+Just chat    → selected Ollama/API provider directly (OpenCode auth stays in its CLI)
 Read/Edit    → selected provider + selected engine → workspace/browser tools
 Full         → selected provider + selected engine → workspace/browser/delegation
 ```

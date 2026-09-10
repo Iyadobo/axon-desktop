@@ -9,6 +9,7 @@ const { modelCapabilityReport, capabilityInstruction } = require('./capabilities
 const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
 const { requestWithRetry, cloudIdleTimeoutMs } = require('./ollama-cloud-agent');
 const { resolveRoute, scopeInfo, scopeFromLegacy, engineSupportsProvider, engineRefusal, migrateProvider, normalizeEngine } = require('./engines');
+const { openCodePermission, openCodeLaunchConfig } = require('./opencode-adapter');
 
 let passed = 0, failed = 0;
 const ok = (name, condition) => {
@@ -42,13 +43,16 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
   // An engine on a route it cannot speak is refused before spawn, with a reason.
   ok('engines declare the routes they can drive', engineSupportsProvider('qwen', 'openai-compatible')
     && engineSupportsProvider('kimi', 'ollama') && engineSupportsProvider('kimi', 'openai-compatible')
+    && engineSupportsProvider('opencode', 'opencode') && engineSupportsProvider('opencode', 'openai-compatible')
     && !engineSupportsProvider('claude', 'openai-compatible') && engineSupportsProvider('codex', 'responses')
     && !engineSupportsProvider('codex', 'openai-compatible'));
   ok('an unsupported engine pair is refused with a reason', /Responses-compatible/.test(engineRefusal('codex', 'openai-compatible') || '')
     && engineRefusal('qwen', 'ollama') === null);
   ok('chat scope never spawns an engine', resolveRoute({ scope: 'chat', engine: 'codex', providerKind: 'openai-compatible' }).runner === 'direct');
+  ok('OpenCode auth chats use the credential-owning CLI', resolveRoute({ scope: 'chat', engine: 'kimi', providerKind: 'opencode' }).runner === 'opencode');
   ok('workspace scope routes to the selected engine', resolveRoute({ scope: 'edit', engine: 'qwen', providerKind: 'ollama' }).runner === 'qwen'
     && resolveRoute({ scope: 'edit', engine: 'kimi', providerKind: 'ollama' }).runner === 'kimi'
+    && resolveRoute({ scope: 'edit', engine: 'opencode', providerKind: 'openai-compatible' }).runner === 'opencode'
     && resolveRoute({ scope: 'full', engine: 'none', providerKind: 'ollama' }).runner === 'native'
     && resolveRoute({ scope: 'edit', engine: 'claude', providerKind: 'openai-compatible' }).runner === 'refused');
   // The old single field mixed route and harness; saved profiles must survive.
@@ -57,6 +61,19 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
     && migrateProvider({ kind: 'claude-cli' }).engine === 'claude'
     && migrateProvider({ kind: 'openai-compatible' }).kind === 'openai-compatible'
     && normalizeEngine('bogus') === 'kimi' && migrateProvider({ kind: 'ollama' }).engine === 'kimi');
+}
+
+{
+  const go = openCodeLaunchConfig({ provider: { kind: 'opencode' }, model: 'opencode-go/kimi-k3', scope: 'chat' });
+  const router = openCodeLaunchConfig({ provider: { kind: 'openai-compatible', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1' }, model: 'moonshotai/kimi-k2.5', scope: 'edit', apiKey: 'test-only' });
+  ok('OpenCode Go and Zen keep credentials in OpenCode', go.launchModel === 'opencode-go/kimi-k3' && !go.config.provider && go.config.agent.axon.permission['*'] === 'deny');
+  ok('OpenRouter is injected process-locally for OpenCode', router.launchModel === 'axon-api/moonshotai/kimi-k2.5'
+    && router.config.provider['axon-api'].options.baseURL === 'https://openrouter.ai/api/v1'
+    && router.config.provider['axon-api'].options.apiKey === '{env:AXON_OPENCODE_API_KEY}'
+    && router.env.AXON_OPENCODE_API_KEY === 'test-only');
+  ok('OpenCode scope permissions are enforced by configuration', openCodePermission('read').edit === undefined
+    && openCodePermission('read')['*'] === 'deny' && openCodePermission('edit').task === 'deny'
+    && openCodePermission('full')['*'] === 'allow');
 }
 
 (function () {

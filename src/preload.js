@@ -12,6 +12,7 @@ function browserInvocation(toolName, args = {}) {
 }
 contextBridge.exposeInMainWorld('ollama', {
   listModels: () => ipcRenderer.invoke('list-models'),
+  openCodeModels: () => ipcRenderer.invoke('opencode-models'),
   modelCapabilities: (model, productMode, provider) => ipcRenderer.invoke('model-capabilities', { model, productMode, provider }),
   refreshCloudModels: () => ipcRenderer.invoke('refresh-cloud-models'),
   downloadCatalogue: () => ipcRenderer.invoke('model-download-catalogue'),

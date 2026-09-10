@@ -14,6 +14,7 @@ const { modelCapabilityReport, capabilityInstruction } = require('./capabilities
 const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
 const { runOllamaCloudAgent } = require('./ollama-cloud-agent');
 const { resolveRoute, migrateProvider, normalizeEngine, normalizeProviderKind, scopeInfo, scopeFromLegacy, ENGINE_ORDER, engineInfo } = require('./engines');
+const { openCodeLaunchConfig } = require('./opencode-adapter');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('io.axon.workspace'); } catch {}
@@ -125,9 +126,26 @@ function findKimiCli() {
   } catch {}
   return null;
 }
+function findOpenCodeCli() {
+  if (process.platform !== 'win32') {
+    const resolved = whereFirst('opencode');
+    return resolved ? { command: resolved, prefix: [] } : null;
+  }
+  try {
+    const candidates = execSync('where.exe opencode', { encoding: 'utf8', windowsHide: true })
+      .split(/\r?\n/).map((item) => item.trim()).filter((item) => item && fs.existsSync(item));
+    const native = candidates.find((item) => /\.exe$/i.test(item));
+    if (native) return { command: native, prefix: [] };
+    for (const shim of candidates) {
+      const entry = path.join(path.dirname(shim), 'node_modules', 'opencode-ai', 'bin', 'opencode.exe');
+      if (fs.existsSync(entry)) return { command: entry, prefix: [] };
+    }
+  } catch {}
+  return null;
+}
 // One lookup per engine id so the picker can report what is actually installed
 // instead of failing at spawn time.
-const ENGINE_LAUNCHERS = { codex: findOfficialCodexCli, claude: findClaudeCli, qwen: findQwenCli, kimi: findKimiCli, none: () => ({ command: null, prefix: [] }) };
+const ENGINE_LAUNCHERS = { codex: findOfficialCodexCli, claude: findClaudeCli, qwen: findQwenCli, kimi: findKimiCli, opencode: findOpenCodeCli, none: () => ({ command: null, prefix: [] }) };
 function findEngineCli(engineId) { return (ENGINE_LAUNCHERS[normalizeEngine(engineId)] || (() => null))(); }
 function runQuiet(command, args, timeout = 15000) {
   return new Promise((resolve) => {
@@ -143,15 +161,17 @@ async function dependencyStatus() {
   const claudeLaunch = findClaudeCli();
   const qwenLaunch = findQwenCli();
   const kimiLaunch = findKimiCli();
-  const [ollama, node, codex, claude, qwen, kimi] = await Promise.all([
+  const openCodeLaunch = findOpenCodeCli();
+  const [ollama, node, codex, claude, qwen, kimi, opencode] = await Promise.all([
     runQuiet(whereFirst(process.platform === 'win32' ? 'ollama.exe' : 'ollama') || 'ollama', ['--version']),
     runQuiet(whereFirst(process.platform === 'win32' ? 'node.exe' : 'node') || 'node', ['--version']),
     codexLaunch ? runQuiet(codexLaunch.command, [...codexLaunch.prefix, '--version']) : Promise.resolve(null),
     claudeLaunch ? runQuiet(claudeLaunch.command, [...claudeLaunch.prefix, '--version']) : Promise.resolve(null),
     qwenLaunch ? runQuiet(qwenLaunch.command, [...qwenLaunch.prefix, '--version']) : Promise.resolve(null),
     kimiLaunch ? runQuiet(kimiLaunch.command, [...kimiLaunch.prefix, '--version']) : Promise.resolve(null),
+    openCodeLaunch ? runQuiet(openCodeLaunch.command, [...openCodeLaunch.prefix, '--version']) : Promise.resolve(null),
   ]);
-  return { ollama, node, codex, claude, qwen, kimi };
+  return { ollama, node, codex, claude, qwen, kimi, opencode };
 }
 // The engine picker asks for this so an unavailable harness is greyed out with
 // a reason instead of spawning and failing.
@@ -927,6 +947,14 @@ async function runSwarmWorkerRetry({ swarmId, agentId, lane, workerModel, prompt
 
 // ---- IPC ------------------------------------------------------------------
 ipcMain.handle('list-models', async () => lanClientConnected && remoteModels ? { models: remoteModels, remote: true } : (await listActiveModels()));
+ipcMain.handle('opencode-models', async () => {
+  const launch = findOpenCodeCli();
+  if (!launch) return { models: [], error: 'OpenCode is not installed or not on PATH.' };
+  const output = await runQuiet(launch.command, [...launch.prefix, 'models'], 30000);
+  if (!output) return { models: [], error: 'OpenCode did not return a model list.' };
+  const models = output.split(/\r?\n/).map((line) => line.trim()).filter((line) => /^(opencode|opencode-go)\//.test(line));
+  return { models: [...new Set(models)].sort() };
+});
 ipcMain.handle('model-capabilities', async (_e, { model, productMode, provider }) => resolveModelCapabilities(model, productMode, provider));
 ipcMain.handle('check-exo', async (_e, url) => checkExo(url));
 ipcMain.handle('set-runtime', async (_e, runtime) => {
@@ -1170,10 +1198,78 @@ function runQwenCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
 function runKimiCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, _images = [], permissionMode = 'auto', productMode = 'code', provider = null) {
   return runStreamJsonCli('kimi', { model, prompt, sessionId, send, systemPrompt, cwd, holder, permissionMode, productMode, provider });
 }
+function runOpenCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, _images = [], permissionMode = 'auto', productMode = 'code', provider = null) {
+  holder = holder || {};
+  return new Promise((resolve) => {
+    const launch = findOpenCodeCli();
+    if (!launch) {
+      send('chat-error', 'OpenCode is not installed or not on PATH. Install the official OpenCode CLI, then retry.');
+      send('chat-done', { sessionId, ok: false });
+      return resolve();
+    }
+    const root = cwd || ensureDefaultWorkspace();
+    const scope = productMode === 'chat' ? 'chat' : productMode === 'agent' ? 'full' : normalizeMode(permissionMode) === 'approve' ? 'read' : 'edit';
+    let route;
+    try {
+      route = openCodeLaunchConfig({
+        provider: provider?.kind === 'ollama' ? { ...provider, endpoint: `${activeOllamaUrl().replace(/\/$/, '')}/v1` } : provider,
+        model,
+        scope,
+        apiKey: provider?.credentialId ? readProviderSecret(provider.credentialId) : null,
+      });
+    } catch (error) {
+      send('chat-error', error.message); send('chat-done', { sessionId, ok: false }); return resolve();
+    }
+    const scopeLine = scope === 'chat'
+      ? 'Answer helpfully and concisely. Axon has disabled every tool for this turn.'
+      : scope === 'read'
+        ? 'Inspect and explain the current workspace. Axon has disabled edits, shell commands, delegation, and external paths.'
+        : scope === 'full'
+          ? 'Complete the requested multi-step task in the current workspace and report the finished result plainly.'
+          : 'Work directly in the current workspace, verify changes, and report the result plainly. Do not delegate.';
+    const instruction = [systemPrompt?.trim(), `You are Axon, running through OpenCode. ${scopeLine}`, prompt].filter(Boolean).join('\n\n');
+    const args = ['run', '--format', 'json', '--pure', '--agent', 'axon', '--model', route.launchModel];
+    if (sessionId) args.push('--session', sessionId);
+    args.push(instruction);
+    const child = spawn(launch.command, [...launch.prefix, ...args], {
+      cwd: root,
+      env: { ...process.env, ...route.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(route.config) },
+      windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    holder.child = child;
+    let buffer = '', resultSid = sessionId || null, stderr = '', failed = false;
+    const finish = (ok) => { if (holder.child === child) holder.child = null; send('chat-done', { sessionId: resultSid, ok }); resolve(); };
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk; let newline;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
+        let event; try { event = JSON.parse(line); } catch { continue; }
+        if (event.sessionID) resultSid = event.sessionID;
+        if (event.type === 'text' && event.part?.text) send('chat-delta', event.part.text);
+        if (event.type === 'tool_use' && event.part) {
+          const state = event.part.state || {};
+          send('chat-step', { type: 'tool_call', id: event.part.callID, fn: event.part.tool || 'tool', args: state.input || {} });
+          if (state.status === 'completed' || state.status === 'error') {
+            send('chat-step', { type: 'tool_result', id: event.part.callID, result: String(state.output || state.error || '').slice(0, 4000), isError: state.status === 'error' });
+          }
+        }
+        if (event.type === 'error') { failed = true; send('chat-error', event.error?.message || event.message || 'OpenCode failed to complete this turn.'); }
+      }
+    });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('exit', (code) => {
+      if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
+      if (code && !failed) send('chat-error', `OpenCode exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
+      finish(!code && !failed);
+    });
+    child.on('error', (error) => { send('chat-error', `Could not start OpenCode: ${error.message}`); finish(false); });
+  });
+}
 // The adapter table.  Adding a spawn-and-stream engine is an entry here plus
 // one in STREAM_JSON_ENGINES; nothing else in the routing has to know about it.
 const ENGINE_RUNNERS = {
   kimi: (a) => runKimiCode(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
+  opencode: (a) => runOpenCode(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
   qwen: (a) => runQwenCode(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
   claude: (a) => runOfficialClaude(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider),
   codex: (a) => runOfficialCodex(a.model, a.prompt, a.sessionId, a.send, a.systemPrompt, a.cwd, a.holder, a.images, a.permission, a.productMode, a.provider, a.capabilities),

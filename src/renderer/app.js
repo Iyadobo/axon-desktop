@@ -99,19 +99,20 @@ const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Ollama on this device', ki
 // permission the capability contract and the engines expect.
 const SCOPE_ORDER = ['chat', 'read', 'edit', 'full'];
 const SCOPE_META = {
-  chat: { label: 'Just chat', productMode: 'chat', permission: 'approve', hint: 'A direct conversation. Axon does not reach into a workspace, browser, or run commands.' },
+  chat: { label: 'Just chat', productMode: 'chat', permission: 'approve', hint: 'A no-tools conversation. API routes stream directly; OpenCode sign-in stays inside its CLI.' },
   read: { label: 'Read', productMode: 'code', permission: 'approve', hint: 'Axon can read the selected workspace and browse. Writes and commands are blocked.' },
   edit: { label: 'Edit', productMode: 'code', permission: 'auto', hint: 'Axon can edit files and run ordinary commands in the selected workspace.' },
   full: { label: 'Full', productMode: 'agent', permission: 'full', hint: 'Nothing is withheld, and Axon may delegate focused sub-tasks.' },
 };
 const ENGINE_META = {
   kimi: { label: 'Kimi Code', hint: 'Official Kimi Code CLI. Axon supplies this connection and model for each turn without changing Kimi configuration.' },
+  opencode: { label: 'OpenCode', hint: 'Official OpenCode CLI. Uses OpenCode Go or Zen sign-in, Ollama, or an OpenAI-compatible API such as OpenRouter.' },
   qwen: { label: 'Qwen Code', hint: 'Official Qwen Code CLI over any OpenAI-compatible route.' },
   claude: { label: 'Claude Code', hint: 'Official Claude Code CLI. Needs an Anthropic-compatible route.' },
   codex: { label: 'Codex CLI', hint: 'Official Codex CLI. Needs a Responses-compatible route.' },
   none: { label: 'Axon native', hint: "Axon's own tool loop over Ollama function calls. No external CLI." },
 };
-const ENGINE_ORDER = ['kimi', 'qwen', 'claude', 'codex', 'none'];
+const ENGINE_ORDER = ['kimi', 'opencode', 'qwen', 'claude', 'codex', 'none'];
 let engineAvailability = {};
 function scopeMeta(value = settings?.scope) { return SCOPE_META[SCOPE_ORDER.includes(value) ? value : 'chat']; }
 // Derived, not stored twice: the rest of the app and every engine still read
@@ -199,7 +200,7 @@ function loadSettings() {
     settings.providerProfiles = (settings.providerProfiles || []).map((profile) => ({
       ...profile,
       engine: ENGINE_ORDER.includes(profile.engine) ? profile.engine : (profile.kind === 'claude-cli' ? 'claude' : profile.kind === 'codex-cli' ? 'codex' : 'kimi'),
-      kind: ['ollama', 'openai-compatible', 'responses'].includes(profile.kind) ? profile.kind : 'ollama',
+      kind: ['ollama', 'openai-compatible', 'responses', 'opencode'].includes(profile.kind) ? profile.kind : 'ollama',
     }));
     applyScope();
     if (!settings.providerProfiles.some((profile) => profile.id === settings.activeProviderProfileId)) settings.activeProviderProfileId = settings.providerProfiles[0].id;
@@ -249,6 +250,7 @@ function openSettings() {
   $('exoUrl').value = persisted.oExoUrl || 'http://127.0.0.1:52415';
   syncRuntimeFields();
   renderProviderProfiles();
+  if (currentProviderProfile()?.kind === 'opencode') refreshOpenCodeModels();
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncScope();
   loadEngineAvailability();
@@ -812,6 +814,7 @@ window.ollama.on('model-pull-progress', (update) => {
 // conversations and the send path all read it); this is a richer way to set it.
 let modelCatalogue = [];
 let localModelCatalogue = [];
+let openCodeModelCatalogue = [];
 let modelInventoryState = 'loading';
 let modelInventoryError = '';
 let pickerCursor = 0;
@@ -1503,14 +1506,26 @@ function providerModelChoices() {
   const profile = currentProviderProfile();
   if (profile?.kind === 'ollama') return localModelCatalogue;
   const name = String(profile?.model || '').trim();
+  if (profile?.kind === 'opencode') {
+    const models = openCodeModelCatalogue.map((model) => ({ name: model, source: 'api', details: { parameter_size: model.startsWith('opencode-go/') ? 'OpenCode Go' : 'OpenCode Zen' } }));
+    if (name && !models.some((model) => model.name === name)) models.unshift({ name, source: 'api', details: { parameter_size: 'OpenCode' } });
+    return models;
+  }
   const source = profile?.kind === 'codex-cli' ? 'Codex CLI' : profile?.kind === 'claude-cli' ? 'Claude Code' : profile?.kind === 'responses' ? 'Responses API' : 'API route';
   return name ? [{ name, source: 'api', details: { parameter_size: source } }] : [];
+}
+async function refreshOpenCodeModels() {
+  try {
+    const data = await window.ollama.openCodeModels();
+    openCodeModelCatalogue = Array.isArray(data?.models) ? data.models : [];
+  } catch { openCodeModelCatalogue = []; }
+  if (currentProviderProfile()?.kind === 'opencode') applyProviderModelChoices();
 }
 function applyProviderModelChoices() {
   const profile = currentProviderProfile(); const sel = $('model'); if (!sel) return;
   const models = providerModelChoices(); const prior = sel.value;
   modelCatalogue = models;
-  sel.replaceChildren(...models.map((model) => { const option = document.createElement('option'); option.value = model.name; option.textContent = model.name + (model.source === 'api' ? ' · API' : (model.details?.parameter_size ? ' · ' + model.details.parameter_size : '')); return option; }));
+  sel.replaceChildren(...models.map((model) => { const option = document.createElement('option'); option.value = model.name; option.textContent = model.name + (model.details?.parameter_size ? ' · ' + model.details.parameter_size : model.source === 'api' ? ' · API' : ''); return option; }));
   const preferred = profile?.kind === 'ollama' ? persisted.omodel : profile?.model;
   if (models.some((model) => model.name === preferred)) sel.value = preferred;
   else if (models.some((model) => model.name === prior)) sel.value = prior;
@@ -1521,7 +1536,7 @@ function applyProviderModelChoices() {
   if (!models.length) { sidebar.textContent = profile?.kind === 'ollama' ? 'No local models installed' : 'Set this profile\'s default model in Settings'; return; }
   for (const model of models.slice(0, 10)) {
     const item = document.createElement('button'); item.type = 'button'; item.className = 'sidebar-model-choice'; item.textContent = model.name;
-    item.onclick = () => { sel.value = model.name; if (profile?.kind === 'ollama') saveState('omodel', model.name); syncModelButton(); if (swarmMode) syncSwarmRoles(); };
+    item.onclick = () => { sel.value = model.name; if (profile?.kind === 'ollama') saveState('omodel', model.name); else if (profile?.kind === 'opencode') { profile.model = model.name; $('providerModel').value = model.name; saveSettings(); } syncModelButton(); if (swarmMode) syncSwarmRoles(); };
     sidebar.appendChild(item);
   }
 }
@@ -1533,10 +1548,13 @@ function renderProviderProfiles() {
   const profile = currentProviderProfile();
   select.value = profile.id; $('providerName').value = profile.name; $('providerKind').value = profile.kind; $('providerEndpoint').value = profile.endpoint; $('providerModel').value = profile.model;
   $('providerApiKey').value = '';
+  syncProviderRouteFields();
   $('providerUseOllama')?.classList.toggle('active', profile.kind === 'ollama');
   $('providerNew')?.classList.toggle('active', profile.kind !== 'ollama');
   $('providerStatus').textContent = profile.kind === 'ollama'
     ? 'Using Ollama. Local models and signed-in Ollama cloud models are available without an Axon API key.'
+    : profile.kind === 'opencode'
+      ? 'Using the OpenCode CLI credential store. Run opencode auth login for OpenCode Go or Zen; Axon never copies that credential.'
     : profile.kind === 'codex-cli'
       ? 'Using your signed-in official Codex CLI. Axon does not inject its own Codex config or tools.'
       : profile.kind === 'claude-cli'
@@ -1568,7 +1586,9 @@ function startApiProviderSetup() {
 const PROVIDER_PRESETS = {
   custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
   openai: { name: 'OpenAI', kind: 'responses', endpoint: 'https://api.openai.com/v1', model: '' },
-  openrouter: { name: 'OpenRouter', kind: 'openai-compatible', endpoint: 'https://openrouter.ai/api/v1', model: '' },
+  openrouter: { name: 'OpenRouter', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: '' },
+  opencodeGo: { name: 'OpenCode Go', kind: 'opencode', engine: 'opencode', endpoint: '', model: 'opencode-go/kimi-k3' },
+  opencodeZen: { name: 'OpenCode Zen', kind: 'opencode', engine: 'opencode', endpoint: '', model: '' },
   codex: { name: 'Codex CLI', kind: 'codex-cli', endpoint: '', model: '' },
   claude: { name: 'Claude Code', kind: 'claude-cli', endpoint: '', model: '' },
 };
@@ -1577,11 +1597,24 @@ function fillProviderFields(profile) {
   $('providerKind').value = profile.kind || 'openai-compatible';
   $('providerEndpoint').value = profile.endpoint || '';
   $('providerModel').value = profile.model || '';
+  syncProviderRouteFields();
+}
+function syncProviderRouteFields() {
+  const usesOpenCodeAuth = $('providerKind').value === 'opencode';
+  $('providerEndpoint').disabled = usesOpenCodeAuth;
+  $('providerApiKey').disabled = usesOpenCodeAuth;
+  $('providerEndpoint').placeholder = usesOpenCodeAuth ? 'Managed by OpenCode' : 'https://api.example.com/v1';
+  $('providerApiKey').placeholder = usesOpenCodeAuth ? 'Managed by opencode auth login' : 'Paste key';
 }
 function applyProviderPreset() {
   const preset = PROVIDER_PRESETS[$('providerPreset').value] || PROVIDER_PRESETS.custom;
   fillProviderFields(preset);
-  $('providerImportStatus').textContent = 'Preset applied. Add a model ID and API key, then save the profile.';
+  const profile = currentProviderProfile();
+  if (profile && preset.engine) { profile.engine = preset.engine; saveSettings(); syncEngineSelect(); }
+  if (preset.kind === 'opencode') refreshOpenCodeModels();
+  $('providerImportStatus').textContent = preset.kind === 'opencode'
+    ? 'Preset applied. Choose an available Go or Zen model, then save. Authentication stays in OpenCode.'
+    : 'Preset applied. Add a model ID and API key, then save the profile.';
 }
 function openCodeProviderEntry(config) {
   const candidates = config?.provider || config?.providers || config;
@@ -1616,13 +1649,16 @@ async function saveProviderProfile() {
     endpoint: $('providerEndpoint').value.trim().replace(/\/$/, ''),
     model: $('providerModel').value.trim(),
     credentialId: existing?.credentialId || '',
+    engine: $('providerKind').value === 'opencode' ? 'opencode' : (existing?.engine || 'kimi'),
   };
   if (['openai-compatible', 'responses'].includes(profile.kind) && !/^https?:\/\//i.test(profile.endpoint)) { $('providerStatus').textContent = 'Enter a full http:// or https:// API endpoint.'; return; }
   try {
     const saved = await window.ollama.providerSave(profile, $('providerApiKey').value);
     const index = settings.providerProfiles.findIndex((item) => item.id === saved.id);
     if (index >= 0) settings.providerProfiles[index] = saved; else settings.providerProfiles.push(saved);
-    settings.activeProviderProfileId = saved.id; saveSettings(); renderProviderProfiles(); applyProviderModelChoices(); if (swarmMode) syncSwarmRoles();
+    settings.activeProviderProfileId = saved.id; saveSettings(); renderProviderProfiles(); syncEngineSelect();
+    if (saved.kind === 'opencode') await refreshOpenCodeModels(); else applyProviderModelChoices();
+    if (swarmMode) syncSwarmRoles();
   } catch (error) { $('providerStatus').textContent = 'Could not save provider: ' + error.message; }
 }
 // Results attach under the call that produced them so the pair reads as one unit.
@@ -2049,7 +2085,12 @@ $('steer').onclick = () => {
   queueMessage(activeId, entry, true); steering.add(requestId); window.ollama.steer(requestId);
 };
 $('newchat').onclick = () => newChat();
-$('model').onchange = () => { saveState('omodel', $('model').value); syncModelButton(); if (swarmMode) syncSwarmRoles(); };
+$('model').onchange = () => {
+  const profile = currentProviderProfile();
+  if (profile?.kind === 'ollama') saveState('omodel', $('model').value);
+  else if (profile?.kind === 'opencode') { profile.model = $('model').value; $('providerModel').value = profile.model; saveSettings(); }
+  syncModelButton(); if (swarmMode) syncSwarmRoles();
+};
 $('prompt').addEventListener('keydown', (e) => {
   if (cmdOpen) {
     if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(1); return; }
@@ -2196,9 +2237,10 @@ $('engineSel').onchange = () => {
   provider.engine = $('engineSel').value;
   saveSettings(); syncEngineSelect();
 };
-$('providerProfileSel').onchange = () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); syncEngineSelect(); applyProviderModelChoices(); if (swarmMode) syncSwarmRoles(); };
+$('providerProfileSel').onchange = async () => { settings.activeProviderProfileId = $('providerProfileSel').value; saveSettings(); renderProviderProfiles(); syncEngineSelect(); if (currentProviderProfile()?.kind === 'opencode') await refreshOpenCodeModels(); else applyProviderModelChoices(); if (swarmMode) syncSwarmRoles(); };
 $('providerUseOllama').onclick = useLocalOllama;
 $('providerNew').onclick = startApiProviderSetup;
+$('providerKind').onchange = syncProviderRouteFields;
 $('providerApplyPreset').onclick = applyProviderPreset;
 $('providerImportOpenCode').onclick = importOpenCodeProviderConfig;
 $('providerSave').onclick = saveProviderProfile;
