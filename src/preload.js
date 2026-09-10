@@ -10,7 +10,7 @@ function browserInvocation(toolName, args = {}) {
   if (['websearch', 'browsersearch'].includes(name) && query) return { type: 'navigate', url: 'https://www.google.com/search?q=' + encodeURIComponent(query.trim()) };
   return null;
 }
-contextBridge.exposeInMainWorld('ollama', {
+contextBridge.exposeInMainWorld('nocli', {
   listModels: () => ipcRenderer.invoke('list-models'),
   openCodeModels: () => ipcRenderer.invoke('opencode-models'),
   modelCapabilities: (model, productMode, provider) => ipcRenderer.invoke('model-capabilities', { model, productMode, provider }),
