@@ -1317,6 +1317,16 @@
   .composer-foot { min-height:52px; padding:7px 10px; }
   .model-btn { max-width:270px; }
 
+  /* Browser is a compact, resizable sibling to the conversation, never an overlay. */
+  #view-chat.browser-open { flex-direction:row; min-width:0; }
+  #view-chat.browser-open > #home, #view-chat.browser-open > #chat { min-width:0; flex:1 1 auto; }
+  #view-chat.browser-open #browserPanel { position:relative; z-index:2; right:auto; width:var(--browser-panel-width, 400px); min-width:340px; max-width:58%; flex:0 0 var(--browser-panel-width, 400px); display:flex; box-shadow:-12px 0 30px color-mix(in srgb, #000 22%, transparent); }
+  .browser-resize-handle { position:absolute; z-index:3; top:0; bottom:0; left:-5px; width:10px; cursor:col-resize; }
+  .browser-resize-handle::after { content:''; position:absolute; top:0; bottom:0; left:4px; width:2px; background:transparent; transition:background .15s ease; }
+  .browser-resize-handle:hover::after, body.browser-resizing .browser-resize-handle::after { background:var(--color-accent); }
+  body.browser-resizing { cursor:col-resize; user-select:none; }
+  @media (max-width:760px) { #view-chat.browser-open { flex-direction:column; } #view-chat.browser-open #browserPanel { width:100%; min-width:0; max-width:none; flex-basis:58%; } .browser-resize-handle { display:none; } }
+
   @media (max-width:980px) {
     .title-recent { display:none; }
     .utility-icon span { display:none; }
@@ -1427,6 +1437,7 @@
       </div>
     </div>
     <aside id="browserPanel" aria-label="Agent browser">
+      <div id="browserResizeHandle" class="browser-resize-handle" role="separator" aria-label="Resize browser" aria-orientation="vertical" tabindex="0"></div>
       <div class="browserbar"><div class="browser-nav"><button id="browserBack" title="Back" aria-label="Back">←</button><button id="browserForward" title="Forward" aria-label="Forward">→</button><button id="browserReload" title="Reload" aria-label="Reload">↻</button></div><input id="browserUrl" aria-label="Browser address" placeholder="Search or enter an address" /><button id="browserClose" title="Close browser" aria-label="Close browser">×</button></div>
       <div class="browser-context"><span class="browser-context-kicker">Agent browser</span><span id="browserPageTitle">Ready for a focused lookup</span><span id="browserContextHint">Agents can open pages here; you remain in control of navigation.</span></div>
       <div id="browserSlot"></div>

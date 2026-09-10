@@ -2114,6 +2114,7 @@ $('chips').addEventListener('click', (e) => {
 
 // ---- native agent browser --------------------------------------------------
 let browserOpen = false;
+let browserWidth = Math.max(340, Math.min(640, Number(localStorage.getItem('nocli-browser-width')) || 400));
 let subagentsOpen = false; const subagents = new Map();
 function renderSubagents() { const list = $('subagentsList'); list.innerHTML = ''; if (!subagents.size) { list.textContent = 'No delegated tasks yet.'; return; } for (const a of subagents.values()) { const card = document.createElement('div'); card.className = 'subagent-card'; card.innerHTML = '<strong>' + esc(a.task || 'Subagent task') + '</strong><div class="subagent-meta">' + esc(a.model || 'selected model') + ' · ' + esc(a.status || 'working') + '</div>' + (a.result ? '<div class="subagent-result">' + esc(a.result) + '</div>' : ''); list.appendChild(card); } }
 function setSubagentsOpen(open) { subagentsOpen = open; $('subagentsPanel').classList.toggle('show', open); $('subagentsToggle').classList.toggle('active', open); $('subagentsToggle').setAttribute('aria-expanded', String(open)); if (open) renderSubagents(); }
@@ -2122,16 +2123,36 @@ function syncBrowserBounds() {
   const r = $('browserSlot').getBoundingClientRect();
   window.nocli.browserShow({ x: r.x, y: r.y, width: r.width, height: r.height });
 }
+function setBrowserWidth(width) {
+  const viewWidth = $('view-chat').getBoundingClientRect().width;
+  const maximum = Math.max(340, Math.min(640, viewWidth - 440));
+  browserWidth = Math.round(Math.max(340, Math.min(maximum, width)));
+  $('browserPanel').style.setProperty('--browser-panel-width', browserWidth + 'px');
+  localStorage.setItem('nocli-browser-width', String(browserWidth));
+  requestAnimationFrame(syncBrowserBounds);
+}
 function setBrowserOpen(open) {
-  browserOpen = open; $('browserPanel').classList.toggle('show', open); $('browserToggle').classList.toggle('active', open);
+  browserOpen = open; $('view-chat').classList.toggle('browser-open', open); $('browserPanel').classList.toggle('show', open); $('browserToggle').classList.toggle('active', open);
   $('browserToggle').setAttribute('aria-expanded', String(open));
   $('browserToggle').title = open ? 'Close agent browser' : 'Open agent browser';
-  if (open) requestAnimationFrame(syncBrowserBounds); else window.nocli.browserHide();
+  if (open) { setBrowserWidth(browserWidth); requestAnimationFrame(syncBrowserBounds); } else window.nocli.browserHide();
 }
 function openBrowserAt(url) {
   setBrowserOpen(true); $('browserUrl').value = url; window.nocli.browserNavigate(url);
 }
 $('browserToggle').onclick = () => setBrowserOpen(!browserOpen);
+$('browserResizeHandle').addEventListener('pointerdown', (event) => {
+  if (window.matchMedia('(max-width: 760px)').matches) return;
+  const startX = event.clientX, startWidth = browserWidth;
+  const move = (next) => setBrowserWidth(startWidth + startX - next.clientX);
+  const end = () => { document.body.classList.remove('browser-resizing'); window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); };
+  document.body.classList.add('browser-resizing'); event.currentTarget.setPointerCapture(event.pointerId);
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', end);
+});
+$('browserResizeHandle').addEventListener('keydown', (event) => {
+  if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+  event.preventDefault(); setBrowserWidth(browserWidth + (event.key === 'ArrowLeft' ? 20 : -20));
+});
 $('subagentsToggle').onclick = () => setSubagentsOpen(!subagentsOpen); $('subagentsClose').onclick = () => setSubagentsOpen(false);
 $('sentryModalClose').onclick = closeSentryModal;
 $('sentryModalBackdrop').onclick = closeSentryModal;
