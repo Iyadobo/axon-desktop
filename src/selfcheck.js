@@ -10,6 +10,7 @@ const { updateRepository, updatePackageLabel, installerExtensions, releaseInstal
 const { requestWithRetry, cloudIdleTimeoutMs } = require('./ollama-cloud-agent');
 const { resolveRoute, scopeInfo, scopeFromLegacy, engineSupportsProvider, engineRefusal, migrateProvider, normalizeEngine } = require('./engines');
 const { openCodePermission, openCodeLaunchConfig } = require('./opencode-adapter');
+const { nocliHome, migrateNocliHome, prepareHarnessContext } = require('./nocli-home');
 
 let passed = 0, failed = 0;
 const ok = (name, condition) => {
@@ -91,6 +92,20 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
     ok('config restores from backup', store.load().omodel === 'qwen3:4b');
   } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
 })();
+
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nocli-home-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'settings.json'), '{"omodel":"local"}', 'utf8');
+    const home = migrateNocliHome(dir);
+    const context = prepareHarnessContext(home, { engine: 'Qwen Code', providerKind: 'openai-compatible', model: 'qwen3', scope: 'edit', workspace: 'C:/work' });
+    const profile = JSON.parse(fs.readFileSync(context.profile, 'utf8'));
+    ok('NoCLI Home separates product settings from harness config', home === nocliHome(dir)
+      && JSON.parse(fs.readFileSync(path.join(home, 'settings.json'), 'utf8')).omodel === 'local'
+      && profile.engine === 'qwencode' && profile.model === 'qwen3');
+    ok('harness context exposes no credentials', context.env.NOCLI_HOME === home && !Object.keys(profile).some((key) => /key|token|secret/i.test(key)));
+  } finally { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
+}
 
 (async () => {
   await new Promise((resolve, reject) => {

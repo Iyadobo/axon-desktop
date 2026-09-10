@@ -110,6 +110,13 @@ commits with no upstream at all, so a machine loss would have taken all of them.
 
 ## Storage and safety
 
+NoCLI-owned state is under `%APPDATA%\\NoCLI.ai\\NoCLI Home`: `settings.json`,
+its backup, encrypted `provider-secrets.json`, and a non-secret per-engine
+`harnesses/<engine>/current-turn.json`. The first launch copies existing NoCLI
+state into that home. `src/nocli-home.js` owns this migration and turn context.
+The product does **not** clone or overwrite Codex, Claude, Kimi, Qwen, or
+OpenCode sign-ins; OpenCode Go/Zen remains authenticated by OpenCode itself.
+
 `nocli-terminal/` is a **retired** Rust fork, ~7.4 GB, untracked and no longer
 referenced by any code path (`findNocliTerminal` was removed). It is kept only
 because it is user-owned; deleting it is the user's call. Do not stage

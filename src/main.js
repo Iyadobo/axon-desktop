@@ -15,6 +15,7 @@ const { updateRepository, updatePackageLabel, installerExtensions, releaseInstal
 const { runOllamaCloudAgent } = require('./ollama-cloud-agent');
 const { resolveRoute, migrateProvider, normalizeEngine, normalizeProviderKind, scopeInfo, scopeFromLegacy, ENGINE_ORDER, engineInfo } = require('./engines');
 const { openCodeLaunchConfig } = require('./opencode-adapter');
+const { migrateNocliHome, prepareHarnessContext } = require('./nocli-home');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
 try { app.setAppUserModelId('io.nocli.workspace'); } catch {}
@@ -207,8 +208,9 @@ async function engineAvailability() {
   return Object.fromEntries(entries);
 }
 let config = null;
+let nocliConfigHome = null;
 const visionCapability = new Map();
-function providerSecretsPath() { return path.join(app.getPath('userData'), 'provider-secrets.json'); }
+function providerSecretsPath() { return path.join(nocliConfigHome || app.getPath('userData'), 'provider-secrets.json'); }
 function loadProviderSecrets() {
   try { return JSON.parse(fs.readFileSync(providerSecretsPath(), 'utf8')); } catch { return {}; }
 }
@@ -772,8 +774,8 @@ function runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, hol
       send('chat-done', { sessionId, ok: false });
       return resolve();
     }
-    // Keep this invocation deliberately close to the official CLI. NoCLI.ai no
-    // longer supplies a shadow CODEX_HOME or custom MCP configuration.
+    // Keep the official CLI's own auth and config untouched. NoCLI only adds a
+    // non-secret launch profile so every adapter has one inspectable home.
     const common = ['--json', '--skip-git-repo-check', '--sandbox', sandbox, '-C', root];
     if (providerKind === 'ollama') common.push('--oss', '--local-provider', 'ollama');
     if (model) common.push('--model', model);
@@ -783,7 +785,8 @@ function runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, hol
     const args = sessionId
       ? ['exec', ...common, 'resume', sessionId, instruction]
       : ['exec', ...common, instruction];
-    const env = { ...process.env };
+    const context = prepareHarnessContext(nocliConfigHome, { engine: 'codex', providerKind, providerName: provider?.name, model, scope: productMode, workspace: root });
+    const env = { ...process.env, ...context.env };
     const child = spawn(launch.command, [...launch.prefix, ...args], { cwd: root, env, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
     holder.child = child;
     let buffer = '', resultSid = sessionId || null, stderr = '', failed = false;
@@ -1150,8 +1153,9 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
     const route = openAiRouteFor(provider);
     const instruction = [identity, prompt].filter(Boolean).join('\n\n');
     const args = spec.args({ model, mode, sessionId, instruction, systemPrompt: identity, prompt, ...route });
+    const context = prepareHarnessContext(nocliConfigHome, { engine: engineId, providerKind: provider?.kind, providerName: provider?.name, model, scope: productMode, workspace: root });
     const child = spawn(launch.command, [...launch.prefix, ...args], {
-      cwd: root, env: { ...process.env, ...spec.env({ model, ...route }) }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: root, env: { ...process.env, ...context.env, ...spec.env({ model, ...route }) }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
     });
     holder.child = child;
     let buffer = '', resultSid = sessionId || null, stderr = '', failed = false, delivered = '';
@@ -1251,9 +1255,10 @@ function runOpenCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
     const args = ['run', '--format', 'json', '--pure', '--agent', 'nocli', '--model', route.launchModel];
     if (sessionId) args.push('--session', sessionId);
     args.push(instruction);
+    const context = prepareHarnessContext(nocliConfigHome, { engine: 'opencode', providerKind: provider?.kind, providerName: provider?.name, model, scope, workspace: root });
     const child = spawn(launch.command, [...launch.prefix, ...args], {
       cwd: root,
-      env: { ...process.env, ...route.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(route.config) },
+      env: { ...process.env, ...context.env, ...route.env, OPENCODE_CONFIG_CONTENT: JSON.stringify(route.config) },
       windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
     });
     holder.child = child;
@@ -1851,7 +1856,8 @@ ipcMain.handle('install-dependencies', async () => {
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
   migrateLegacyUserData(userDataPath);
-  config = createConfigStore(userDataPath);
+  nocliConfigHome = migrateNocliHome(userDataPath);
+  config = createConfigStore(nocliConfigHome);
   // Preserve all known predecessors. Merge only missing keys so the canonical
   // NoCLI.ai folder wins while a dev/package casing change cannot lose history.
   const state = config.load(); const parent = path.dirname(userDataPath);
@@ -1863,7 +1869,7 @@ app.whenReady().then(async () => {
   const candidates = [path.join(parent, 'ollama-desktop-harness', 'settings.json')];
   const merged = {};
   for (const file of candidates) {
-    if (path.resolve(file) === path.join(userDataPath, 'settings.json')) continue;
+    if (path.resolve(file) === path.join(nocliConfigHome, 'settings.json')) continue;
     try { Object.assign(merged, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch {}
   }
   config.save({ ...merged, ...state });
