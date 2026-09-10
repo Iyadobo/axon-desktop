@@ -1,4 +1,4 @@
-"""Build NoCLI.ai's native Windows icon from the flat barrier-over-CLI mark."""
+"""Build NoCLI.ai's native Windows icon from the prohibited-CLI mark."""
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -13,6 +13,7 @@ font = ImageFont.truetype(r"C:\Windows\Fonts\arialbd.ttf", 174)
 text = "CLI"
 box = draw.textbbox((0, 0), text, font=font, stroke_width=0)
 draw.text(((512 - (box[2] - box[0])) / 2 - box[0], 166 - box[1]), text, font=font, fill="white")
-draw.rectangle((94, 261, 418, 303), fill="#4EA1FF")
+draw.ellipse((79, 79, 433, 433), outline="white", width=30)
+draw.line((131, 131, 381, 381), fill="white", width=34)
 icon.save(ASSETS / "icon.png", "PNG", optimize=True)
 icon.save(ASSETS / "icon.ico", "ICO", sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
