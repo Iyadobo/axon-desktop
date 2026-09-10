@@ -72,8 +72,8 @@ function syncWorkspaceShell() {
   if ($('recents-label')) $('recents-label').textContent = 'Recents';
   if ($('recentPopupToggle')) $('recentPopupToggle').textContent = 'Recents';
   $('main')?.setAttribute('data-workspace', 'all');
-  if ($('greet')) $('greet').textContent = greetingForTime();
-  document.querySelector('#home .sub')?.replaceChildren('What are we working on?');
+  if ($('greet')) $('greet').textContent = 'What can we get done?';
+  document.querySelector('#home .sub')?.replaceChildren('Start a conversation or pick a project to work in.');
   const hint = document.querySelector('.home-hint');
   if (hint) hint.textContent = scopeMeta().hint;
   const chips = [...document.querySelectorAll('#chips .chip')];

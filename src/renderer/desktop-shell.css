@@ -1,0 +1,54 @@
+/* Codex-inspired desktop shell. Existing themes and execution controls remain user-owned. */
+#grid { display:none; }
+.titlebar { background:var(--color-surface); border-bottom:0; }
+.window-task-label { font-size:13px; color:var(--color-neutral); padding-left:10px; }
+#side { width:252px; padding:14px 12px; background:var(--color-surface); border-right:1px solid var(--color-divider); }
+#side .brand { margin-bottom:12px; font-weight:600; }
+#side .title-nav { display:flex; flex-direction:column; align-self:stretch; gap:2px; padding:0; margin:0 0 12px; -webkit-app-region:no-drag; }
+#side .top-nav-btn { display:flex; width:100%; justify-content:flex-start; min-height:44px; border:0; border-radius:8px; background:transparent; font-size:13px; font-weight:500; color:var(--color-neutral); }
+#side .top-nav-btn.active, #side .top-nav-btn:hover { background:var(--elev-2); color:var(--color-text); box-shadow:none; }
+#side .top-nav-btn svg { width:18px; height:18px; }
+.workspace-note { display:none; }
+.newchat { order:-1; border:0; background:transparent; font-weight:500; }
+#side .brand { order:-2; }
+.swarm-launch { min-height:44px; margin:0 0 8px; border:0; background:transparent; }
+.swarm-launch-copy small, .swarm-arrow { display:none; }
+.swarm-launch-copy strong { font-size:13px; font-weight:500; }
+.recents-label { text-transform:none; letter-spacing:0; font-weight:500; color:var(--color-neutral); }
+.recent { min-height:44px; font-weight:400; }
+.recent.active { background:var(--elev-2); color:var(--color-text); font-weight:500; }
+.sidefoot { border:0; background:transparent; }
+.utility-icon { border:0; background:transparent; font-weight:500; }
+#home { justify-content:center; }
+#home .wrap { width:min(760px,calc(100% - 64px)); padding:36px 0 80px; margin:auto; }
+#home #greet { font-size:30px; font-weight:550; letter-spacing:-.035em; text-align:center; max-width:none; }
+#home .sub { text-align:center; font-size:14px; margin:10px 0 30px; color:var(--color-neutral); }
+#composerCard { border-radius:20px; background:var(--color-surface); border:1px solid var(--color-divider); }
+#composerCard:focus-within { border-color:var(--color-neutral); box-shadow:0 0 0 1px var(--color-neutral); }
+#home #prompt, #prompt { min-height:78px; padding:18px 20px 10px; font-size:15px; }
+.composer-foot { border:0; background:transparent; padding:6px 12px 10px; }
+.model-btn, .composer-mode { border:0; background:transparent; font-weight:400; text-transform:none; letter-spacing:0; }
+#send { border-radius:50%; background:var(--color-text); color:var(--color-bg); box-shadow:none; }
+#send:hover { background:var(--color-neutral); box-shadow:none; }
+#chips { justify-content:center; gap:8px; margin-top:16px; }
+#chips .chip { border:0; border-radius:8px; background:transparent; font-weight:400; font-size:13px; color:var(--color-neutral); }
+#chips .chip:hover { background:var(--color-surface); color:var(--color-text); }
+.home-hint { display:none; }
+#log { width:min(100%,820px); padding-top:32px; }
+.turn.ai .stream { border-left:0; padding-left:0; }
+#composerSlot { border-top:0; background:var(--color-bg); padding:12px max(24px,calc((100% - 780px)/2)) 20px; }
+@media(max-width:760px) {
+  #side { width:64px; padding:10px 6px; }
+  #side .top-nav-btn { display:flex; justify-content:center; padding:0; }
+  #side .top-nav-btn span, #side .newchat span:last-child { display:none; }
+  #side .newchat { justify-content:center; min-width:44px; padding:0; }
+  #home .wrap { width:calc(100% - 28px); padding:28px 0; }
+  #home #greet { font-size:26px; }
+  #home .sub { margin-bottom:22px; }
+  #chips { flex-wrap:wrap; }
+  #composerSlot { padding:10px; }
+  .window-task-label { display:none; }
+}
+
+.window-control { min-width:44px; }
+.recents-label { min-height:44px; }
