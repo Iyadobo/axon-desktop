@@ -179,8 +179,6 @@
   /* home (empty state) */
   #home { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:40px; }
   #home .wrap { width:100%; max-width:640px; }
-  .hero-emblem { height:104px; display:flex; align-items:flex-end; margin:0 0 13px -2px; }
-  .hero-emblem img { width:72px; height:100px; object-fit:contain; filter:drop-shadow(0 10px 19px color-mix(in srgb, var(--color-accent) 20%, transparent)); }
   #home h1 { font-size:32px; margin:0 0 6px; font-weight:800; }
   #home .sub { font-size:15px; opacity:.55; margin:0 0 28px; }
   .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
@@ -512,8 +510,6 @@
   #home { padding:40px 48px; }
   #home h1 { font-size:var(--t-hero); letter-spacing:-.035em; text-wrap:balance; margin-bottom:8px; }
   #home .sub { font-size:var(--t-body); opacity:.6; margin-bottom:24px; }
-  .hero-emblem { height:76px; margin:0 0 16px -2px; }
-  .hero-emblem img { width:54px; height:74px; }
   .chips { margin-top:14px; gap:8px; }
   .chip { border-radius:9px; background:transparent; border-color:var(--elev-line);
     font-size:var(--t-sm); padding:7px 13px; }
@@ -688,8 +684,6 @@
   #home::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.14;
     background:radial-gradient(circle at 18% 12%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 30%); }
   #home .wrap { position:relative; z-index:1; max-width:760px; }
-  .hero-emblem { height:52px; margin-bottom:10px; opacity:.82; }
-  .hero-emblem img { width:38px; height:52px; }
   #home h1 { font-size:28px; letter-spacing:-.028em; margin-bottom:3px; }
   #home .sub { margin-bottom:18px; font-size:15px; color:var(--color-neutral); }
   .chips { gap:6px; }
@@ -827,7 +821,7 @@
   .swarm-launch { width:100%; min-height:42px; display:flex; align-items:center; gap:9px; margin:0 0 10px; padding:6px 9px; border:1px solid var(--nocli-rule); border-radius:5px; background:var(--nocli-soft); color:var(--color-text); font:inherit; text-align:left; cursor:pointer; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
   .swarm-launch:hover { background:var(--nocli-raised); border-color:color-mix(in srgb, var(--color-accent) 58%, var(--nocli-rule)); transform:translateY(-1px); }
   .swarm-launch:focus-visible { outline:2px solid var(--color-accent); outline-offset:2px; }
-  .swarm-launch img { width:27px; height:27px; flex:none; object-fit:contain; }
+  .swarm-launch-glyph { width:20px; height:20px; flex:none; fill:none; stroke:var(--nocli-muted); stroke-width:1.7; }
   .swarm-launch-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:1px; }
   .swarm-launch strong { font-size:13px; font-weight:780; letter-spacing:.01em; }
   .swarm-launch small { color:var(--nocli-muted); font-size:10px; font-weight:620; letter-spacing:.02em; }
@@ -854,13 +848,11 @@
   .view-scroll h2 { margin:0 0 28px; font-size:28px; letter-spacing:-.035em; }
   #home { align-items:stretch; justify-content:flex-start; overflow:auto; }
   #home .wrap { width:min(920px, calc(100% - 96px)); max-width:none; margin:0 auto; padding:72px 0 48px; }
-  .hero-emblem { width:33px; height:39px; margin:0 0 18px; }
   #greet { max-width:720px; margin:0; font-size:clamp(30px, 3vw, 45px); letter-spacing:-.048em; line-height:1.08; text-wrap:balance; }
   #home .sub { margin:11px 0 28px; color:var(--nocli-muted); font-size:16px; }
   .swarm-controls { max-width:1080px; margin:0 0 16px; padding:14px; border:1px solid color-mix(in srgb, var(--color-accent) 38%, var(--nocli-rule)); border-radius:9px; background:linear-gradient(105deg, color-mix(in srgb, var(--color-accent) 9%, var(--nocli-soft)), var(--nocli-soft) 38%); }
   .swarm-controls[hidden] { display:none; }
   .swarm-controls-head { display:flex; align-items:center; gap:11px; margin-bottom:12px; }
-  .swarm-controls-mark { width:32px; height:32px; object-fit:contain; }
   .swarm-controls-copy { min-width:0; display:flex; flex-direction:column; gap:2px; }
   .swarm-controls-copy strong { font-size:14px; letter-spacing:.02em; }
   .swarm-controls-copy small, .swarm-limit, .swarm-role-notice { color:var(--nocli-muted); font-size:11px; line-height:1.45; }
@@ -1002,7 +994,7 @@
   .workspace-tab { min-height:37px; font-size:13px; }
   .workspace-note { min-height:27px; padding:0 5px 7px; font-size:10px; }
   .swarm-launch { min-height:46px; margin-bottom:8px; padding:7px 8px; }
-  .swarm-launch img { width:25px; height:25px; }
+  .swarm-launch-glyph { width:19px; height:19px; }
   .newchat { min-height:40px; margin-bottom:8px; padding:0 11px; font-size:13px; }
   .recents-label { margin-top:13px; padding:0 5px 6px; font-size:10px; }
   .recent { min-height:31px; padding:6px 7px; font-size:12px; }
@@ -1139,7 +1131,7 @@
     .workspace-tab.active { background:var(--nocli-raised); box-shadow:inset 2px 0 0 var(--color-accent); }
     .workspace-tab .workspace-mark { width:24px; height:20px; }
     .swarm-launch { justify-content:center; min-height:52px; margin-top:4px; padding:0; }
-    .swarm-launch img { width:28px; height:28px; }
+    .swarm-launch-glyph { width:21px; height:21px; }
     .newchat { justify-content:center; min-height:48px; padding:0; font-size:15px; text-align:center; }
     .newchat #newChatLabel { display:none; }
     .sidefoot { margin-top:auto; padding:10px 0 0; }
@@ -1147,7 +1139,6 @@
     .local-avatar { width:32px; height:32px; }
 
     #home .wrap { width:calc(100% - 28px); padding:28px 0 32px; }
-    .hero-emblem { width:29px; height:34px; margin-bottom:12px; }
     #home #greet, #main[data-workspace="work"] #home #greet, #main[data-swarm="true"] #home #greet { font-size:clamp(28px,9vw,36px); }
     #home .sub { margin:8px 0 20px; font-size:14px; line-height:1.5; }
     #prompt { min-height:96px; padding:15px 14px 10px; font-size:14px; }
@@ -1185,9 +1176,7 @@
   .utility-icon svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.8; }
   .utility-icon.active { border-color:var(--color-accent); background:color-mix(in srgb,var(--color-accent) 12%,var(--color-bg)); color:var(--color-accent); }
   #subagentsToggle, #browserToggle { min-width:44px; }
-  #subagentsToggle img { filter:saturate(.85); }
   .local-workspace { min-height:46px; display:flex; align-items:center; gap:9px; padding:4px 6px 8px; }
-  .local-workspace-mark { width:30px; height:30px; flex:none; object-fit:contain; }
   .local-workspace-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:2px; }
   .local-workspace-copy strong { overflow:hidden; color:var(--color-text); font-size:12px; font-weight:760; text-overflow:ellipsis; white-space:nowrap; }
   .local-workspace-copy small { color:var(--nocli-muted); font-size:10px; }
@@ -1234,7 +1223,7 @@
   .swarm-launch { min-height:44px; margin:0 0 8px; padding:0 10px; border-color:transparent; border-radius:6px; background:transparent; transform:none; }
   .swarm-launch:hover { border-color:var(--nocli-rule); background:var(--nocli-soft); transform:none; }
   .swarm-launch.active { border-color:var(--nocli-rule); background:var(--nocli-raised); box-shadow:inset 2px 0 0 var(--color-accent); }
-  .swarm-launch img { width:21px; height:21px; }
+  .swarm-launch-glyph { width:18px; height:18px; }
   .swarm-launch strong { font-size:12px; font-weight:740; }
   .swarm-launch small { font-size:10px; }
   .swarm-launch .swarm-arrow { color:var(--nocli-muted); font-size:14px; }
@@ -1243,7 +1232,6 @@
   #main[data-swarm="true"] #composerCard { border-left:1px solid var(--nocli-rule); }
   .swarm-controls { display:block; max-width:none; margin:0 0 12px; padding:0; border:1px solid var(--nocli-rule); border-radius:8px; background:var(--nocli-soft); }
   .swarm-controls-head { min-height:56px; display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin:0; padding:8px 10px; }
-  .swarm-controls-mark { width:24px; height:24px; }
   .swarm-controls-copy { flex:1; gap:1px; }
   .swarm-controls-copy strong { font-size:12px; font-weight:760; }
   .swarm-controls-copy small { color:var(--nocli-muted); font-size:11px; }
@@ -1294,7 +1282,6 @@
     font:700 12px var(--font-body);
   }
   .utility-icon img { width:19px; height:19px; display:block; object-fit:contain; }
-  #subagentsToggle img { filter:none; }
   #browserToggle img { width:18px; height:18px; opacity:.9; }
   .window-control { width:42px; min-height:44px; }
 
@@ -1310,7 +1297,6 @@
   .recent { min-height:38px; }
   .sidefoot { margin-top:10px; padding:10px 4px 0; }
   .local-workspace { min-height:44px; padding:4px 5px; }
-  .local-workspace-mark { width:25px; height:25px; }
   .local-workspace-copy strong { font-size:12px; }
   .local-workspace-copy small { font-size:10px; }
 
@@ -1355,13 +1341,13 @@
   <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button><button class="top-nav-btn" data-view="projects" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Projects</span></button><button class="top-nav-btn" data-view="models" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span>Models</span></button><button class="top-nav-btn" data-view="settings" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg><span>Settings</span></button></nav>
   <div class="window-spacer"></div>
   <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
-  <div class="title-actions"><button id="subagentsToggle" class="utility-icon" title="Subagents" aria-label="Open subagents" aria-expanded="false"><img src="../assets/icon.png" alt="" /><span>Subagents</span></button><button id="browserToggle" class="utility-icon" title="Open agent browser" aria-label="Open agent browser" aria-expanded="false"><img src="../assets/browser-googlechrome.svg" alt="" /><span>Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
+  <div class="title-actions"><button id="subagentsToggle" class="utility-icon" title="Subagents" aria-label="Open subagents" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="7" r="2"/><circle cx="17" cy="7" r="2"/><circle cx="12" cy="17" r="2"/><path d="M8.7 8.1 10.8 15M15.3 8.1 13.2 15"/></svg><span>Subagents</span></button><button id="browserToggle" class="utility-icon" title="Open agent browser" aria-label="Open agent browser" aria-expanded="false"><img src="../assets/browser-googlechrome.svg" alt="" /><span>Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
 </header>
 <div id="app">
   <div id="side">
     <div class="brand"><img class="logo" src="../assets/icon.png" alt="NoCLI.ai" /><span style="flex:1">NoCLI.ai</span></div>
     <button id="swarmLaunch" class="swarm-launch" type="button" aria-label="Open NoCLI.ai Swarm">
-      <img src="../assets/icon.png" alt="" /><span class="swarm-launch-copy"><strong>NoCLI.ai Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
+      <svg class="swarm-launch-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.7 8.2 10.7 15M16.3 8.2 13.3 15"/></svg><span class="swarm-launch-copy"><strong>Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
     </button>
     <div class="workspace-note" id="workspaceNote">One conversation · scope is per turn</div>
     <button class="newchat" id="newchat" type="button"><span aria-hidden="true" style="opacity:.6">+</span><span id="newChatLabel">New chat</span></button>
@@ -1370,7 +1356,7 @@
       <div id="recents"></div>
     </div>
     <div class="sidefoot">
-      <div class="local-workspace"><img class="local-workspace-mark" src="../assets/icon.png" alt="" /><span class="local-workspace-copy"><strong>Local workspace</strong><small>Private on this device</small></span><span id="profileUpdateBadge" class="profile-update-badge" hidden title="Update ready"></span></div>
+      <div class="local-workspace"><span class="local-workspace-copy"><strong>Local workspace</strong><small>Private on this device</small></span><span id="profileUpdateBadge" class="profile-update-badge" hidden title="Update ready"></span></div>
     </div>
   </div>
 
@@ -1379,12 +1365,10 @@
     <!-- home (empty) -->
     <div id="home">
       <div class="wrap">
-        <div class="hero-emblem"><img src="../assets/icon.png" alt="NoCLI.ai mark" /></div>
         <h1 id="greet">Good afternoon.</h1>
         <p class="sub">What are we working on?</p>
         <section id="swarmControls" class="swarm-controls" hidden aria-label="Swarm settings">
           <div class="swarm-controls-head">
-            <img class="swarm-controls-mark" src="../assets/icon.png" alt="" />
             <div class="swarm-controls-copy"><strong>Swarm</strong><small>One Sentry · three parallel workers · one answer</small></div>
             <details class="swarm-advanced"><summary>Settings</summary><div class="swarm-roles"><label class="swarm-role"><span>Sentry model</span><select id="swarmSentryModel" aria-label="Sentry model"></select></label><label class="swarm-role"><span>Worker model</span><select id="swarmWorkerModel" aria-label="Worker model"></select></label><label class="swarm-worker-field"><span>Workers</span><input id="swarmCount" type="number" min="1" value="3" inputmode="numeric" /></label></div><div id="swarmRoleNotice" class="swarm-role-notice"></div></details>
           </div>

@@ -1252,7 +1252,7 @@ function renderRecents() {
     for (const s of swarms) {
       const d = document.createElement('div');
       d.className = 'recent swarm-recent' + (s.id === activeSwarmId && swarmLogOpen ? ' active' : '');
-      d.innerHTML = '<img class="recent-swarm-mark" src="../assets/icon.png" alt="" />' + esc(s.title || '(untitled swarm)');
+      d.textContent = s.title || '(untitled swarm)';
       d.title = s.title || '';
       d.tabIndex = 0; d.setAttribute('role', 'button');
       d.onclick = () => openSwarmSession(s.id);
