@@ -139,8 +139,10 @@ real `kimi-k3:cloud` turn through Ollama's OpenAI-compatible route returned
 ## 2026-09-10 NoCLI identity handoff
 
 - Product and release repositories are `Iyadobo/nocli.ai`,
-  `Iyadobo/nocli.ai-releases`, and `Iyadobo/nocli.ai-debian`; do not push or
-  package unless asked.
+  `Iyadobo/nocli.ai-releases`, and `Iyadobo/nocli.ai-debian`. `Iyadobo/Axon`
+  is deliberately retained as the legacy Windows update bridge: existing Axon
+  builds cannot follow GitHub repository-rename redirects. The `v0.7.29` Axon
+  bridge installer prompts users to switch to the verified NoCLI.ai installer.
 - The logo source is `src/assets/nocli-mark.svg`. It is a flat ink tile with
   white `CLI` and a red prohibited circle/slash; regenerate `icon.png` and
   `icon.ico` with `python scripts/generate_nocli_icon.py` after changing it.
@@ -149,3 +151,7 @@ real `kimi-k3:cloud` turn through Ollama's OpenAI-compatible route returned
 - Recent commits: `d32c6d8` rebrand, `f9cb754` flat mark, `989fb09` prohibited
   mark, `916266c` red icon output, and `98bf832` red vector source. Run
   `npm run check` plus renderer syntax checks after visual changes.
+- `v0.7.29` is live: NoCLI.ai has `nocli.ai-Setup-0.7.29.exe` plus SHA-256 in
+  `Iyadobo/nocli.ai-releases`; Axon has `Axon-Setup-0.7.29.exe` plus SHA-256
+  in `Iyadobo/Axon`. The temporary Axon source bridge is the pushed branch
+  `codex/axon-to-nocli-migration` (commit `f2efa44`).
