@@ -1,0 +1,5 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="#101216"/>
+  <text x="256" y="304" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="174" font-weight="800" letter-spacing="-18" text-anchor="middle">CLI</text>
+  <path d="M94 282H418" stroke="#4EA1FF" stroke-width="42" stroke-linecap="square"/>
+</svg>

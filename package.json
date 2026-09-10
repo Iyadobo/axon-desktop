@@ -22,7 +22,7 @@
     "asar": true,
     "files": [
       "src/**",
-      "!src/assets/nocli-mark-source.png",
+      "!src/assets/nocli-mark.svg",
       "!src/assets/icon-preview-64.png",
       "package.json"
     ],
