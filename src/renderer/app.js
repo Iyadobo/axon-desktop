@@ -82,10 +82,10 @@ function syncWorkspaceShell() {
 }
 // ---- settings / appearance --------------------------------------------------
 const THEME_PALETTES = {
-  light: { accent: '#4ea1ff', background: '#ffffff', surface: '#f4f5f7', text: '#17131a' },
-  dark: { accent: '#4ea1ff', background: '#141216', surface: '#1f1b20', text: '#f6f1f4' },
-  midnight: { accent: '#4ea1ff', background: '#0c0d0f', surface: '#151316', text: '#f7f2f4' },
-  paper: { accent: '#2668ad', background: '#fbfaf7', surface: '#f3f0e9', text: '#25231f' },
+  light: { accent: '#FF3B30', background: '#FFFFFF', surface: '#F4F4F4', text: '#0A0A0A' },
+  dark: { accent: '#FF3B30', background: '#0A0A0A', surface: '#141414', text: '#FFFFFF' },
+  midnight: { accent: '#FF3B30', background: '#080808', surface: '#111111', text: '#FFFFFF' },
+  paper: { accent: '#FF3B30', background: '#FFFFFF', surface: '#F4F4F4', text: '#0A0A0A' },
 };
 const FONT_STACKS = {
   system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
@@ -118,7 +118,7 @@ function scopeMeta(value = settings?.scope) { return SCOPE_META[SCOPE_ORDER.incl
 // Derived, not stored twice: the rest of the app and every engine still read
 // productMode/permissionMode, so scope stays the only thing a user sets.
 function applyScope() { const meta = scopeMeta(); settings.productMode = meta.productMode; settings.permissionMode = meta.permission; }
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#4ea1ff', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FF3B30', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
 function swarmProviderLimit() { return (currentProviderProfile()?.kind || 'ollama') === 'ollama' ? 3 : null; }
@@ -188,8 +188,14 @@ function loadSettings() {
   try {
     const saved = persisted.osettings || {};
     settings = { ...DEFAULT_SETTINGS, ...saved, colors: { ...THEME_PALETTES[saved.theme] || THEME_PALETTES.midnight, ...(saved.colors || {}) } };
-    // The old stock blue was NoCLI.ai's default, not a deliberate brand choice.
-    if (!saved.colors && (!saved.accent || saved.accent.toLowerCase() === '#2a4bd6')) settings.colors.accent = DEFAULT_SETTINGS.accent;
+    // Migrate the old blue/pink defaults to NoCLI.ai's red signal without
+    // overwriting a deliberately customized palette.
+    const legacyAccents = new Set(['#2a4bd6', '#4ea1ff', '#f45f96', '#d95185']);
+    const savedAccent = String(saved.colors?.accent || saved.accent || '').toLowerCase();
+    if (!savedAccent || legacyAccents.has(savedAccent)) {
+      settings.theme = 'midnight';
+      settings.colors = { ...THEME_PALETTES.midnight };
+    }
     else if (!saved.colors && saved.accent) settings.colors.accent = saved.accent;
     settings.accent = settings.colors.accent;
     settings.providerProfiles = Array.isArray(saved.providerProfiles) && saved.providerProfiles.length ? saved.providerProfiles.map((profile) => ({ ...DEFAULT_PROVIDER, ...profile, credentialId: profile.credentialId || '' })) : [{ ...DEFAULT_PROVIDER }];

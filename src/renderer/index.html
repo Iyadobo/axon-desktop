@@ -23,26 +23,26 @@
     --elev-line:color-mix(in srgb, var(--color-text) 11%, transparent);
     --shadow-1:0 1px 2px var(--color-shadow);
     --shadow-2:0 10px 30px var(--color-shadow);
-    --color-text:#f7f2f4; --color-divider:#2c292d; --color-surface:#151316; --color-surface-2:#211d22;
-    --color-accent:#4ea1ff;
+    --color-text:#fff; --color-divider:#242424; --color-surface:#111; --color-surface-2:#181818;
+    --color-accent:#FF3B30;
     --color-accent-600:color-mix(in srgb, var(--color-accent) 86%, #000);
     --color-accent-700:color-mix(in srgb, var(--color-accent) 70%, #000);
     /* Matches the midnight palette in app.js's DEFAULT_SETTINGS — this is what
        paints before JS runs applyAppearance(). It used to default to a white
        background under near-white text: invisible UI for one frame (or forever,
        if applyAppearance never ran). */
-    --color-neutral:#8a8f98; --color-bg:#0c0d0f; --color-bad:#ff6b6b;
-    --color-on-accent:#fff; --color-success:#2e9a67; --color-warning:#b27b26; --color-info:#4ea1ff;
+    --color-neutral:#a3a3a3; --color-bg:#080808; --color-bad:#FF3B30;
+    --color-on-accent:#fff; --color-success:#e5e5e5; --color-warning:#FF3B30; --color-info:#FF3B30;
     --color-overlay:color-mix(in srgb, #000 32%, transparent); --color-shadow:color-mix(in srgb, #000 22%, transparent);
     --color-scrollbar:color-mix(in srgb, var(--color-text) 20%, transparent); --color-scrollbar-hover:color-mix(in srgb, var(--color-text) 34%, transparent);
   }
   /* dark theme */
   [data-theme="dark"] {
-    --color-text:#e7e9ee; --color-divider:#2a2d33; --color-surface:#1e2024; --color-surface-2:#26292f;
-    --color-neutral:#9aa0aa; --color-bg:#14161a; --color-bad:#ff6b6b; --color-success:#62d99b; --color-warning:#e5b15a;
+    --color-text:#fff; --color-divider:#242424; --color-surface:#141414; --color-surface-2:#1b1b1b;
+    --color-neutral:#a3a3a3; --color-bg:#0a0a0a; --color-bad:#FF3B30; --color-success:#e5e5e5; --color-warning:#FF3B30;
   }
-  [data-theme="midnight"] { --color-text:#e8e8e5; --color-divider:#2b2d31; --color-surface:#151619; --color-surface-2:#1d1f23; --color-neutral:#9b9da2; --color-bg:#0c0d0f; --color-bad:#ff7777; --color-success:#62d99b; --color-warning:#e5b15a; }
-  [data-theme="paper"] { --color-text:#25231f; --color-divider:#dfdbd2; --color-surface:#f3f0e9; --color-surface-2:#ebe6dc; --color-neutral:#77736d; --color-bg:#fbfaf7; --color-bad:#a83b32; --color-success:#23764f; --color-warning:#94651e; --color-info:#2668ad; --color-on-accent:#fff; }
+  [data-theme="midnight"] { --color-text:#fff; --color-divider:#242424; --color-surface:#111; --color-surface-2:#181818; --color-neutral:#a3a3a3; --color-bg:#080808; --color-bad:#FF3B30; --color-success:#e5e5e5; --color-warning:#FF3B30; }
+  [data-theme="paper"] { --color-text:#0A0A0A; --color-divider:#d4d4d4; --color-surface:#f4f4f4; --color-surface-2:#e5e5e5; --color-neutral:#525252; --color-bg:#fff; --color-bad:#FF3B30; --color-success:#262626; --color-warning:#FF3B30; --color-info:#FF3B30; --color-on-accent:#fff; }
   .density-compact    { --font-size:13.5px; --pad:8px; }
   .density-comfortable { --font-size:16.5px; --pad:13px; }
   * { box-sizing:border-box; }

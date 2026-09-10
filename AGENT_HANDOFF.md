@@ -21,8 +21,8 @@ Scope can change mid-conversation without forking the context.
 `capabilities.js`, the native loop, and the engines keep their contract — but
 scope is the only thing a user sets. `src/engines.js` owns that mapping.
 
-Preserve the NoCLI.ai dark/pink desktop identity and the top-right Browser and
-Agents controls.
+Preserve the NoCLI.ai black/white/red desktop identity and the top-right Browser and
+Agents controls. The app icon is the red prohibited symbol over white `CLI`.
 
 ## Engines
 
@@ -93,7 +93,7 @@ Restart Preview after source edits. Package only at a tested checkpoint with `np
 
 ## Git state
 
-Remote is `origin` = `Iyadobo/nocli-desktop`. Work happens on feature branches;
+Remote is `origin` = `Iyadobo/nocli.ai`. Work happens on feature branches;
 `main` is only moved deliberately.
 
 As of 2026-09-10 the current line is `claude/one-interface-engine-registry`,
@@ -135,3 +135,17 @@ For UI changes, inspect the Preview window.
 Kimi Code `0.42.0` was installed from the official npm package on Windows and a
 real `kimi-k3:cloud` turn through Ollama's OpenAI-compatible route returned
 `KIMI_NOCLI_OK`, including a resumable session id in the JSONL stream.
+
+## 2026-09-10 NoCLI identity handoff
+
+- Product and release repositories are `Iyadobo/nocli.ai`,
+  `Iyadobo/nocli.ai-releases`, and `Iyadobo/nocli.ai-debian`; do not push or
+  package unless asked.
+- The logo source is `src/assets/nocli-mark.svg`. It is a flat ink tile with
+  white `CLI` and a red prohibited circle/slash; regenerate `icon.png` and
+  `icon.ico` with `python scripts/generate_nocli_icon.py` after changing it.
+- `src/renderer/app.js` defaults and migrates the prior blue/pink palettes to
+  the black/white/red midnight palette. Keep custom user palettes intact.
+- Recent commits: `d32c6d8` rebrand, `f9cb754` flat mark, `989fb09` prohibited
+  mark, `916266c` red icon output, and `98bf832` red vector source. Run
+  `npm run check` plus renderer syntax checks after visual changes.
