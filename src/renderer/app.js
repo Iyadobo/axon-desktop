@@ -135,7 +135,10 @@ function syncProductMode() {
 function selectProductMode(mode) {
   if (!PRODUCT_MODES[mode]) return;
   settings.scope = PRODUCT_MODES[mode];
-  syncScope(); saveSettings(); switchView('chat');
+  syncScope();
+  syncProductMode();
+  saveSettings();
+  switchView('chat');
   if (activeId && conversations.find((chat) => chat.id === activeId)?.productMode !== settings.productMode) newChat();
   $('prompt')?.focus();
 }
@@ -2254,7 +2257,13 @@ document.addEventListener('keydown', (e) => {
 for (const btn of document.querySelectorAll('.top-nav-btn[data-view]')) {
   btn.onclick = () => switchView(btn.dataset.view);
 }
-for (const btn of document.querySelectorAll('[data-product-mode]')) btn.onclick = () => selectProductMode(btn.dataset.productMode);
+for (const btn of document.querySelectorAll('[data-product-mode]')) {
+  btn.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    selectProductMode(btn.dataset.productMode);
+  });
+}
 $('automationForm').onsubmit = (event) => {
   event.preventDefault();
   const name = $('automationName').value.trim(); const prompt = $('automationPrompt').value.trim(); const cadence = $('automationCadence').value;
