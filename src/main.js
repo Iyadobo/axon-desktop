@@ -612,6 +612,18 @@ function ensureNocliBrowserMcpConfig(provider = null) {
   fs.writeFileSync(path.join(home, 'browser.config.toml'), profile, 'utf8');
   return home;
 }
+function browserMcpLaunch() {
+  const script = app.isPackaged ? path.join(process.resourcesPath, 'nocli-browser-mcp.js') : path.join(__dirname, 'nocli-browser-mcp.js');
+  return {
+    command: process.execPath,
+    args: [script],
+    env: { ELECTRON_RUN_AS_NODE: '1', NOCLI_BROWSER_ENDPOINT: browserBridgeEndpoint, NOCLI_BROWSER_TOKEN: browserBridgeToken, NOCLI_BROWSER_ALLOW_SCREENSHOT: '1' },
+  };
+}
+function browserMcpJson() {
+  const launch = browserMcpLaunch();
+  return JSON.stringify({ mcpServers: { nocli_browser: launch } });
+}
 
 // ---- execution permissions -------------------------------------------------
 // The official CLI enforces the sandbox; this only validates the renderer value.
@@ -776,7 +788,12 @@ function runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, hol
     }
     // Keep the official CLI's own auth and config untouched. NoCLI only adds a
     // non-secret launch profile so every adapter has one inspectable home.
-    const common = ['--json', '--skip-git-repo-check', '--sandbox', sandbox, '-C', root];
+    const mcp = browserMcpLaunch();
+    const toml = (value) => JSON.stringify(String(value));
+    const common = ['--json', '--skip-git-repo-check', '--sandbox', sandbox, '-C', root,
+      '-c', `mcp_servers.nocli_browser.command=${toml(mcp.command)}`,
+      '-c', `mcp_servers.nocli_browser.args=[${mcp.args.map(toml).join(',')}]`,
+      '-c', `mcp_servers.nocli_browser.env={${Object.entries(mcp.env).map(([key, value]) => `${key}=${toml(value)}`).join(',')}}`];
     if (providerKind === 'ollama') common.push('--oss', '--local-provider', 'ollama');
     if (model) common.push('--model', model);
     // `resume` has its own narrower option set. Put shared exec options before
@@ -1076,12 +1093,13 @@ const STREAM_JSON_ENGINES = {
     find: findClaudeCli,
     // Claude Code reads an Anthropic-shaped endpoint; Ollama serves one at /v1/messages.
     env: () => ({}),
-    args({ model, mode, sessionId, instruction }) {
+    args({ model, mode, sessionId, instruction, browserMcp }) {
       const args = ['-p', '--verbose', '--output-format', 'stream-json', '--include-partial-messages',
         '--permission-mode', mode === 'approve' ? 'plan' : mode === 'auto' ? 'acceptEdits' : 'bypassPermissions'];
       if (mode === 'full') args.push('--dangerously-skip-permissions');
       if (model) args.push('--model', model);
       if (sessionId) args.push('--resume', sessionId);
+      if (browserMcp) args.push('--mcp-config', browserMcp);
       args.push(instruction);
       return args;
     },
@@ -1092,13 +1110,14 @@ const STREAM_JSON_ENGINES = {
     env: () => ({}),
     // `--bare` skips implicit context discovery so a desktop turn is reproducible
     // and does not silently absorb unrelated files from the user's home.
-    args({ model, mode, sessionId, systemPrompt, prompt, baseUrl, apiKey }) {
+    args({ model, mode, sessionId, systemPrompt, prompt, baseUrl, apiKey, browserMcp }) {
       const args = ['--bare', '--output-format', 'stream-json', '--include-partial-messages', '--channel', 'desktop',
         '--approval-mode', mode === 'approve' ? 'plan' : mode === 'auto' ? 'auto-edit' : 'yolo'];
       if (model) args.push('--model', model);
       if (baseUrl) args.push('--auth-type', 'openai', '--openai-base-url', baseUrl, '--openai-api-key', apiKey || 'ollama');
       if (systemPrompt) args.push('--system-prompt', systemPrompt);
       if (sessionId) args.push('--resume', sessionId);
+      if (browserMcp) args.push('--mcp-config', browserMcp, '--allowed-mcp-server-names', 'nocli_browser');
       args.push(prompt);
       return args;
     },
@@ -1152,7 +1171,7 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
     const mode = normalizeMode(permissionMode);
     const route = openAiRouteFor(provider);
     const instruction = [identity, prompt].filter(Boolean).join('\n\n');
-    const args = spec.args({ model, mode, sessionId, instruction, systemPrompt: identity, prompt, ...route });
+    const args = spec.args({ model, mode, sessionId, instruction, systemPrompt: identity, prompt, browserMcp: engineId === 'kimi' ? null : browserMcpJson(), ...route });
     const context = prepareHarnessContext(nocliConfigHome, { engine: engineId, providerKind: provider?.kind, providerName: provider?.name, model, scope: productMode, workspace: root });
     const child = spawn(launch.command, [...launch.prefix, ...args], {
       cwd: root, env: { ...process.env, ...context.env, ...spec.env({ model, ...route }) }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
@@ -1241,6 +1260,7 @@ function runOpenCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
         scope,
         apiKey: provider?.credentialId ? readProviderSecret(provider.credentialId) : null,
       });
+      route.config.mcp = { nocli_browser: { type: 'local', command: [browserMcpLaunch().command, ...browserMcpLaunch().args], environment: browserMcpLaunch().env, enabled: true } };
     } catch (error) {
       send('chat-error', error.message); send('chat-done', { sessionId, ok: false }); return resolve();
     }

@@ -33,6 +33,7 @@ function currentTurn() { return activeId ? [...activeTurns.values()].find((turn)
 
 // ---- view switching --------------------------------------------------------
 let activeView = 'chat';
+let automations = [];
 let swarmMode = false, swarmLaunching = false, swarmLogOpen = false;
 let settingsOpener = null;
 function syncTopNav(viewName) {
@@ -44,7 +45,7 @@ function syncTopNav(viewName) {
 }
 function switchView(viewName) {
   if (viewName === 'settings') { openSettings(); return; }
-  if (!['chat', 'projects', 'models'].includes(viewName)) viewName = 'chat';
+  if (!['chat', 'projects', 'models', 'automations'].includes(viewName)) viewName = 'chat';
   activeView = viewName;
   syncTopNav(viewName);
   document.querySelectorAll('.view').forEach((view) => {
@@ -53,6 +54,7 @@ function switchView(viewName) {
   $('chatSidebar')?.classList.add('active');
   if (viewName === 'projects') renderProjectsPage();
   if (viewName === 'models') renderModelsPage();
+  if (viewName === 'automations') renderAutomations();
   const recentLabel = workspaceGroup() === 'work' ? 'Recent work' : workspaceGroup() === 'code' ? 'Recent code' : 'Recent chats';
   if ($('recentPopupToggle')) $('recentPopupToggle').textContent = recentLabel;
   saveState('oactiveView', viewName);
@@ -118,6 +120,22 @@ function scopeMeta(value = settings?.scope) { return SCOPE_META[SCOPE_ORDER.incl
 // Derived, not stored twice: the rest of the app and every engine still read
 // productMode/permissionMode, so scope stays the only thing a user sets.
 function applyScope() { const meta = scopeMeta(); settings.productMode = meta.productMode; settings.permissionMode = meta.permission; }
+const PRODUCT_MODES = { chat: 'chat', work: 'full', code: 'edit' };
+function activeProductMode() { return settings.productMode === 'agent' ? 'work' : settings.productMode === 'code' ? 'code' : 'chat'; }
+function syncProductMode() {
+  const active = activeProductMode();
+  document.querySelectorAll('[data-product-mode]').forEach((button) => {
+    const on = button.dataset.productMode === active;
+    button.classList.toggle('active', on); button.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+function selectProductMode(mode) {
+  if (!PRODUCT_MODES[mode]) return;
+  settings.scope = PRODUCT_MODES[mode];
+  syncScope(); saveSettings(); switchView('chat');
+  if (activeId && conversations.find((chat) => chat.id === activeId)?.productMode !== settings.productMode) newChat();
+  $('prompt')?.focus();
+}
 const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FF3B30', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
@@ -214,6 +232,30 @@ function loadSettings() {
 }
 function saveState(key, value) { persisted[key] = value; window.nocli.saveState({ [key]: value }).catch(() => {}); }
 function saveSettings() { saveState('osettings', settings); }
+function saveAutomations() { saveState('oautomations', automations); }
+function cadenceMs(value) { return value === 'hourly' ? 3600000 : value === 'weekly' ? 604800000 : 86400000; }
+function renderAutomations() {
+  const list = $('automationList'); if (!list) return;
+  if (!automations.length) { list.innerHTML = '<div class="ops-empty"><strong>No scheduled work yet</strong><span>Create a recurring prompt above. It will run while NOCLI is open.</span></div>'; return; }
+  list.innerHTML = '';
+  automations.forEach((automation) => {
+    const row = document.createElement('article'); row.className = 'automation-row';
+    row.innerHTML = `<div><strong>${esc(automation.name)}</strong><span>${esc(automation.cadence)} · next ${esc(new Date(automation.nextRunAt).toLocaleString())}</span><p>${esc(automation.prompt)}</p></div><div class="automation-actions"><button type="button" data-action="toggle">${automation.enabled ? 'Pause' : 'Resume'}</button><button type="button" data-action="run">Run now</button><button type="button" data-action="delete">Delete</button></div>`;
+    row.querySelector('[data-action="toggle"]').onclick = () => { automation.enabled = !automation.enabled; if (automation.enabled) automation.nextRunAt = Date.now() + cadenceMs(automation.cadence); saveAutomations(); renderAutomations(); };
+    row.querySelector('[data-action="run"]').onclick = () => runAutomation(automation);
+    row.querySelector('[data-action="delete"]').onclick = () => { automations = automations.filter((item) => item.id !== automation.id); saveAutomations(); renderAutomations(); };
+    list.appendChild(row);
+  });
+}
+function runAutomation(automation) {
+  const previousScope = settings.scope; settings.scope = automation.scope || 'full'; applyScope();
+  activeId = null; switchView('chat');
+  const provider = currentProviderProfile();
+  startMessage({ text: automation.prompt, combined: automation.prompt, images: [], productMode: settings.productMode, providerProfileId: provider?.id, model: provider?.model || $('model').value });
+  automation.lastRunAt = Date.now(); automation.nextRunAt = Date.now() + cadenceMs(automation.cadence); saveAutomations();
+  settings.scope = previousScope; applyScope(); syncProductMode();
+}
+function checkAutomations() { automations.filter((item) => item.enabled && item.nextRunAt <= Date.now()).forEach(runAutomation); }
 function applyAppearance() {
   const r = document.documentElement;
   const colors = settings.colors || THEME_PALETTES.midnight;
@@ -1865,25 +1907,34 @@ function saveDraft() { saveState('odraft', $('prompt').value.slice(0, 20000)); }
 function clearInput() { $('prompt').value = ''; saveDraft(); autosize(); }
 function syncComposerState() {
   const running = currentTurn();
-  const b = !!running || swarmLaunching;
-  $('send').textContent = running ? '■' : swarmLaunching ? '…' : '→';
-  $('send').className = running ? 'stop' : '';
-  $('send').title = running ? 'Stop this chat' : swarmLaunching ? 'Launching swarm' : swarmMode ? 'Launch swarm' : 'Send';
+  $('send').textContent = running ? '+' : swarmLaunching ? '…' : '→';
+  $('send').className = running ? 'queue-send' : '';
+  $('send').title = running ? 'Add to queue' : swarmLaunching ? 'Launching swarm' : swarmMode ? 'Launch swarm' : 'Send';
   $('send').disabled = swarmLaunching;
   $('steer').hidden = !running;
   $('steer').disabled = !running;
+  $('stopRun').hidden = !running;
+  renderRunQueue();
+}
+function renderRunQueue() {
+  const host = $('runQueue'); if (!host) return;
+  const queue = activeId ? (queuedMessages.get(activeId) || []) : [];
+  host.hidden = !queue.length;
+  host.innerHTML = queue.length ? `<span class="queue-label">UP NEXT · ${queue.length}</span>${queue.map((entry, index) => `<button type="button" data-queue-index="${index}" title="Remove from queue"><span>${index + 1}</span>${esc(entry.text || '(attachment)')}</button>`).join('')}` : '';
+  host.querySelectorAll('[data-queue-index]').forEach((button) => { button.onclick = () => { queue.splice(Number(button.dataset.queueIndex), 1); if (!queue.length) queuedMessages.delete(activeId); renderRunQueue(); }; });
 }
 
 function queueMessage(conversationId, entry, steers = false) {
   const queue = queuedMessages.get(conversationId) || [];
   if (steers) queue.unshift(entry); else queue.push(entry);
   queuedMessages.set(conversationId, queue);
-  addSysNote((steers ? 'Steering next: ' : 'Queued: ') + (entry.text || '(attachment)').slice(0, 180));
+  renderRunQueue();
   scrollBottom();
 }
 function runNextQueued(conversationId) {
   const queue = queuedMessages.get(conversationId); if (!queue?.length || currentTurn()) return;
   const entry = queue.shift(); if (!queue.length) queuedMessages.delete(conversationId);
+  renderRunQueue();
   if (conversationId !== activeId) return;
   startMessage(entry);
 }
@@ -2078,8 +2129,10 @@ function chooseCmd(i) {
 
 // ---- wiring ----------------------------------------------------------------
 $('send').onclick = () => {
-  const turn = currentTurn();
-  if (!turn) return send();
+  send();
+};
+$('stopRun').onclick = () => {
+  const turn = currentTurn(); if (!turn) return;
   const requestId = [...activeTurns.entries()].find(([, value]) => value === turn)?.[0];
   if (requestId) { stopping.add(requestId); window.nocli.stop(requestId); }
 };
@@ -2197,6 +2250,14 @@ document.addEventListener('keydown', (e) => {
 for (const btn of document.querySelectorAll('.top-nav-btn[data-view]')) {
   btn.onclick = () => switchView(btn.dataset.view);
 }
+for (const btn of document.querySelectorAll('[data-product-mode]')) btn.onclick = () => selectProductMode(btn.dataset.productMode);
+$('automationForm').onsubmit = (event) => {
+  event.preventDefault();
+  const name = $('automationName').value.trim(); const prompt = $('automationPrompt').value.trim(); const cadence = $('automationCadence').value;
+  if (!name || !prompt) return;
+  automations.unshift({ id: rid(), name, prompt, cadence, scope: activeProductMode() === 'chat' ? 'full' : settings.scope, enabled: true, createdAt: Date.now(), nextRunAt: Date.now() + cadenceMs(cadence) });
+  saveAutomations(); event.target.reset(); $('automationCadence').value = 'daily'; renderAutomations();
+};
 $('projectsPageAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
 $('settingsClose').onclick = closeSettings;
 $('settings').addEventListener('click', (e) => { if (e.target.id === 'settings') closeSettings(); });
@@ -2595,11 +2656,11 @@ function refreshGridColor() {
   try {
     Object.assign(persisted, await window.nocli.loadState());
     // One-time migration from the original renderer-only store.
-    for (const key of ['osettings', 'oprojects', 'oconvs', 'oswarmSessions', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels', 'ouserProfile']) {
+    for (const key of ['osettings', 'oprojects', 'oconvs', 'oswarmSessions', 'oautomations', 'omodel', 'oRuntime', 'oExoUrl', 'olanHost', 'olanHostEnabled', 'oactiveProject', 'odraft', 'oworkspace', 'ocloudModels', 'ouserProfile']) {
       if (persisted[key] === undefined) {
         const oldValue = localStorage.getItem(key);
         if (oldValue === null) continue;
-        try { persisted[key] = ['osettings', 'oprojects', 'oconvs', 'oswarmSessions', 'ocloudModels'].includes(key) ? JSON.parse(oldValue) : oldValue; }
+        try { persisted[key] = ['osettings', 'oprojects', 'oconvs', 'oswarmSessions', 'oautomations', 'ocloudModels'].includes(key) ? JSON.parse(oldValue) : oldValue; }
         catch { continue; }
       }
     }
@@ -2612,6 +2673,7 @@ function refreshGridColor() {
   $('workspacePath').value = defaultWorkspace;
   loadConvs();
   loadSwarmSessions();
+  automations = Array.isArray(persisted.oautomations) ? persisted.oautomations : [];
   activeProjectId = projects.some((p) => p.id === persisted.oactiveProject) ? persisted.oactiveProject : null;
   $('lanHost').value = persisted.olanHost || '';
   $('lanServerChk').checked = persisted.olanHostEnabled === true;
@@ -2619,13 +2681,14 @@ function refreshGridColor() {
   autosize();
   applyAppearance();
   syncScope();
+  syncProductMode();
   syncModes();
   renderRecents();
   updateProjectLabel();
   refreshAppInfo().catch(() => { $('versionInfo').textContent = 'Version information unavailable.'; });
   if ($('lanServerChk').checked) window.nocli.lanServer(true);
   // Restore last active view
-  const savedView = ['chat', 'projects', 'models'].includes(persisted.oactiveView) ? persisted.oactiveView : 'chat';
+  const savedView = ['chat', 'projects', 'models', 'automations'].includes(persisted.oactiveView) ? persisted.oactiveView : 'chat';
   if (savedView !== 'chat') switchView(savedView);
   setLoading('Ready', true);
   // Open the workspace first. LAN discovery and local model inventory can be
@@ -2634,4 +2697,5 @@ function refreshGridColor() {
     try { renderLanDevices(await window.nocli.lanRefresh()); } catch {}
     try { await loadModels(); } catch {}
   }, 0);
+  setInterval(checkAutomations, 30000); checkAutomations();
 })();

@@ -1346,21 +1346,22 @@
 <link rel="stylesheet" href="desktop-shell.css" />
 </head>
 <body>
-<div id="loading" role="status" aria-live="polite"><div class="loading-mark"><img src="../assets/icon.png" alt="" /><strong>NoCLI.ai</strong><span id="loadingText">Starting local workspace…</span></div></div>
+<div id="loading" role="status" aria-live="polite"><div class="loading-mark"><strong>NOCLI</strong><span id="loadingText">Starting local workspace…</span></div></div>
 <canvas id="grid"></canvas>
 <header class="titlebar" aria-label="NoCLI.ai window controls">
-  <span class="window-task-label">NoCLI.ai</span>
+  <span class="window-task-label">NOCLI</span>
+  <nav class="mode-switch" aria-label="Workspace mode"><button type="button" data-product-mode="chat" class="active">CHAT</button><button type="button" data-product-mode="work">WORK</button><button type="button" data-product-mode="code">CODE</button></nav>
   <div class="window-spacer"></div>
   <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
   <div class="title-actions"><button id="subagentsToggle" class="utility-icon" title="Subagents" aria-label="Open subagents" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="7" r="2"/><circle cx="17" cy="7" r="2"/><circle cx="12" cy="17" r="2"/><path d="M8.7 8.1 10.8 15M15.3 8.1 13.2 15"/></svg><span>Subagents</span></button><button id="browserToggle" class="utility-icon" title="Open agent browser" aria-label="Open agent browser" aria-expanded="false"><img src="../assets/browser-googlechrome.svg" alt="" /><span>Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
 </header>
 <div id="app">
   <div id="side">
-    <div class="brand"><img class="logo" src="../assets/icon.png" alt="NoCLI.ai" /><span style="flex:1">NoCLI.ai</span></div>
+    <div class="brand"><span style="flex:1">NOCLI</span></div>
     <button id="swarmLaunch" class="swarm-launch" type="button" aria-label="Open NoCLI.ai Swarm">
       <svg class="swarm-launch-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.7 8.2 10.7 15M16.3 8.2 13.3 15"/></svg><span class="swarm-launch-copy"><strong>Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
     </button>
-  <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button><button class="top-nav-btn" data-view="projects" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><span>Projects</span></button><button class="top-nav-btn" data-view="models" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg><span>Models</span></button><button class="top-nav-btn" data-view="settings" type="button" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg><span>Settings</span></button></nav>
+  <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><span>Tasks</span></button><button class="top-nav-btn" data-view="projects" type="button"><span>Projects</span></button><button class="top-nav-btn" data-view="automations" type="button"><span>Automations</span></button><button class="top-nav-btn" data-view="models" type="button"><span>Models</span></button><button class="top-nav-btn settings-nav" data-view="settings" type="button" aria-label="Settings"><span class="settings-glyph" aria-hidden="true">⚙</span><span>Settings</span></button></nav>
     <div class="workspace-note" id="workspaceNote">One conversation · scope is per turn</div>
     <button class="newchat" id="newchat" type="button"><span aria-hidden="true" style="opacity:.6">+</span><span id="newChatLabel">New chat</span></button>
     <div id="chatSidebar" class="sidebar-view active">
@@ -1390,6 +1391,7 @@
         <div id="composerCard" class="card">
           <div id="cmdlist"></div>
           <div id="attachRow"></div>
+          <div id="runQueue" class="run-queue" hidden></div>
           <textarea id="prompt" placeholder="Message NoCLI.ai…" rows="1" aria-describedby="composerHelp"></textarea>
           <span id="composerHelp" class="sr-only">Enter sends. Shift plus Enter adds a new line. Type slash help for commands.</span>
           <div class="composer-foot">
@@ -1403,7 +1405,8 @@
               <span class="select-tag" hidden><select id="model"></select></span>
               <button type="button" id="scopeButton" class="composer-mode mode-chat" title="What this conversation can do">Just chat</button>
             </span>
-            <button id="steer" title="Stop the current run and continue with this message" hidden>Steer</button>
+            <button id="steer" title="Continue the current task with this message" hidden>Steer</button>
+            <button id="stopRun" title="Stop the current run" hidden>Stop</button>
             <button id="send" title="Send">→</button>
           </div>
         </div>
@@ -1467,6 +1470,13 @@
         <div id="settingsPageContent"></div>
       </div>
     </div>
+    <div id="view-automations" class="view">
+      <div class="view-scroll automation-page">
+        <div class="ops-page-header"><div><p class="ops-eyebrow">Scheduled work</p><h2>Automations</h2><p class="ops-page-copy">Run repeatable prompts while NOCLI is open. Each run becomes a normal, inspectable task.</p></div></div>
+        <form id="automationForm" class="automation-form"><label><span>Name</span><input id="automationName" required maxlength="80" placeholder="Daily project check" /></label><label><span>Schedule</span><select id="automationCadence"><option value="hourly">Every hour</option><option value="daily" selected>Every day</option><option value="weekly">Every week</option></select></label><label class="automation-prompt"><span>Prompt</span><textarea id="automationPrompt" required rows="4" placeholder="Review the active project and summarize what needs attention."></textarea></label><button type="submit" class="settings-action primary">Create automation</button></form>
+        <div id="automationList" class="automation-list"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1475,7 +1485,7 @@
 <!-- settings modal -->
 <div class="modal" id="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
   <div class="modal-card">
-    <div class="modal-head"><h3 id="settingsTitle">Settings</h3><button class="x" id="settingsClose" type="button" aria-label="Close settings">×</button></div>
+    <div class="modal-head settings-head"><div><span class="settings-wordmark">NOCLI</span><h3 id="settingsTitle">Settings</h3><p>Workspace, engines, connections, and appearance.</p></div><button class="x" id="settingsClose" type="button" aria-label="Close settings">×</button></div>
     <div class="modal-body">
       <label class="fld"><span>NoCLI.ai instructions</span>
         <textarea id="sysPrompt" placeholder="Define the assistant's behavior, tone, identity, and constraints…"></textarea>
