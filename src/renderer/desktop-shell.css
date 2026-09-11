@@ -143,7 +143,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .ops-card:hover,.model-row:hover { border-color:var(--shell-line-strong); background:var(--shell-hover); }
 .ops-tag { border-radius:5px; }
 .modal-card,.sentry-modal-panel { border:1px solid var(--shell-line-strong); border-radius:12px; background:var(--color-bg); }
-.modal#settings { align-items:stretch; justify-content:flex-start; padding:48px 0 0 260px; background:transparent; }
+.modal#settings { align-items:stretch; justify-content:flex-start; padding:48px 0 0 260px; background:transparent; backdrop-filter:none; }
 #settings .modal-card { width:100%; max-width:none; height:100%; max-height:none; border:0; border-radius:0; box-shadow:none; }
 .settings-head { min-height:92px; padding:18px 24px; }
 .settings-head>div { display:grid; grid-template-columns:auto 1fr; column-gap:14px; align-items:center; }

@@ -1151,7 +1151,7 @@ function openAiRouteFor(provider) {
   return { baseUrl: `${activeOllamaUrl().replace(/\/$/, '')}/v1`, apiKey: 'ollama' };
 }
 
-function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemPrompt, cwd, holder, permissionMode = 'auto', productMode = 'code', provider = null }) {
+function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemPrompt, cwd, holder, permissionMode = 'auto', productMode = 'code', provider = null, retriedMissingSession = false }) {
   holder = holder || {};
   const spec = STREAM_JSON_ENGINES[engineId];
   return new Promise((resolve) => {
@@ -1229,10 +1229,10 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
     child.on('exit', (code) => {
       if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
       const missingSession = !!sessionId && isMissingHarnessSession(engineId, `${failureMessage}\n${stderr}`);
-      if (missingSession) {
+      if (missingSession && !retriedMissingSession) {
         if (holder.child === child) holder.child = null;
         send('chat-step', { type: 'tool_result', result: `${spec.label} session expired. Retrying this turn in a fresh session.` });
-        return runStreamJsonCli(engineId, { model, prompt, sessionId: null, send, systemPrompt, cwd: root, holder, permissionMode, productMode, provider }).then(resolve);
+        return runStreamJsonCli(engineId, { model, prompt, sessionId: null, send, systemPrompt, cwd: root, holder, permissionMode, productMode, provider, retriedMissingSession: true }).then(resolve);
       }
       if (code && !failed) send('chat-error', `${spec.label} exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
       finish(!code && !failed);
