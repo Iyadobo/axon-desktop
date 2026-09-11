@@ -1557,12 +1557,23 @@ function addToolCall(turn, s) {
 function currentProviderProfile() {
   return settings.providerProfiles.find((profile) => profile.id === settings.activeProviderProfileId) || settings.providerProfiles[0];
 }
+function openCodeModelFamily(source = currentProviderProfile()) {
+  const model = String(source?.model || '').trim();
+  const name = String(source?.name || '').trim();
+  if (model.startsWith('opencode-go/') || /^opencode go$/i.test(name)) return 'go';
+  if (model.startsWith('opencode/') || /^opencode zen$/i.test(name)) return 'zen';
+  return 'all';
+}
+function openCodeModelsFor(source = currentProviderProfile()) {
+  const family = openCodeModelFamily(source);
+  return openCodeModelCatalogue.filter((model) => family === 'go' ? model.startsWith('opencode-go/') : family === 'zen' ? model.startsWith('opencode/') : /^(opencode|opencode-go)\//.test(model));
+}
 function providerModelChoices() {
   const profile = currentProviderProfile();
   if (profile?.kind === 'ollama') return localModelCatalogue;
   const name = String(profile?.model || '').trim();
   if (profile?.kind === 'opencode') {
-    const models = openCodeModelCatalogue.map((model) => ({ name: model, source: 'api', details: { parameter_size: model.startsWith('opencode-go/') ? 'OpenCode Go' : 'OpenCode Zen' } }));
+    const models = openCodeModelsFor(profile).map((model) => ({ name: model, source: 'api', details: { parameter_size: model.startsWith('opencode-go/') ? 'OpenCode Go' : 'OpenCode Zen' } }));
     if (name && !models.some((model) => model.name === name)) models.unshift({ name, source: 'api', details: { parameter_size: 'OpenCode' } });
     return models;
   }
@@ -1570,11 +1581,39 @@ function providerModelChoices() {
   return name ? [{ name, source: 'api', details: { parameter_size: source } }] : [];
 }
 async function refreshOpenCodeModels() {
+  let data;
   try {
-    const data = await window.nocli.openCodeModels();
+    data = await window.nocli.openCodeModels();
     openCodeModelCatalogue = Array.isArray(data?.models) ? data.models : [];
   } catch { openCodeModelCatalogue = []; }
+  renderOpenCodeProviderModelChoices(data?.error);
   if (currentProviderProfile()?.kind === 'opencode') applyProviderModelChoices();
+  return openCodeModelCatalogue;
+}
+function renderOpenCodeProviderModelChoices(error = '') {
+  const group = $('providerOpenCodeModels'); const select = $('providerOpenCodeModel'); const info = $('providerOpenCodeModelInfo');
+  if (!group || !select || !info) return;
+  const usesOpenCodeAuth = $('providerKind')?.value === 'opencode';
+  group.hidden = !usesOpenCodeAuth;
+  if (!usesOpenCodeAuth) return;
+  const draft = { name: $('providerName').value, model: $('providerModel').value };
+  const models = openCodeModelsFor(draft);
+  const current = String(draft.model || '').trim();
+  select.replaceChildren();
+  if (current && !models.includes(current)) {
+    const option = document.createElement('option'); option.value = current; option.textContent = current; select.appendChild(option);
+  }
+  for (const model of models) {
+    const option = document.createElement('option'); option.value = model; option.textContent = model.replace(/^opencode(?:-go)?\//, ''); select.appendChild(option);
+  }
+  if (current && [...select.options].some((option) => option.value === current)) select.value = current;
+  const family = openCodeModelFamily(draft);
+  const label = family === 'go' ? 'OpenCode Go' : family === 'zen' ? 'OpenCode Zen' : 'OpenCode';
+  info.textContent = error
+    ? `${error} Run opencode auth login, then refresh this list.`
+    : models.length
+      ? `${models.length} ${label} models available from your signed-in OpenCode account. No endpoint or key is needed here.`
+      : `No ${label} models found yet. Run opencode auth login, then refresh this list.`;
 }
 function applyProviderModelChoices() {
   const profile = currentProviderProfile(); const sel = $('model'); if (!sel) return;
@@ -1658,8 +1697,10 @@ function syncProviderRouteFields() {
   const usesOpenCodeAuth = $('providerKind').value === 'opencode';
   $('providerEndpoint').disabled = usesOpenCodeAuth;
   $('providerApiKey').disabled = usesOpenCodeAuth;
+  $('providerManualModelField').hidden = usesOpenCodeAuth;
   $('providerEndpoint').placeholder = usesOpenCodeAuth ? 'Managed by OpenCode' : 'https://api.example.com/v1';
   $('providerApiKey').placeholder = usesOpenCodeAuth ? 'Managed by opencode auth login' : 'Paste key';
+  renderOpenCodeProviderModelChoices();
 }
 function applyProviderPreset() {
   const preset = PROVIDER_PRESETS[$('providerPreset').value] || PROVIDER_PRESETS.custom;
@@ -2335,6 +2376,12 @@ $('providerProfileSel').onchange = async () => { settings.activeProviderProfileI
 $('providerUseOllama').onclick = useLocalOllama;
 $('providerNew').onclick = startApiProviderSetup;
 $('providerKind').onchange = syncProviderRouteFields;
+$('providerName').oninput = () => renderOpenCodeProviderModelChoices();
+$('providerOpenCodeModel').onchange = () => {
+  $('providerModel').value = $('providerOpenCodeModel').value;
+  renderOpenCodeProviderModelChoices();
+};
+$('providerRefreshOpenCodeModels').onclick = refreshOpenCodeModels;
 $('providerApplyPreset').onclick = applyProviderPreset;
 $('providerImportOpenCode').onclick = importOpenCodeProviderConfig;
 $('providerSave').onclick = saveProviderProfile;
