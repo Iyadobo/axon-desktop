@@ -64,5 +64,6 @@ contextBridge.exposeInMainWorld('nocli', {
   browserAction: (action) => ipcRenderer.invoke('browser-action', action),
   browserInvocation: (toolName, args) => browserInvocation(toolName, args),
   providerSave: (profile, apiKey) => ipcRenderer.invoke('provider-save', profile, apiKey),
+  providerTest: (profile) => ipcRenderer.invoke('provider-test', profile),
   on: (ch, cb) => { ipcRenderer.on(ch, (_e, v) => cb(v)); },
 });

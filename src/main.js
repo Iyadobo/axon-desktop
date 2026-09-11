@@ -177,6 +177,40 @@ function runQuiet(command, args, timeout = 15000) {
     setTimeout(() => { try { child.kill(); } catch {} resolve(null); }, timeout).unref();
   });
 }
+function runOpenCodeGoTest(model) {
+  const chosen = String(model || '').trim();
+  if (!chosen.startsWith('opencode-go/')) return Promise.resolve({ ok: false, error: 'Choose an OpenCode Go model before testing.' });
+  const launch = findOpenCodeCli();
+  if (!launch) return Promise.resolve({ ok: false, error: 'OpenCode is not installed or not on PATH.' });
+  return new Promise((resolve) => {
+    let stdout = '', stderr = '', settled = false;
+    const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
+    let child;
+    try {
+      child = spawn(launch.command, [...launch.prefix, 'run', '--format', 'json', '--pure', '--model', chosen, 'Reply with exactly: NOCLI_GO_OK'], {
+        windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) { return finish({ ok: false, error: `Could not start OpenCode: ${error.message}` }); }
+    const timer = setTimeout(() => { try { child.kill(); } catch {} finish({ ok: false, error: 'OpenCode Go did not respond within 45 seconds.' }); }, 45000);
+    const append = (target, chunk) => (target + String(chunk || '')).slice(-24000);
+    child.stdout.on('data', (chunk) => { stdout = append(stdout, chunk); });
+    child.stderr.on('data', (chunk) => { stderr = append(stderr, chunk); });
+    child.on('error', (error) => { clearTimeout(timer); finish({ ok: false, error: `Could not run OpenCode: ${error.message}` }); });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      if (code) return finish({ ok: false, error: `OpenCode exited ${code}${stderr.trim() ? `: ${stderr.trim().slice(0, 300)}` : ''}` });
+      let text = '';
+      for (const line of stdout.split(/\r?\n/)) {
+        try {
+          const event = JSON.parse(line);
+          if (event.type === 'error') return finish({ ok: false, error: event.error?.message || event.message || 'OpenCode reported an error.' });
+          if (event.type === 'text' && event.part?.text) text += event.part.text;
+        } catch {}
+      }
+      return finish({ ok: true, model: chosen, route: 'Native OpenCode Go sign-in', response: text.trim().slice(0, 160) || 'Connected successfully.' });
+    });
+  });
+}
 async function dependencyStatus() {
   const codexLaunch = findOfficialCodexCli();
   const claudeLaunch = findClaudeCli();
@@ -1494,6 +1528,11 @@ ipcMain.handle('provider-save', (_e, profile, apiKey) => {
     }
   } else { clean.endpoint = ''; clean.credentialId = ''; }
   return clean;
+});
+ipcMain.handle('provider-test', async (_e, profile) => {
+  const clean = migrateProvider(profile || {});
+  if (normalizeProviderKind(clean.kind) !== 'opencode') return { ok: false, error: 'This live test is available for OpenCode Go profiles only.' };
+  return runOpenCodeGoTest(clean.model);
 });
 
 // ---- LAN: same-WiFi link, one instance as server ----------------------------

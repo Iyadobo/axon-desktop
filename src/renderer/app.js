@@ -1591,7 +1591,7 @@ async function refreshOpenCodeModels() {
   return openCodeModelCatalogue;
 }
 function renderOpenCodeProviderModelChoices(error = '') {
-  const group = $('providerOpenCodeModels'); const select = $('providerOpenCodeModel'); const info = $('providerOpenCodeModelInfo');
+  const group = $('providerOpenCodeModels'); const select = $('providerOpenCodeModel'); const info = $('providerOpenCodeModelInfo'); const testButton = $('providerTestOpenCode');
   if (!group || !select || !info) return;
   const usesOpenCodeAuth = $('providerKind')?.value === 'opencode';
   group.hidden = !usesOpenCodeAuth;
@@ -1607,6 +1607,7 @@ function renderOpenCodeProviderModelChoices(error = '') {
     const option = document.createElement('option'); option.value = model; option.textContent = model.replace(/^opencode(?:-go)?\//, ''); select.appendChild(option);
   }
   if (current && [...select.options].some((option) => option.value === current)) select.value = current;
+  if (testButton) testButton.disabled = !select.value.startsWith('opencode-go/');
   const family = openCodeModelFamily(draft);
   const label = family === 'go' ? 'OpenCode Go' : family === 'zen' ? 'OpenCode Zen' : 'OpenCode';
   info.textContent = error
@@ -1614,6 +1615,19 @@ function renderOpenCodeProviderModelChoices(error = '') {
     : models.length
       ? `${models.length} ${label} models available from your signed-in OpenCode account. No endpoint or key is needed here.`
       : `No ${label} models found yet. Run opencode auth login, then refresh this list.`;
+}
+async function testOpenCodeProvider() {
+  const button = $('providerTestOpenCode'); const status = $('providerOpenCodeTestStatus');
+  const model = $('providerOpenCodeModel').value || $('providerModel').value.trim();
+  if (!model.startsWith('opencode-go/')) { status.textContent = 'Choose an OpenCode Go model before testing.'; return; }
+  button.disabled = true; status.textContent = `Testing ${model} through native OpenCode…`;
+  try {
+    const result = await window.nocli.providerTest({ kind: 'opencode', name: $('providerName').value.trim(), model });
+    status.textContent = result?.ok
+      ? `Connected · ${result.route} · ${result.model} replied “${result.response}”`
+      : `Test failed · ${result?.error || 'OpenCode did not return a result.'}`;
+  } catch (error) { status.textContent = `Test failed · ${error.message || 'Could not reach OpenCode.'}`; }
+  finally { renderOpenCodeProviderModelChoices(); }
 }
 function applyProviderModelChoices() {
   const profile = currentProviderProfile(); const sel = $('model'); if (!sel) return;
@@ -2379,9 +2393,11 @@ $('providerKind').onchange = syncProviderRouteFields;
 $('providerName').oninput = () => renderOpenCodeProviderModelChoices();
 $('providerOpenCodeModel').onchange = () => {
   $('providerModel').value = $('providerOpenCodeModel').value;
+  $('providerOpenCodeTestStatus').textContent = '';
   renderOpenCodeProviderModelChoices();
 };
 $('providerRefreshOpenCodeModels').onclick = refreshOpenCodeModels;
+$('providerTestOpenCode').onclick = testOpenCodeProvider;
 $('providerApplyPreset').onclick = applyProviderPreset;
 $('providerImportOpenCode').onclick = importOpenCodeProviderConfig;
 $('providerSave').onclick = saveProviderProfile;
