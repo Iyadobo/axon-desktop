@@ -41,4 +41,13 @@ The titlebar, sidebar hierarchy, and composer were readable in the combined 2880
 - [x] Settings workspace restyle
 - [x] Desktop render and overflow check
 
+**Settings full-page follow-up — 2026-09-11**
+
+- Source visual truth: `C:\Users\Iyad\AppData\Local\Temp\codex-clipboard-f61ddcd3-31a3-47bc-ab6e-36578ca81f09.png` (1622 x 971 px)
+- Implementation: `C:\Users\Iyad\ollama-desktop-harness\scripts\audit-shell-1440-settings.png` (1800 x 949 px at 1440 x 900 CSS viewport and Windows display scaling)
+- Combined normalized comparison: `C:\Users\Iyad\ollama-desktop-harness\scripts\design-comparison-settings-full.png`
+- State: Settings open, dark theme, local runtime selected.
+- Finding: the source showed a floating 1040 px settings sheet with unused black space at the left of the main workspace. The implementation now fills the entire workspace from sidebar to right edge and from titlebar to bottom, while preserving the internal header and card rhythm.
+- Interaction and regulation check: Settings open/close behavior remains intact; `overflowX: 0`; application checks passed. No P0/P1/P2 issue remains. A focused crop was unnecessary because the full-page boundary and content edges are clearly visible in the combined comparison.
+
 final result: passed
