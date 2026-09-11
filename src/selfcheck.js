@@ -30,6 +30,8 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
   const vision = modelCapabilityReport({ model: 'llava', productMode: 'code', advertisedVision: true });
   ok('text-only models cannot receive screenshots', !textOnly.vision && !textOnly.browserScreenshot);
   ok('vision models can inspect agent browser screenshots', vision.vision && vision.browserScreenshot);
+  const reasoning = modelCapabilityReport({ model: 'deepseek-r1', productMode: 'code', advertisedReasoning: true });
+  ok('reasoning capability is surfaced when model metadata exposes it', reasoning.reasoning && reasoning.reasoningStatus === 'verified');
   ok('capability prompt prevents borrowed product identity', /not Claude, ChatGPT, Codex/.test(capabilityInstruction(textOnly)) && /screenshots are unavailable/.test(capabilityInstruction(textOnly)));
 }
 {
@@ -62,7 +64,7 @@ ok('Linux updates use only the Debian package feed', updateRepository('linux', {
     && migrateProvider({ kind: 'codex-cli' }).kind === 'ollama'
     && migrateProvider({ kind: 'claude-cli' }).engine === 'claude'
     && migrateProvider({ kind: 'openai-compatible' }).kind === 'openai-compatible'
-    && normalizeEngine('bogus') === 'kimi' && migrateProvider({ kind: 'ollama' }).engine === 'kimi');
+    && normalizeEngine('bogus') === 'kimi' && migrateProvider({ kind: 'ollama' }).engine === 'codex');
 }
 
 {

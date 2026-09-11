@@ -1403,7 +1403,8 @@
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <span class="select-tag" hidden><select id="model"></select></span>
-              <button type="button" id="scopeButton" class="composer-mode mode-chat" title="What this conversation can do">Just chat</button>
+              <select id="permissionSel" class="composer-mode" title="Permission level"><option value="approve">Read only</option><option value="auto">Workspace edits</option><option value="full">Full access</option></select>
+              <select id="reasoningSel" class="composer-mode" title="Reasoning mode"><option value="auto">Reasoning: Auto</option><option value="on">Reasoning: On</option><option value="off">Reasoning: Off</option></select>
             </span>
             <button id="steer" title="Continue the current task with this message" hidden>Steer</button>
             <button id="stopRun" title="Stop the current run" hidden>Stop</button>

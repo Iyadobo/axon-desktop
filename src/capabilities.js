@@ -1,7 +1,7 @@
 // A small, provider-neutral contract that keeps the UI, system instruction,
 // and browser screenshot gate in agreement. Metadata is resolved by main.js;
 // unknown is intentionally conservative for image input.
-function modelCapabilityReport({ model, productMode = 'chat', providerKind = 'ollama', advertisedVision = null } = {}) {
+function modelCapabilityReport({ model, productMode = 'chat', providerKind = 'ollama', advertisedVision = null, advertisedReasoning = null } = {}) {
   const mode = ['chat', 'code', 'agent'].includes(productMode) ? productMode : 'chat';
   const vision = advertisedVision === true;
   const visionStatus = advertisedVision === true ? 'verified' : advertisedVision === false ? 'not-supported' : 'not-verified';
@@ -16,6 +16,8 @@ function modelCapabilityReport({ model, productMode = 'chat', providerKind = 'ol
     workspaceTools: hasWorkspaceTools,
     browser: hasWorkspaceTools,
     browserScreenshot: hasWorkspaceTools && vision,
+    reasoning: advertisedReasoning === true,
+    reasoningStatus: advertisedReasoning === true ? 'verified' : advertisedReasoning === false ? 'not-supported' : 'not-verified',
   };
 }
 

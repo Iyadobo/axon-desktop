@@ -160,7 +160,9 @@ function migrateProvider(profile) {
   return {
     ...profile,
     kind: normalizeProviderKind(profile.kind),
-    engine: normalizeEngine(profile.engine ?? 'kimi'),
+    // Ollama's default workspace route is Codex; other provider kinds retain
+    // the historical Kimi fallback unless their profile specifies an engine.
+    engine: normalizeEngine(profile.engine ?? (normalizeProviderKind(profile.kind) === 'ollama' ? 'codex' : 'kimi')),
   };
 }
 

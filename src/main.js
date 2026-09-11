@@ -210,6 +210,7 @@ async function engineAvailability() {
 let config = null;
 let nocliConfigHome = null;
 const visionCapability = new Map();
+const reasoningCapability = new Map();
 function providerSecretsPath() { return path.join(nocliConfigHome || app.getPath('userData'), 'provider-secrets.json'); }
 function loadProviderSecrets() {
   try { return JSON.parse(fs.readFileSync(providerSecretsPath(), 'utf8')); } catch { return {}; }
@@ -390,10 +391,23 @@ async function modelSupportsVision(model) {
     visionCapability.set(model, supported); return supported;
   } catch { return null; } // unknown: let the one-shot recovery handle nonstandard servers
 }
+async function modelSupportsReasoning(model) {
+  if (reasoningCapability.has(model)) return reasoningCapability.get(model);
+  try {
+    const u = runtimeEndpoint('/api/show'); const body = JSON.stringify({ model });
+    const result = await new Promise((resolve, reject) => {
+      const req = http.request(u, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } }, (res) => { let text = ''; res.on('data', (chunk) => (text += chunk)); res.on('end', () => { try { resolve(JSON.parse(text)); } catch { reject(new Error('Invalid model metadata')); } }); });
+      req.on('error', reject); req.setTimeout(5000, () => { req.destroy(); reject(new Error('Model metadata timeout')); }); req.end(body);
+    });
+    const supported = Array.isArray(result.capabilities) ? result.capabilities.includes('thinking') || result.capabilities.includes('reasoning') : null;
+    reasoningCapability.set(model, supported); return supported;
+  } catch { return null; }
+}
 async function resolveModelCapabilities(model, productMode, provider) {
   const isOllama = !provider?.kind || provider.kind === 'ollama';
   const advertisedVision = isOllama ? await modelSupportsVision(model) : null;
-  return modelCapabilityReport({ model, productMode, providerKind: provider?.kind || 'ollama', advertisedVision });
+  const advertisedReasoning = isOllama ? await modelSupportsReasoning(model) : null;
+  return modelCapabilityReport({ model, productMode, providerKind: provider?.kind || 'ollama', advertisedVision, advertisedReasoning });
 }
 async function capabilityBoundPrompt(systemPrompt, model, productMode, provider) {
   const report = await resolveModelCapabilities(model, productMode, provider);
@@ -1163,10 +1177,10 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
     }
     const root = cwd || ensureDefaultWorkspace();
     const scopeLine = productMode === 'agent'
-      ? 'Complete the requested multi-step task in the current workspace. Use your native tools and report the finished result plainly.'
+      ? 'You are in NoCLI.ai Work: coordinate a practical multi-step outcome across documents, research, browser work, and the workspace. Decide the smallest useful plan, execute it, and report the finished result plainly.'
       : productMode === 'chat'
-        ? 'Answer helpfully and concisely.'
-        : 'Work directly in the current repository, verify changes, and report the result plainly.';
+        ? 'You are in NoCLI.ai Chat: have a focused conversation, explain clearly, and do not inspect or change the workspace.'
+        : 'You are in NoCLI.ai Code: work directly in the current repository, make precise implementation changes, verify them, and report the result plainly.';
     const identity = [systemPrompt?.trim(), `You are NoCLI.ai, running through ${spec.label}. ${scopeLine}`].filter(Boolean).join('\n\n');
     const mode = normalizeMode(permissionMode);
     const route = openAiRouteFor(provider);

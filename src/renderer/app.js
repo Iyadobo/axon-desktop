@@ -95,7 +95,10 @@ const FONT_STACKS = {
   mono: '"Cascadia Mono", "SFMono-Regular", Consolas, monospace',
   serif: 'Georgia, "Times New Roman", serif',
 };
-const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Local runtime', kind: 'ollama', engine: 'kimi', endpoint: '', model: '', credentialId: '' };
+// Codex is the preferred workspace harness for the default Ollama route. Users
+// can still choose another installed engine, while provider-specific profiles
+// (OpenCode Go/Zen, API routes) keep their explicit engine selection.
+const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Local runtime', kind: 'ollama', engine: 'codex', endpoint: '', model: '', credentialId: '' };
 // Scope is the single control that replaced the Chat/Code/Work split and the
 // separate permission selector. It still resolves to the productMode and
 // permission the capability contract and the engines expect.
@@ -136,7 +139,7 @@ function selectProductMode(mode) {
   if (activeId && conversations.find((chat) => chat.id === activeId)?.productMode !== settings.productMode) newChat();
   $('prompt')?.focus();
 }
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FF3B30', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FF3B30', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', reasoning: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
 function swarmProviderLimit() { return (currentProviderProfile()?.kind || 'ollama') === 'ollama' ? 3 : null; }
@@ -223,7 +226,7 @@ function loadSettings() {
     }
     settings.providerProfiles = (settings.providerProfiles || []).map((profile) => ({
       ...profile,
-      engine: ENGINE_ORDER.includes(profile.engine) ? profile.engine : (profile.kind === 'claude-cli' ? 'claude' : profile.kind === 'codex-cli' ? 'codex' : 'kimi'),
+      engine: ENGINE_ORDER.includes(profile.engine) ? profile.engine : (profile.kind === 'claude-cli' ? 'claude' : profile.kind === 'codex-cli' ? 'codex' : profile.kind === 'ollama' ? 'codex' : 'kimi'),
       kind: ['ollama', 'openai-compatible', 'responses', 'opencode'].includes(profile.kind) ? profile.kind : 'ollama',
     }));
     applyScope();
@@ -938,7 +941,8 @@ async function refreshModelCapabilityBadge() {
     badge.hidden = false;
     badge.textContent = report.vision ? 'Vision checked' : 'Text-only';
     badge.className = 'model-capability ' + (report.vision ? 'vision' : 'text-only');
-    $('modelBtn').title = model + ' · ' + (report.vision ? 'vision checked' : 'text-only; screenshots disabled');
+    $('modelBtn').title = model + ' · ' + (report.vision ? 'vision checked' : 'text-only; screenshots disabled') + (report.reasoning ? ' · reasoning available' : '');
+    const reasoning = $('reasoningSel'); if (reasoning) { reasoning.disabled = report.reasoningStatus === 'not-supported'; if (reasoning.disabled) reasoning.value = 'off'; }
   } catch { badge.hidden = true; }
 }
 function pickerRows() {
@@ -2304,21 +2308,14 @@ function syncModes() {
     btn.classList.toggle('on', on);
     btn.setAttribute('aria-checked', on ? 'true' : 'false');
   }
-  const badge = $('scopeButton');
-  if (badge) {
-    const meta = scopeMeta();
-    badge.textContent = meta.label;
-    badge.className = 'composer-mode mode-' + settings.scope;
-    badge.title = meta.hint;
-  }
+  const permission = $('permissionSel'); if (permission) { permission.value = settings.permissionMode === 'full' ? 'full' : settings.permissionMode === 'approve' ? 'approve' : 'auto'; permission.disabled = settings.productMode === 'chat'; }
+  const reasoning = $('reasoningSel'); if (reasoning) reasoning.value = settings.reasoning || 'auto';
 }
 for (const btn of document.querySelectorAll('#modes .mode')) {
   btn.onclick = () => { settings.scope = btn.dataset.mode; syncScope(); saveSettings(); };
 }
-$('scopeButton').onclick = () => {
-  settings.scope = SCOPE_ORDER[(SCOPE_ORDER.indexOf(settings.scope) + 1) % SCOPE_ORDER.length];
-  syncScope(); saveSettings();
-};
+$('permissionSel').onchange = () => { const mode = $('permissionSel').value; settings.permissionMode = mode; settings.scope = settings.productMode === 'agent' ? 'full' : mode === 'approve' ? 'read' : mode === 'full' ? 'full' : 'edit'; syncScope(); saveSettings(); };
+$('reasoningSel').onchange = () => { settings.reasoning = $('reasoningSel').value; saveSettings(); };
 $('engineSel').onchange = () => {
   const provider = currentProviderProfile();
   if (!provider) return;
