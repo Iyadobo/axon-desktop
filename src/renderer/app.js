@@ -1871,7 +1871,7 @@ window.nocli.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   }
   if (sessionId) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
-    if (conv && !conv.sessionId) { conv.sessionId = sessionId; saveConvs(); }
+    if (conv && conv.sessionId !== sessionId) { conv.sessionId = sessionId; saveConvs(); }
   }
   activeTurns.delete(requestId); stopping.delete(requestId); steering.delete(requestId);
   renderRecents(); syncComposerState();

@@ -13,7 +13,7 @@ const llamacppRuntime = require('./llamacpp-runtime');
 const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
 const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
 const { runOllamaCloudAgent } = require('./ollama-cloud-agent');
-const { resolveRoute, migrateProvider, normalizeEngine, normalizeProviderKind, scopeInfo, scopeFromLegacy, ENGINE_ORDER, engineInfo } = require('./engines');
+const { resolveRoute, migrateProvider, normalizeEngine, normalizeProviderKind, scopeInfo, scopeFromLegacy, ENGINE_ORDER, engineInfo, isMissingHarnessSession } = require('./engines');
 const { openCodeLaunchConfig } = require('./opencode-adapter');
 const { migrateNocliHome, prepareHarnessContext } = require('./nocli-home');
 
@@ -1177,7 +1177,7 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
       cwd: root, env: { ...process.env, ...context.env, ...spec.env({ model, ...route }) }, windowsHide: true, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
     });
     holder.child = child;
-    let buffer = '', resultSid = sessionId || null, stderr = '', failed = false, delivered = '';
+    let buffer = '', resultSid = sessionId || null, stderr = '', failed = false, delivered = '', failureMessage = '';
     const finish = (ok) => { if (holder.child === child) holder.child = null; send('chat-done', { sessionId: resultSid, ok }); resolve(); };
     const emitText = (text) => {
       const value = String(text || '');
@@ -1219,12 +1219,21 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
             send('chat-step', { type: 'tool_result', result: String(body).slice(0, 4000), isError: part.is_error === true });
           }
         }
-        if (event.type === 'result' && event.is_error) { failed = true; send('chat-error', event.result || `${spec.label} failed to complete this turn.`); }
+        if (event.type === 'result' && event.is_error) {
+          failed = true; failureMessage = event.result || `${spec.label} failed to complete this turn.`;
+          if (!isMissingHarnessSession(engineId, failureMessage)) send('chat-error', failureMessage);
+        }
       }
     });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.on('exit', (code) => {
       if (holder.steer) { holder.steer = false; send('chat-done', { sessionId: resultSid, ok: false, steered: true }); return resolve(); }
+      const missingSession = !!sessionId && isMissingHarnessSession(engineId, `${failureMessage}\n${stderr}`);
+      if (missingSession) {
+        if (holder.child === child) holder.child = null;
+        send('chat-step', { type: 'tool_result', result: `${spec.label} session expired. Retrying this turn in a fresh session.` });
+        return runStreamJsonCli(engineId, { model, prompt, sessionId: null, send, systemPrompt, cwd: root, holder, permissionMode, productMode, provider }).then(resolve);
+      }
       if (code && !failed) send('chat-error', `${spec.label} exited ${code}${stderr ? ': ' + stderr.trim().slice(0, 300) : ''}`);
       finish(!code && !failed);
     });

@@ -179,9 +179,14 @@ function resolveRoute({ scope, engine, providerKind }) {
   return { runner: engineInfo(selected).schema === 'native' ? 'native' : selected, scope: info, engine: selected, reason: null };
 }
 
+function isMissingHarnessSession(engineId, message) {
+  if (normalizeEngine(engineId) !== 'kimi') return false;
+  return /session\s+["'][^"']+["']\s+not found/i.test(String(message || ''));
+}
+
 module.exports = {
   SCOPES, SCOPE_ORDER, ENGINES, ENGINE_ORDER, PROVIDER_KINDS, PROVIDER_LABELS,
   normalizeScope, scopeInfo, scopeFromLegacy,
   normalizeEngine, normalizeProviderKind, engineInfo, engineSupportsProvider, engineRefusal,
-  migrateProvider, resolveRoute,
+  migrateProvider, resolveRoute, isMissingHarnessSession,
 };

@@ -8,7 +8,7 @@ const { createConfigStore } = require('./config');
 const { modelCapabilityReport, capabilityInstruction } = require('./capabilities');
 const { updateRepository, updatePackageLabel, installerExtensions, releaseInstallerNames } = require('./update-policy');
 const { requestWithRetry, cloudIdleTimeoutMs } = require('./ollama-cloud-agent');
-const { resolveRoute, scopeInfo, scopeFromLegacy, engineSupportsProvider, engineRefusal, migrateProvider, normalizeEngine } = require('./engines');
+const { resolveRoute, scopeInfo, scopeFromLegacy, engineSupportsProvider, engineRefusal, migrateProvider, normalizeEngine, isMissingHarnessSession } = require('./engines');
 const { openCodePermission, openCodeLaunchConfig } = require('./opencode-adapter');
 const { nocliHome, migrateNocliHome, prepareHarnessContext } = require('./nocli-home');
 
@@ -22,6 +22,7 @@ ok('browser open normalizes a URL', browserInvocation('browser_open', { url: 'ht
 ok('browser navigation aliases normalize', browserInvocation('browser_navigate', { href: 'https://example.com/next' })?.url === 'https://example.com/next');
 ok('browser search opens a query', browserInvocation('web_search', { query: 'NoCLI.ai agent browser' })?.url === 'https://www.google.com/search?q=NoCLI.ai%20agent%20browser');
 ok('non-browser tools leave the browser alone', browserInvocation('Read', { file_path: 'notes.md' }) === null);
+ok('stale Kimi sessions are recognized for one fresh retry', isMissingHarnessSession('kimi', 'failed to run prompt: Session "907cc426-48c6-4d02-a3f5-b01c5f82105a" not found.') && !isMissingHarnessSession('qwen', 'Session "x" not found.'));
 ok('Windows updates use the Windows installer feed', updateRepository('win32', {}) === 'Iyadobo/nocli.ai-releases' && releaseInstallerNames('win32', '1.2.3').join() === 'nocli.ai-Setup-1.2.3.exe');
 ok('Linux updates use only the Debian package feed', updateRepository('linux', {}) === 'Iyadobo/nocli.ai-debian' && updatePackageLabel('linux') === 'Debian package' && installerExtensions('linux').join() === 'deb' && releaseInstallerNames('linux', '1.2.3').join() === 'nocli.ai_1.2.3_amd64.deb');
 {
