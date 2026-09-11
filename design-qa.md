@@ -59,3 +59,11 @@ final result: passed
 - Deliberate translation: framed desktop chrome, a centered three-mode control, layered sidebar, and a full settings rail were retained as layout ideas; NoCLI uses its own red/black identity, labels, and working controls.
 - Interaction fidelity: menu entries operate real views and controls; settings rail entries scroll to their live settings sections; the canvas paintburst follows the theme accent and is disabled for calm/reduced-motion preferences.
 - Regulation output: 1440 px chat, 1440 px settings, and 390 px chat each reported `overflowX: 0` and `smallTargets: []`. `npm run check` passed 33 checks; `node --check src/renderer/app.js` and `git diff --check` passed.
+
+**Mode-specific canvases — 2026-09-11**
+
+- Source intent: the user requested that CHAT, WORK, and CODE feel like distinct environments rather than permission variants.
+- Captures: `scripts/audit-shell-1440-chat-chat.png`, `scripts/audit-shell-1440-chat-work.png`, `scripts/audit-shell-1440-chat-code.png`, `scripts/audit-shell-390-chat-work.png`, and `scripts/audit-shell-390-chat-code.png`.
+- Result: Chat leads with an animated conversation bubble; Work adds a three-step task desk whose notes prefill the live composer; Code presents workspace selection, code-first context, and Inspect/Debug/Test actions that prefill the same live composer. The composition and headings change by mode alongside their real scope/permission mapping.
+- Motion: the scene uses a short bubble expansion, note drop, or rail reveal. Reduced-motion and the existing Calm setting retain the different static canvas but suppress animation.
+- Regulation output: 1440 px Chat/Work/Code and 390 px Work/Code each reported `overflowX: 0` and `smallTargets: []`. `npm run check` passed 33 checks; renderer/audit syntax and `git diff --check` passed.

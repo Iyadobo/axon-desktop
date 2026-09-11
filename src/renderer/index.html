@@ -1381,6 +1381,28 @@
     <!-- home (empty) -->
     <div id="home">
       <div class="wrap">
+        <div id="modeStage" class="mode-stage" aria-live="polite">
+          <section class="mode-scene mode-scene-chat" data-mode-scene="chat" aria-label="Chat workspace">
+            <div class="chat-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+            <p>Conversation, without the ceremony.</p>
+          </section>
+          <section class="mode-scene mode-scene-work" data-mode-scene="work" aria-label="Work workspace" hidden>
+            <div class="work-desk-head"><span>WORK DESK</span><strong>Turn a loose outcome into a working plan.</strong></div>
+            <div class="work-notes">
+              <button type="button" data-mode-prompt="Break this outcome into a concise plan with milestones and risks."><span>01</span>Shape the plan</button>
+              <button type="button" data-mode-prompt="Research the key constraints and summarize the decision points."><span>02</span>Find the constraints</button>
+              <button type="button" data-mode-prompt="Take the next best action and report back with evidence."><span>03</span>Move it forward</button>
+            </div>
+          </section>
+          <section class="mode-scene mode-scene-code" data-mode-scene="code" aria-label="Code workspace" hidden>
+            <div class="code-rail"><span>PROJECT</span><button type="button" data-mode-action="projects">Choose workspace</button></div>
+            <div class="code-surface">
+              <div class="code-tab"><span class="code-live-dot"></span><span id="codeProjectName">No project selected</span><span>LOCAL</span></div>
+              <div class="code-lines" aria-hidden="true"><span>01</span><b>Inspect the codebase before changing it.</b><span>02</span><b>Run the smallest useful check.</b><span>03</span><b>Ship one verified improvement.</b></div>
+            </div>
+            <div class="code-actions"><button type="button" data-mode-prompt="Inspect this repository and explain the most important files.">Inspect</button><button type="button" data-mode-prompt="Find the likely cause of this bug and propose a minimal fix.">Debug</button><button type="button" data-mode-prompt="Run the relevant tests and summarize what they prove.">Test</button></div>
+          </section>
+        </div>
         <h1 id="greet">Good afternoon.</h1>
         <p class="sub">What are we working on?</p>
         <section id="swarmControls" class="swarm-controls" hidden aria-label="Swarm settings">

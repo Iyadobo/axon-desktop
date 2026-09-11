@@ -5,16 +5,18 @@ const fs = require('fs');
 
 const width = Number(process.argv[2]) || 1440;
 const view = process.argv[3] || 'chat';
+const mode = process.argv[4] || '';
 const height = width <= 400 ? 844 : 900;
 const suffix = String(width);
 const root = path.join(__dirname, '..');
-const output = path.join(__dirname, `audit-shell-${suffix}-${view}.png`);
+const output = path.join(__dirname, `audit-shell-${suffix}-${view}${mode ? '-' + mode : ''}.png`);
 app.setPath('userData', path.join(root, '.electron-data', `audit-shell-${suffix}`));
 app.disableHardwareAcceleration();
 
 const audit = `(() => {
   document.getElementById('loading')?.remove();
   if ('${view}' !== 'chat') switchView('${view}');
+  if ('${mode}') selectProductMode('${mode}');
   const els=[...document.querySelectorAll('h1,h2,h3,h4,p,span,a,li,small,button,td,th,b,summary,figcaption,time,dt,dd')].filter(e=>e.textContent.trim()&&e.offsetParent);
   const leaf=[...document.querySelectorAll('body *')].filter(e=>e.offsetParent&&e.textContent.trim()&&![...e.children].some(c=>c.textContent.trim()));
   const boxes=leaf.map(e=>{const r=e.getBoundingClientRect();return{top:r.top+scrollY,bot:r.bottom+scrollY}}).sort((a,b)=>a.top-b.top);

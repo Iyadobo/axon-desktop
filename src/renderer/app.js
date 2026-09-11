@@ -74,13 +74,37 @@ function syncWorkspaceShell() {
   if ($('recents-label')) $('recents-label').textContent = 'Recents';
   if ($('recentPopupToggle')) $('recentPopupToggle').textContent = 'Recents';
   $('main')?.setAttribute('data-workspace', 'all');
-  if ($('greet')) $('greet').textContent = 'What can we get done?';
-  document.querySelector('#home .sub')?.replaceChildren('Start a conversation or pick a project to work in.');
+  const mode = activeProductMode();
+  const copy = {
+    chat: { title: 'What can we get done?', sub: 'Start a conversation or pick a project to work in.', chips: ['Ask anything', 'Explain code', 'Debug an error', 'Plan a task'] },
+    work: { title: 'What outcome are we moving?', sub: 'Frame the task, give it a path, then steer the work with evidence.', chips: ['Shape a plan', 'Research a decision', 'Delegate a task', 'Review progress'] },
+    code: { title: 'What should we ship?', sub: activeProject() ? ('Working in ' + activeProject().name + '. Start with the codebase, not a guess.') : 'Choose a workspace or describe the change. NoCLI will start with the codebase.', chips: ['Inspect repository', 'Fix a bug', 'Add a feature', 'Run tests'] },
+  }[mode] || {};
+  if ($('greet')) $('greet').textContent = copy.title || 'What can we get done?';
+  document.querySelector('#home .sub')?.replaceChildren(copy.sub || 'Start a conversation or pick a project to work in.');
   const hint = document.querySelector('.home-hint');
   if (hint) hint.textContent = scopeMeta().hint;
   const chips = [...document.querySelectorAll('#chips .chip')];
-  const labels = ['Ask anything', 'Explain code', 'Debug an error', 'Plan a task'];
+  const labels = copy.chips || ['Ask anything', 'Explain code', 'Debug an error', 'Plan a task'];
   chips.forEach((chip, index) => { chip.textContent = labels[index] || chip.textContent; });
+  syncModeScene();
+}
+function syncModeScene({ animate = false } = {}) {
+  const mode = activeProductMode();
+  const stage = $('modeStage');
+  if (!stage) return;
+  stage.dataset.mode = mode;
+  const projectName = activeProject?.()?.name || 'No project selected';
+  if ($('codeProjectName')) $('codeProjectName').textContent = projectName;
+  document.querySelectorAll('[data-mode-scene]').forEach((scene) => {
+    const on = scene.dataset.modeScene === mode;
+    scene.hidden = !on;
+    scene.classList.toggle('active', on);
+  });
+  if (!animate || matchMedia('(prefers-reduced-motion: reduce)').matches || settings.motion === 'calm') return;
+  stage.classList.remove('is-transitioning');
+  void stage.offsetWidth;
+  stage.classList.add('is-transitioning');
 }
 // ---- settings / appearance --------------------------------------------------
 const THEME_PALETTES = {
@@ -137,6 +161,7 @@ function selectProductMode(mode) {
   settings.scope = PRODUCT_MODES[mode];
   syncScope();
   syncProductMode();
+  syncModeScene({ animate: true });
   saveSettings();
   switchView('chat');
   if (activeId && conversations.find((chat) => chat.id === activeId)?.productMode !== settings.productMode) newChat();
@@ -432,7 +457,7 @@ function activeProject() { return projects.find((p) => p.id === activeProjectId)
 function selectProject(id) {
   activeProjectId = id;
   saveState('oactiveProject', activeProjectId);
-  renderProjects(); renderRecents(); updateProjectLabel();
+  renderProjects(); renderRecents(); updateProjectLabel(); syncWorkspaceShell();
 }
 function projectCwd() { return activeProject()?.path || defaultWorkspace || null; }
 function projectSystemPrompt() {
@@ -2318,6 +2343,18 @@ for (const btn of document.querySelectorAll('[data-product-mode]')) {
     event.stopPropagation();
     selectProductMode(btn.dataset.productMode);
   });
+}
+for (const button of document.querySelectorAll('[data-mode-prompt]')) {
+  button.onclick = () => {
+    $('prompt').value = button.dataset.modePrompt || '';
+    $('prompt').dispatchEvent(new Event('input', { bubbles: true }));
+    $('prompt').focus();
+  };
+}
+for (const button of document.querySelectorAll('[data-mode-action]')) {
+  button.onclick = () => {
+    if (button.dataset.modeAction === 'projects') switchView('projects');
+  };
 }
 const TITLE_MENUS = {
   file: [{ label: 'New task', run: () => newChat() }, { label: 'Recent tasks', run: () => $('recentPopupToggle').click() }],
