@@ -1348,9 +1348,12 @@
 <body>
 <div id="loading" role="status" aria-live="polite"><div class="loading-mark"><strong>NOCLI</strong><span id="loadingText">Starting local workspace…</span></div></div>
 <canvas id="grid"></canvas>
+<canvas id="cursorPaint" aria-hidden="true"></canvas>
 <header class="titlebar" aria-label="NoCLI.ai window controls">
   <span class="window-task-label">NOCLI</span>
+  <nav class="window-menubar" aria-label="Application menu"><button type="button" data-title-menu="file">File</button><button type="button" data-title-menu="edit">Edit</button><button type="button" data-title-menu="view">View</button><button type="button" data-title-menu="help">Help</button></nav>
   <nav class="mode-switch" aria-label="Workspace mode"><button type="button" data-product-mode="chat" class="active">CHAT</button><button type="button" data-product-mode="work">WORK</button><button type="button" data-product-mode="code">CODE</button></nav>
+  <div id="titleMenuPopover" class="title-menu-popover" hidden></div>
   <div class="window-spacer"></div>
   <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
   <div class="title-actions"><button id="subagentsToggle" class="utility-icon" title="Subagents" aria-label="Open subagents" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="7" r="2"/><circle cx="17" cy="7" r="2"/><circle cx="12" cy="17" r="2"/><path d="M8.7 8.1 10.8 15M15.3 8.1 13.2 15"/></svg><span>Subagents</span></button><button id="browserToggle" class="utility-icon" title="Open agent browser" aria-label="Open agent browser" aria-expanded="false"><img src="../assets/browser-googlechrome.svg" alt="" /><span>Browser</span></button><button class="window-control" id="windowMinimize" aria-label="Minimize"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button class="window-control" id="windowMaximize" aria-label="Maximize"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9"/></svg></button><button class="window-control close" id="windowClose" aria-label="Close to tray"><svg viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></svg></button></div>
@@ -1487,7 +1490,7 @@
 <div class="modal" id="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true">
   <div class="modal-card">
     <div class="modal-head settings-head"><div><span class="settings-wordmark">NOCLI</span><h3 id="settingsTitle">Settings</h3><p>Workspace, engines, connections, and appearance.</p></div><button class="x" id="settingsClose" type="button" aria-label="Close settings">×</button></div>
-    <div class="modal-body">
+    <div class="settings-workspace"><aside class="settings-rail" aria-label="Settings navigation"><div class="settings-rail-label">Personal</div><button type="button" class="active" data-settings-target="#sysPrompt">General</button><button type="button" data-settings-target="#modes">Permissions</button><button type="button" data-settings-target="#engineSel">Engines</button><div class="settings-rail-label">Models</div><button type="button" data-settings-target="#providerProfileSel">Connections</button><button type="button" data-settings-target="#runtimeSel">Runtime</button><button type="button" data-settings-target="#cloudModelsRefresh">Library</button><div class="settings-rail-label">Workspace</div><button type="button" data-settings-target="#workspacePath">Projects</button><button type="button" data-settings-target="#themeSel">Appearance</button><button type="button" data-settings-target="#lanServerChk">Network</button></aside><div class="modal-body">
       <label class="fld"><span>NoCLI.ai instructions</span>
         <textarea id="sysPrompt" placeholder="Define the assistant's behavior, tone, identity, and constraints…"></textarea>
         <div class="lan-info">Applied to every new NoCLI.ai session. NoCLI.ai owns its identity, instructions, workspace, and tool policy.</div>
@@ -1589,7 +1592,7 @@
         <div class="update-actions" style="margin-top:8px"><button id="appUpdateBtn">Check for NoCLI.ai update</button><button id="depsBtn">Download missing dependencies</button></div>
         <div id="maintenanceInfo" class="lan-info">NoCLI.ai uses your local Ollama runtime and installed official CLIs.</div>
       </div>
-    </div>
+    </div></div>
   </div>
 </div>
 <div class="modal" id="modelDownload" role="dialog" aria-modal="true" aria-labelledby="modelDownloadTitle">

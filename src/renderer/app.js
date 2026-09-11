@@ -2319,6 +2319,46 @@ for (const btn of document.querySelectorAll('[data-product-mode]')) {
     selectProductMode(btn.dataset.productMode);
   });
 }
+const TITLE_MENUS = {
+  file: [{ label: 'New task', run: () => newChat() }, { label: 'Recent tasks', run: () => $('recentPopupToggle').click() }],
+  edit: [{ label: 'Focus composer', run: () => $('prompt').focus() }, { label: 'Open model picker', run: () => $('modelBtn').click() }],
+  view: [{ label: 'Tasks', run: () => switchView('chat') }, { label: 'Projects', run: () => switchView('projects') }, { label: 'Automations', run: () => switchView('automations') }],
+  help: [{ label: 'Settings', run: () => openSettings() }, { label: 'Open browser', run: () => setBrowserOpen(true) }],
+};
+function closeTitleMenu() {
+  const menu = $('titleMenuPopover');
+  if (!menu) return;
+  menu.hidden = true; menu.replaceChildren();
+  document.querySelectorAll('[data-title-menu]').forEach((button) => button.setAttribute('aria-expanded', 'false'));
+}
+function openTitleMenu(button) {
+  const menu = $('titleMenuPopover'); const actions = TITLE_MENUS[button.dataset.titleMenu] || [];
+  if (!menu) return;
+  if (!menu.hidden && menu.dataset.owner === button.dataset.titleMenu) return closeTitleMenu();
+  menu.dataset.owner = button.dataset.titleMenu; menu.replaceChildren();
+  actions.forEach((action) => {
+    const item = document.createElement('button'); item.type = 'button'; item.textContent = action.label;
+    item.onclick = () => { closeTitleMenu(); action.run(); };
+    menu.appendChild(item);
+  });
+  const box = button.getBoundingClientRect();
+  menu.style.left = `${Math.round(box.left)}px`; menu.hidden = false;
+  document.querySelectorAll('[data-title-menu]').forEach((item) => item.setAttribute('aria-expanded', String(item === button)));
+}
+for (const button of document.querySelectorAll('[data-title-menu]')) button.onclick = () => openTitleMenu(button);
+document.addEventListener('pointerdown', (event) => {
+  const menu = $('titleMenuPopover');
+  if (menu && !menu.hidden && !menu.contains(event.target) && !event.target.closest('[data-title-menu]')) closeTitleMenu();
+});
+for (const button of document.querySelectorAll('[data-settings-target]')) {
+  button.onclick = () => {
+    const target = document.querySelector(button.dataset.settingsTarget);
+    const section = target?.closest('.fld, .maintenance');
+    if (!section) return;
+    section.scrollIntoView({ behavior: settings.motion === 'calm' ? 'auto' : 'smooth', block: 'start' });
+    document.querySelectorAll('[data-settings-target]').forEach((item) => item.classList.toggle('active', item === button));
+  };
+}
 $('automationForm').onsubmit = (event) => {
   event.preventDefault();
   const name = $('automationName').value.trim(); const prompt = $('automationPrompt').value.trim(); const cadence = $('automationCadence').value;
@@ -2718,6 +2758,46 @@ function refreshGridColor() {
   function schedule() { if (raf) return; raf = requestAnimationFrame(() => { raf = null; draw(); }); }
   addEventListener('resize', resize);
   if (!reduce) addEventListener('mousemove', (e) => { mx = e.clientX; my = e.clientY; schedule(); }, { passive: true });
+  resize();
+})();
+
+// A small pigment wake makes the pointer feel tied to the active theme without
+// becoming UI chrome. It is off for reduced motion and the calm motion setting.
+(function () {
+  const canvas = $('cursorPaint'); if (!canvas) return;
+  const context = canvas.getContext('2d'); const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const particles = []; let width = 0, height = 0, last = 0, frame = 0;
+  const hex = () => {
+    const value = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim().replace('#', '');
+    return /^[0-9a-f]{6}$/i.test(value) ? [parseInt(value.slice(0, 2), 16), parseInt(value.slice(2, 4), 16), parseInt(value.slice(4, 6), 16)] : [255, 59, 48];
+  };
+  function resize() {
+    const ratio = Math.min(2, devicePixelRatio || 1); width = innerWidth; height = innerHeight;
+    canvas.width = width * ratio; canvas.height = height * ratio; canvas.style.width = width + 'px'; canvas.style.height = height + 'px'; context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  }
+  function emit(x, y, force) {
+    if (reduced.matches || settings?.motion === 'calm') return;
+    const now = performance.now(); if (!force && now - last < 24) return; last = now;
+    const [r, g, b] = hex(); const count = force ? 12 : 5;
+    for (let index = 0; index < count; index += 1) {
+      const angle = Math.random() * Math.PI * 2; const speed = (force ? 1.1 : .45) + Math.random() * (force ? 1.8 : .8);
+      particles.push({ x, y, dx: Math.cos(angle) * speed, dy: Math.sin(angle) * speed, radius: 1 + Math.random() * (force ? 3.1 : 1.6), life: 1, fade: .025 + Math.random() * .032, r, g, b });
+    }
+    if (particles.length > 150) particles.splice(0, particles.length - 150);
+    if (!frame) frame = requestAnimationFrame(draw);
+  }
+  function draw() {
+    frame = 0; context.clearRect(0, 0, width, height);
+    for (let index = particles.length - 1; index >= 0; index -= 1) {
+      const particle = particles[index]; particle.x += particle.dx; particle.y += particle.dy; particle.dy += .018; particle.life -= particle.fade;
+      if (particle.life <= 0) { particles.splice(index, 1); continue; }
+      context.beginPath(); context.fillStyle = `rgba(${particle.r},${particle.g},${particle.b},${(particle.life * .62).toFixed(3)})`;
+      context.ellipse(particle.x, particle.y, particle.radius * (1 + (1 - particle.life) * .9), particle.radius, Math.atan2(particle.dy, particle.dx), 0, Math.PI * 2); context.fill();
+    }
+    if (particles.length) frame = requestAnimationFrame(draw);
+  }
+  addEventListener('resize', resize); addEventListener('pointermove', (event) => emit(event.clientX, event.clientY, false), { passive: true });
+  addEventListener('pointerdown', (event) => emit(event.clientX, event.clientY, true), { passive: true });
   resize();
 })();
 

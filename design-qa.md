@@ -51,3 +51,11 @@ The titlebar, sidebar hierarchy, and composer were readable in the combined 2880
 - Interaction and regulation check: Settings open/close behavior remains intact; `overflowX: 0`; application checks passed. No P0/P1/P2 issue remains. A focused crop was unnecessary because the full-page boundary and content edges are clearly visible in the combined comparison.
 
 final result: passed
+
+**Codex-inspired red/black shell — 2026-09-11**
+
+- Visual reference: `C:\Users\Iyad\AppData\Local\Temp\codex-clipboard-2aff2e21-5569-4ef1-bee2-f723fe2597d1.png` and `C:\Users\Iyad\AppData\Local\Temp\codex-clipboard-51ff82c3-a790-455d-9701-1b476e96e038.png`.
+- Implementation captures: `scripts/audit-shell-1440-chat.png`, `scripts/audit-shell-1440-settings.png`, and `scripts/audit-shell-390-chat.png`.
+- Deliberate translation: framed desktop chrome, a centered three-mode control, layered sidebar, and a full settings rail were retained as layout ideas; NoCLI uses its own red/black identity, labels, and working controls.
+- Interaction fidelity: menu entries operate real views and controls; settings rail entries scroll to their live settings sections; the canvas paintburst follows the theme accent and is disabled for calm/reduced-motion preferences.
+- Regulation output: 1440 px chat, 1440 px settings, and 390 px chat each reported `overflowX: 0` and `smallTargets: []`. `npm run check` passed 33 checks; `node --check src/renderer/app.js` and `git diff --check` passed.
