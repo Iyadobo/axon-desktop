@@ -569,7 +569,13 @@ function ensureCliCommand() {
   // Persist it for future Command Prompt / Windows Terminal sessions, without touching system PATH.
   const escapedDir = dir.replace(/'/g, "''");
   const ps = `$d='${escapedDir}';$p=[Environment]::GetEnvironmentVariable('Path','User');if(-not (($p -split ';') | Where-Object { $_ -eq $d })){[Environment]::SetEnvironmentVariable('Path',(($p.TrimEnd(';')+';'+$d).TrimStart(';')),'User')};Add-Type -Name NoCLIEnv -Namespace Native -MemberDefinition '[DllImport("user32.dll",SetLastError=true,CharSet=CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd,uint Msg,IntPtr wParam,string lParam,uint flags,uint timeout,out IntPtr result);' -ErrorAction SilentlyContinue;$r=[IntPtr]::Zero;[Native.NoCLIEnv]::SendMessageTimeout([IntPtr]0xffff,0x1a,[IntPtr]::Zero,'Environment',2,1000,[ref]$r)|Out-Null`;
-  try { spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, stdio: 'ignore' }); } catch {}
+  // Shortcut icon cache refresh is optional. Never synchronously wait for
+  // PowerShell here: a stalled shell prevents Electron from painting its first
+  // window and makes the app appear to launch invisibly.
+  try {
+    const refresher = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, detached: true, stdio: 'ignore' });
+    refresher.unref();
+  } catch {}
   return dir;
 }
 function openGenuineTerminal() {
