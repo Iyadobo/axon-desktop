@@ -125,7 +125,7 @@ const FONT_STACKS = {
 const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Local runtime', kind: 'ollama', engine: 'codex', endpoint: '', model: '', credentialId: '' };
 // Free Model is the out-of-the-box tier: the local OmniRoute gateway, model
 // `auto`, no key. It is presented simply as a model so it needs no explanation.
-const FREE_MODEL_PROVIDER = { id: 'free-model', name: 'Free Model', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto/fast', credentialId: '' };
+const FREE_MODEL_PROVIDER = { id: 'free-model', name: 'Cartilage', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto/fast', credentialId: '' };
 function isFreeModelProfile(profile) { return /20128/.test(String(profile?.endpoint || '')); }
 // Scope is the single control that replaced the Chat/Code/Work split and the
 // separate permission selector. It still resolves to the productMode and
@@ -279,7 +279,7 @@ function loadSettings() {
     let freeChanged = false;
     let freeProfile = settings.providerProfiles.find((profile) => isFreeModelProfile(profile));
     if (!freeProfile) { freeProfile = { ...FREE_MODEL_PROVIDER }; settings.providerProfiles.unshift(freeProfile); freeChanged = true; }
-    if (freeProfile.name !== 'Free Model') { freeProfile.name = 'Free Model'; freeChanged = true; }
+    if (freeProfile.name !== 'Cartilage') { freeProfile.name = 'Cartilage'; freeChanged = true; }
     if (freeProfile.kind !== 'openai-compatible' || freeProfile.engine !== 'opencode') { freeProfile.kind = 'openai-compatible'; freeProfile.engine = 'opencode'; freeChanged = true; }
     if (!String(freeProfile.model || '').trim() || freeProfile.model === 'auto') { freeProfile.model = 'auto/fast'; freeChanged = true; }
     if (!saved.freeModelDefault) { settings.activeProviderProfileId = freeProfile.id; settings.freeModelDefault = true; freeChanged = true; }
@@ -930,7 +930,12 @@ let pickerCursor = 0;
 // Family marks. Where a vendor's mark is available under a free licence it is
 // used (see model-logos.js); where it is not — Microsoft's Phi, IBM's Granite,
 // OpenAI — the family keeps an NoCLI.ai glyph rather than an imitation of theirs.
+// Cartilage (the free tier) and the unknown-provider default share a stacked
+// diamond mark; the default is the same mark upside down.
+const LAYERS_CARTILAGE = '<rect x="6.6" y="9.6" width="10.8" height="10.8" rx="2.8" transform="rotate(45 12 15)" fill="currentColor" opacity="0.25"/><rect x="6.6" y="6.6" width="10.8" height="10.8" rx="2.8" transform="rotate(45 12 12)" fill="currentColor" opacity="0.45"/><rect x="6.6" y="3.6" width="10.8" height="10.8" rx="2.8" transform="rotate(45 12 9)" fill="currentColor"/>';
+const LAYERS_UNKNOWN = '<rect x="6.6" y="3.6" width="10.8" height="10.8" rx="2.8" transform="rotate(45 12 9)" fill="currentColor" opacity="0.25"/><rect x="6.6" y="6.6" width="10.8" height="10.8" rx="2.8" transform="rotate(45 12 12)" fill="currentColor" opacity="0.45"/><rect x="6.6" y="9.6" width="10.8" height="10.8" rx="2.8" transform="rotate(45 12 15)" fill="currentColor"/>';
 const MODEL_FAMILIES = [
+  { test: /auto\/fast|cartilage/i, name: 'Auto', color: 'var(--color-text)', svg: LAYERS_CARTILAGE },
   { test: /^llama|^codellama/i, name: 'Llama', brand: 'meta' },
   { test: /^qwen/i, name: 'Qwen', brand: 'qwen' },
   { test: /^deepseek/i, name: 'DeepSeek', brand: 'deepseek' },
@@ -942,8 +947,8 @@ const MODEL_FAMILIES = [
   { test: /^llava|^bakllava|vision/i, name: 'Vision', color: '#22c1c3', shape: '<path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.4"/>' },
   { test: /^nomic|embed/i, name: 'Embedding', color: '#9aa0aa', shape: '<circle cx="6" cy="12" r="2.4"/><circle cx="12" cy="6" r="2.4"/><circle cx="18" cy="12" r="2.4"/><path d="M6 12 12 6l6 6"/>' },
 ];
-// Anything unrecognised is still an Ollama-served model, so it gets Ollama's mark.
-const DEFAULT_FAMILY = { name: 'Model', brand: 'ollama' };
+// Anything unrecognised is an unknown provider, so it gets the upside-down mark.
+const DEFAULT_FAMILY = { name: 'Model', color: '#9aa0aa', svg: LAYERS_UNKNOWN };
 const familyOf = (name) => MODEL_FAMILIES.find((f) => f.test.test(String(name || ''))) || DEFAULT_FAMILY;
 // Several brand colours are near-black (Ollama, Anthropic) and would disappear
 // on a dark surface, so very dark marks are blended toward the theme's text
@@ -966,7 +971,9 @@ function familyMarkup(family) {
   }
   return {
     color: family.color || '#9aa0aa',
-    svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true">' + (family.shape || '') + '</svg>',
+    svg: family.svg
+      ? '<svg viewBox="0 0 24 24" fill="none" role="img" aria-label="' + esc(family.name) + '">' + family.svg + '</svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true">' + (family.shape || '') + '</svg>',
   };
 }
 // "8x7B" and "1.5B" both need to become a comparable number.
@@ -993,8 +1000,8 @@ function syncModelButton() {
 async function refreshModelCapabilityBadge() {
   const badge = $('modelCapabilityBadge'); const model = $('model').value;
   if (!badge || !model) { if (badge) badge.hidden = true; return; }
-  // Free Model is a router, not one model, so a single capability verdict is noise.
-  if (modelEntryFor(model)?.label === 'Free Model') { badge.hidden = true; return; }
+  // Cartilage is a router, not one model, so a single capability verdict is noise.
+  if (modelEntryFor(model)?.label === 'Cartilage') { badge.hidden = true; return; }
   try {
     const report = await window.nocli.modelCapabilities(model, settings.productMode, currentProviderProfile());
     if ($('model').value !== model) return;
@@ -1652,7 +1659,7 @@ function profileModels(profile) {
     return models;
   }
   if (isFreeModelProfile(profile)) {
-    return [{ name: name || 'auto/fast', label: 'Free Model', source: 'api', details: { parameter_size: 'No key' } }];
+    return [{ name: name || 'auto/fast', label: 'Cartilage', source: 'api', details: { parameter_size: 'No key' } }];
   }
   if (/openrouter\.ai/i.test(String(profile.endpoint || ''))) {
     const models = [{ name: 'openrouter/free', source: 'api', details: { parameter_size: 'Auto · Free' } }];
@@ -1826,7 +1833,7 @@ function startApiProviderSetup() {
 }
 const PROVIDER_PRESETS = {
   custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
-  freemodel: { name: 'Free Model', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto/fast', omni: true },
+  freemodel: { name: 'Cartilage', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto/fast', omni: true },
   free: { name: 'Free tier (OpenRouter)', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: 'openrouter/free', free: true },
   openai: { name: 'OpenAI', kind: 'responses', endpoint: 'https://api.openai.com/v1', model: '' },
   openrouter: { name: 'OpenRouter', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: '' },
@@ -1893,7 +1900,7 @@ async function applyFreeModelPreset() {
     profile = { ...FREE_MODEL_PROVIDER };
     settings.providerProfiles.push(profile);
   } else {
-    profile.name = 'Free Model';
+    profile.name = 'Cartilage';
     profile.kind = 'openai-compatible';
     profile.engine = 'opencode';
     profile.endpoint = 'http://127.0.0.1:20128/v1';
@@ -1901,16 +1908,16 @@ async function applyFreeModelPreset() {
   }
   settings.activeProviderProfileId = profile.id;
   saveSettings(); renderProviderProfiles(); syncEngineSelect();
-  $('providerImportStatus').textContent = 'Free Model starting · launching the local OmniRoute gateway…';
+  $('providerImportStatus').textContent = 'Cartilage starting · launching the local OmniRoute gateway…';
   let status = { running: false };
   try { status = await window.nocli.omnirouteEnsure(); } catch {}
   if (!status.running && !status.installed) {
-    $('providerImportStatus').textContent = 'Free Model needs the OmniRoute gateway. Installing it now (this can take a few minutes)…';
+    $('providerImportStatus').textContent = 'Cartilage needs the OmniRoute gateway. Installing it now (this can take a few minutes)…';
     try { status = await window.nocli.omnirouteInstall(); } catch {}
   }
   $('providerImportStatus').textContent = status.running
-    ? 'Free Model ready · OmniRoute routes across free providers automatically.'
-    : 'Free Model could not start OmniRoute. ' + (status.error || 'The gateway is not responding yet.');
+    ? 'Cartilage ready · OmniRoute routes across free providers automatically.'
+    : 'Cartilage could not start OmniRoute. ' + (status.error || 'The gateway is not responding yet.');
   applyProviderModelChoices();
   warmActiveProvider();
 }
