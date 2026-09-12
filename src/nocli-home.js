@@ -34,7 +34,7 @@ function prepareHarnessContext(home, details = {}) {
   fs.mkdirSync(directory, { recursive: true });
   const profile = path.join(directory, 'current-turn.json');
   writeJson(profile, {
-    schemaVersion: 1, product: 'NoCLI.ai', engine,
+    schemaVersion: 1, product: 'Calcium', engine,
     providerKind: String(details.providerKind || 'ollama'),
     providerName: String(details.providerName || ''), model: String(details.model || ''),
     scope: String(details.scope || 'chat'), workspace: String(details.workspace || ''),

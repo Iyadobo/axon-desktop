@@ -1,11 +1,11 @@
 {
-  "name": "nocli-ai",
+  "name": "calcium-desktop",
   "version": "0.7.29",
   "author": {
-    "name": "NoCLI.ai contributors",
-    "email": "opensource@nocli.local"
+    "name": "Calcium contributors",
+    "email": "opensource@calcium.local"
   },
-  "description": "NoCLI.ai is a local-first desktop workspace for models, tools, and official harnesses without living in a terminal.",
+  "description": "Calcium is a local-first desktop workspace for models, tools, and official harnesses without living in a terminal.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "ai.nocli.desktop",
-    "productName": "NoCLI.ai",
+    "productName": "Calcium",
     "asar": true,
     "files": [
       "src/**",
@@ -45,18 +45,18 @@
       "category": "Development"
     },
     "appImage": {
-      "artifactName": "nocli.ai-${version}.${ext}"
+      "artifactName": "Calcium-${version}.${ext}"
     },
     "deb": {
       "artifactName": "nocli.ai_${version}_amd64.${ext}",
-      "maintainer": "NoCLI.ai contributors",
+      "maintainer": "Calcium contributors",
       "synopsis": "Local-first AI workspace",
-      "description": "NoCLI.ai is a local-first desktop workspace for models, tools, and official harnesses without living in a terminal."
+      "description": "Calcium is a local-first desktop workspace for models, tools, and official harnesses without living in a terminal."
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "nocli.ai-Setup-${version}.${ext}"
+      "artifactName": "Calcium-Setup-${version}.${ext}"
     }
   },
   "devDependencies": {

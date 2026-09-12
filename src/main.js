@@ -1,4 +1,4 @@
-// Electron main: tray + window + Ollama lifecycle + native NoCLI.ai chat and terminal modes.
+// Electron main: tray + window + Ollama lifecycle + native Calcium chat and terminal modes.
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, dialog, shell, WebContentsView, safeStorage, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -21,7 +21,10 @@ const { migrateNocliHome, prepareHarnessContext } = require('./nocli-home');
 try { app.setAppUserModelId('io.nocli.workspace'); } catch {}
 // A stable display name also stabilizes Electron's userData folder across dev
 // and packaged launches (Windows otherwise kept both `nocli` and `NoCLI.ai`).
-try { app.setName('NoCLI.ai'); } catch {}
+try { app.setName('Calcium'); } catch {}
+// Keep the established data directory for the first Calcium release so saved
+// projects, chats, connections, and official-harness context are not stranded.
+try { app.setPath('userData', path.join(app.getPath('appData'), 'NoCLI.ai')); } catch {}
 
 function migrateLegacyUserData(targetDirectory) {
   const targetSettings = path.join(targetDirectory, 'settings.json');
@@ -90,7 +93,7 @@ const UPDATE_REPOSITORY = updateRepository(process.platform);
 
 let tray = null, win = null, ollamaProc = null, browserPanel = null, browserBridge = null, browserBridgeEndpoint = '', browserBridgeToken = '', isQuitting = false;
 let updateCheckTimer = null, announcedUpdateVersion = null;
-let trayLabel = 'NoCLI.ai: starting…';
+let trayLabel = 'Calcium: starting…';
 // Each conversation gets its own holder. A slow or unavailable model must never
 // own the whole window (or somebody else's Stop button).
 const localHolders = new Map();
@@ -273,21 +276,21 @@ function notifyModelsChanged(payload = {}) {
   win.webContents.send('models-changed', payload);
 }
 async function ensureOllama() {
-  if (runtimeKind === 'exo') return setTray('NoCLI.ai: Exo runtime selected');
-  if (runtimeKind === 'llamacpp') return setTray('NoCLI.ai: llama.cpp RPC runtime');
-  if (await isOllamaUp()) { setTray('NoCLI.ai: running'); notifyModelsChanged({ runtime: 'ollama', ready: true }); return true; }
+  if (runtimeKind === 'exo') return setTray('Calcium: Exo runtime selected');
+  if (runtimeKind === 'llamacpp') return setTray('Calcium: llama.cpp RPC runtime');
+  if (await isOllamaUp()) { setTray('Calcium: running'); notifyModelsChanged({ runtime: 'ollama', ready: true }); return true; }
   let launchError = null;
   const child = spawn('ollama', ['serve'], { windowsHide: true, shell: false });
   ollamaProc = child;
-  child.on('error', (error) => { launchError = error; if (ollamaProc === child) ollamaProc = null; setTray('NoCLI.ai: Ollama unavailable'); });
-  child.on('exit', () => { if (ollamaProc === child) ollamaProc = null; setTray('NoCLI.ai: stopped'); });
+  child.on('error', (error) => { launchError = error; if (ollamaProc === child) ollamaProc = null; setTray('Calcium: Ollama unavailable'); });
+  child.on('exit', () => { if (ollamaProc === child) ollamaProc = null; setTray('Calcium: stopped'); });
   child.stderr?.on('data', () => {});
   for (let i = 0; i < 40; i++) {
     await sleep(500);
     if (await isOllamaUp()) { setTray('Ollama: running'); notifyModelsChanged({ runtime: 'ollama', ready: true }); return true; }
     if (launchError) break;
   }
-  setTray('NoCLI.ai: failed to start');
+  setTray('Calcium: failed to start');
   return false;
 }
 
@@ -324,7 +327,7 @@ function checkExo(url) {
 function fetchCloudCatalogue() {
   return new Promise((resolve, reject) => {
     const req = https.get('https://ollama.com/api/tags', {
-      headers: { 'User-Agent': `NoCLI.ai/${app.getVersion()}`, Accept: 'application/json' },
+      headers: { 'User-Agent': `Calcium/${app.getVersion()}`, Accept: 'application/json' },
     }, (res) => {
       if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Ollama Cloud returned ${res.statusCode}`)); }
       let body = '';
@@ -538,7 +541,7 @@ function ensureCliCommand() {
   const terminal = [
     '@echo off', 'title NoCLI.ai Terminal', 'color 0F', `cd /d "${workspace}"`, 'prompt NOCLI $P$G',
   ].join('\r\n');
-  const command = ['@echo off', 'if /I "%~1"=="terminal" (', '  start "NoCLI.ai Terminal" "%ComSpec%" /k "%~dp0nocli-terminal.cmd"', '  exit /b 0', ')', `start "NoCLI.ai" ${launch}`, 'exit /b 0', ''].join('\r\n');
+  const command = ['@echo off', 'if /I "%~1"=="terminal" (', '  start "Calcium Terminal" "%ComSpec%" /k "%~dp0nocli-terminal.cmd"', '  exit /b 0', ')', `start "Calcium" ${launch}`, 'exit /b 0', ''].join('\r\n');
   fs.writeFileSync(path.join(dir, 'nocli-terminal.cmd'), terminal, 'utf8');
   fs.writeFileSync(path.join(dir, 'nocli.cmd'), command, 'utf8');
   process.env.PATH = dir + ';' + (process.env.PATH || '');
@@ -824,7 +827,7 @@ function runOfficialCodex(model, prompt, sessionId, send, systemPrompt, cwd, hol
     const sandbox = { approve: 'read-only', auto: 'workspace-write', full: 'danger-full-access' }[normalizeMode(permissionMode)];
     const instruction = [
       systemPrompt?.trim(),
-      productMode === 'agent' ? 'You are NoCLI.ai Work. Execute the requested multi-step task toward a finished outcome. Use the browser when research or website interaction is needed; delegate only concrete, independent workstreams when they materially help; keep all workers within the parent workspace and permission boundary.' : 'You are NoCLI.ai Code. Work directly in the current repository, use the browser only for focused implementation research, verify your changes, and keep the user informed. Do not delegate or turn the task into an autonomous workstream.',
+      productMode === 'agent' ? 'You are Calcium Work. Execute the requested multi-step task toward a finished outcome. Use the browser when research or website interaction is needed; delegate only concrete, independent workstreams when they materially help; keep all workers within the parent workspace and permission boundary.' : 'You are Calcium Code. Work directly in the current repository, use the browser only for focused implementation research, verify your changes, and keep the user informed. Do not delegate or turn the task into an autonomous workstream.',
       prompt,
     ].filter(Boolean).join('\n\n');
     const providerKind = provider?.kind || 'ollama';
@@ -1211,11 +1214,11 @@ function runStreamJsonCli(engineId, { model, prompt, sessionId, send, systemProm
     }
     const root = cwd || ensureDefaultWorkspace();
     const scopeLine = productMode === 'agent'
-      ? 'You are in NoCLI.ai Work: coordinate a practical multi-step outcome across documents, research, browser work, and the workspace. Decide the smallest useful plan, execute it, and report the finished result plainly.'
+      ? 'You are in Calcium Work: coordinate a practical multi-step outcome across documents, research, browser work, and the workspace. Decide the smallest useful plan, execute it, and report the finished result plainly.'
       : productMode === 'chat'
-        ? 'You are in NoCLI.ai Chat: have a focused conversation, explain clearly, and do not inspect or change the workspace.'
-        : 'You are in NoCLI.ai Code: work directly in the current repository, make precise implementation changes, verify them, and report the result plainly.';
-    const identity = [systemPrompt?.trim(), `You are NoCLI.ai, running through ${spec.label}. ${scopeLine}`].filter(Boolean).join('\n\n');
+        ? 'You are in Calcium Chat: have a focused conversation, explain clearly, and do not inspect or change the workspace.'
+        : 'You are in Calcium Code: work directly in the current repository, make precise implementation changes, verify them, and report the result plainly.';
+    const identity = [systemPrompt?.trim(), `You are Calcium, running through ${spec.label}. ${scopeLine}`].filter(Boolean).join('\n\n');
     const mode = normalizeMode(permissionMode);
     const route = openAiRouteFor(provider);
     const instruction = [identity, prompt].filter(Boolean).join('\n\n');
@@ -1322,13 +1325,13 @@ function runOpenCode(model, prompt, sessionId, send, systemPrompt, cwd, holder, 
       send('chat-error', error.message); send('chat-done', { sessionId, ok: false }); return resolve();
     }
     const scopeLine = scope === 'chat'
-      ? 'Answer helpfully and concisely. NoCLI.ai has disabled every tool for this turn.'
+        ? 'Answer helpfully and concisely. Calcium has disabled every tool for this turn.'
       : scope === 'read'
-        ? 'Inspect and explain the current workspace. NoCLI.ai has disabled edits, shell commands, delegation, and external paths.'
+        ? 'Inspect and explain the current workspace. Calcium has disabled edits, shell commands, delegation, and external paths.'
         : scope === 'full'
           ? 'Complete the requested multi-step task in the current workspace and report the finished result plainly.'
           : 'Work directly in the current workspace, verify changes, and report the result plainly. Do not delegate.';
-    const instruction = [systemPrompt?.trim(), `You are NoCLI.ai, running through OpenCode. ${scopeLine}`, prompt].filter(Boolean).join('\n\n');
+    const instruction = [systemPrompt?.trim(), `You are Calcium, running through OpenCode. ${scopeLine}`, prompt].filter(Boolean).join('\n\n');
     const args = ['run', '--format', 'json', '--pure', '--agent', 'nocli', '--model', route.launchModel];
     if (sessionId) args.push('--session', sessionId);
     args.push(instruction);

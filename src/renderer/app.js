@@ -78,7 +78,7 @@ function syncWorkspaceShell() {
   const copy = {
     chat: { title: 'What can we get done?', sub: 'Start a conversation or pick a project to work in.', chips: ['Ask anything', 'Explain code', 'Debug an error', 'Plan a task'] },
     work: { title: 'What outcome are we moving?', sub: 'Frame the task, give it a path, then steer the work with evidence.', chips: ['Shape a plan', 'Research a decision', 'Delegate a task', 'Review progress'] },
-    code: { title: 'What should we ship?', sub: activeProject() ? ('Working in ' + activeProject().name + '. Start with the codebase, not a guess.') : 'Choose a workspace or describe the change. NoCLI will start with the codebase.', chips: ['Inspect repository', 'Fix a bug', 'Add a feature', 'Run tests'] },
+    code: { title: 'What should we ship?', sub: activeProject() ? ('Working in ' + activeProject().name + '. Start with the codebase, not a guess.') : 'Choose a workspace or describe the change. Calcium will start with the codebase.', chips: ['Inspect repository', 'Fix a bug', 'Add a feature', 'Run tests'] },
   }[mode] || {};
   if ($('greet')) $('greet').textContent = copy.title || 'What can we get done?';
   document.querySelector('#home .sub')?.replaceChildren(copy.sub || 'Start a conversation or pick a project to work in.');
@@ -129,9 +129,9 @@ const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Local runtime', kind: 'oll
 const SCOPE_ORDER = ['chat', 'read', 'edit', 'full'];
 const SCOPE_META = {
   chat: { label: 'Just chat', productMode: 'chat', permission: 'approve', hint: 'A no-tools conversation. API routes stream directly; OpenCode sign-in stays inside its CLI.' },
-  read: { label: 'Read', productMode: 'code', permission: 'approve', hint: 'NoCLI.ai can read the selected workspace and browse. Writes and commands are blocked.' },
-  edit: { label: 'Edit', productMode: 'code', permission: 'auto', hint: 'NoCLI.ai can edit files and run ordinary commands in the selected workspace.' },
-  full: { label: 'Full', productMode: 'agent', permission: 'full', hint: 'Nothing is withheld, and NoCLI.ai may delegate focused sub-tasks.' },
+  read: { label: 'Read', productMode: 'code', permission: 'approve', hint: 'Calcium can read the selected workspace and browse. Writes and commands are blocked.' },
+  edit: { label: 'Edit', productMode: 'code', permission: 'auto', hint: 'Calcium can edit files and run ordinary commands in the selected workspace.' },
+  full: { label: 'Full', productMode: 'agent', permission: 'full', hint: 'Nothing is withheld, and Calcium may delegate focused sub-tasks.' },
 };
 const ENGINE_META = {
   kimi: { label: 'Kimi Code', hint: 'Official Kimi Code CLI. NoCLI.ai supplies this connection and model for each turn without changing Kimi configuration.' },
@@ -139,7 +139,7 @@ const ENGINE_META = {
   qwen: { label: 'Qwen Code', hint: 'Official Qwen Code CLI over any OpenAI-compatible route.' },
   claude: { label: 'Claude Code', hint: 'Official Claude Code CLI. Needs an Anthropic-compatible route.' },
   codex: { label: 'Codex CLI', hint: 'Official Codex CLI. Needs a Responses-compatible route.' },
-  none: { label: 'NoCLI.ai native', hint: "NoCLI.ai's own tool loop over the selected local runtime. No external CLI." },
+  none: { label: 'Calcium native', hint: "Calcium's own tool loop over the selected local runtime. No external CLI." },
 };
 const ENGINE_ORDER = ['kimi', 'opencode', 'qwen', 'claude', 'codex', 'none'];
 let engineAvailability = {};
@@ -208,7 +208,7 @@ function syncSwarmLimit() {
 function openSwarm() {
   swarmMode = true; activeId = null; activeSwarmId = null; swarmLogOpen = false;
   $('main').setAttribute('data-swarm', 'true'); $('swarmControls').hidden = false; $('swarmLimitInfo').hidden = true; $('swarmStatus').hidden = false; $('swarmStatus').textContent = ''; $('swarmLaunch').classList.add('active');
-  showHomeView(); $('greet').textContent = 'Give the swarm one outcome.'; document.querySelector('#home .sub')?.replaceChildren('NoCLI.ai splits the work and returns one answer.'); document.querySelector('.home-hint')?.replaceChildren('Describe the result you want. Swarm handles the rest.');
+  showHomeView(); $('greet').textContent = 'Give the swarm one outcome.'; document.querySelector('#home .sub')?.replaceChildren('Calcium splits the work and returns one answer.'); document.querySelector('.home-hint')?.replaceChildren('Describe the result you want. Swarm handles the rest.');
   const chips = [...document.querySelectorAll('#chips .chip')]; ['Explore approaches', 'Review a codebase', 'Research a topic', 'Compare options'].forEach((label, index) => { if (chips[index]) chips[index].textContent = label; });
   syncSwarmRoles(); $('prompt').focus();
 }
@@ -267,7 +267,7 @@ function saveAutomations() { saveState('oautomations', automations); }
 function cadenceMs(value) { return value === 'hourly' ? 3600000 : value === 'weekly' ? 604800000 : 86400000; }
 function renderAutomations() {
   const list = $('automationList'); if (!list) return;
-  if (!automations.length) { list.innerHTML = '<div class="ops-empty"><strong>No scheduled work yet</strong><span>Create a recurring prompt above. It will run while NOCLI is open.</span></div>'; return; }
+  if (!automations.length) { list.innerHTML = '<div class="ops-empty"><strong>No scheduled work yet</strong><span>Create a recurring prompt above. It will run while Calcium is open.</span></div>'; return; }
   list.innerHTML = '';
   automations.forEach((automation) => {
     const row = document.createElement('article'); row.className = 'automation-row';
@@ -522,7 +522,7 @@ function renderProjectsPage() {
   const box = $('projectsPageContent'); if (!box) return;
   box.innerHTML = '';
   if (!projects.length) {
-    box.innerHTML = '<div class="ops-empty"><span class="ops-empty-kicker">First workspace</span><h3>Give NoCLI.ai a place to work</h3><p>Connect a folder once, then keep its chats, instructions, and repository context together.</p><button id="projectsEmptyAdd" type="button">Create a project</button></div>';
+    box.innerHTML = '<div class="ops-empty"><span class="ops-empty-kicker">First workspace</span><h3>Give Calcium a place to work</h3><p>Connect a folder once, then keep its chats, instructions, and repository context together.</p><button id="projectsEmptyAdd" type="button">Create a project</button></div>';
     $('projectsEmptyAdd').onclick = () => { openSettings(); setTimeout(() => $('projName').focus(), 0); };
     return;
   }
@@ -597,7 +597,7 @@ async function renderModelsPage() {
   box.appendChild(installed);
   // Recommended models
   const rec = document.createElement('section'); rec.className = 'ops-section';
-  rec.innerHTML = '<div class="ops-section-head"><div><h3>Recommended for NoCLI.ai</h3><p>Local picks calibrated for Chat, Code, and Work.</p></div></div>';
+  rec.innerHTML = '<div class="ops-section-head"><div><h3>Recommended for Calcium</h3><p>Local picks calibrated for Chat, Code, and Work.</p></div></div>';
   const recList = document.createElement('div'); recList.className = 'ops-grid project-grid';
   for (const m of RECOMMENDED_MODELS) {
     const isInstalled = models.some((x) => x.name === m.name || x.name.startsWith(m.name + ':'));
@@ -1685,13 +1685,13 @@ function renderProviderProfiles() {
   $('providerUseOllama')?.classList.toggle('active', profile.kind === 'ollama');
   $('providerNew')?.classList.toggle('active', profile.kind !== 'ollama');
   $('providerStatus').textContent = profile.kind === 'ollama'
-    ? 'Using the local runtime. Ollama-compatible local models and signed-in cloud models are available without a NoCLI.ai API key.'
+    ? 'Using the local runtime. Ollama-compatible local models and signed-in cloud models are available without a Calcium API key.'
     : profile.kind === 'opencode'
-      ? 'Using the OpenCode CLI credential store. Run opencode auth login for OpenCode Go or Zen; NoCLI.ai never copies that credential.'
+      ? 'Using the OpenCode CLI credential store. Run opencode auth login for OpenCode Go or Zen; Calcium never copies that credential.'
     : profile.kind === 'codex-cli'
-      ? 'Using your signed-in official Codex CLI. NoCLI.ai does not inject its own Codex config or tools.'
+      ? 'Using your signed-in official Codex CLI. Calcium does not inject its own Codex config or tools.'
       : profile.kind === 'claude-cli'
-        ? 'Using your signed-in official Claude Code. NoCLI.ai does not store a Claude API key.'
+        ? 'Using your signed-in official Claude Code. Calcium does not store a Claude API key.'
     : (profile.credentialId ? `${profile.name} is active. Its API key is stored securely.` : `${profile.name} is selected. Add its API key below to finish setup.`);
   if ($('providerApiSetup')) $('providerApiSetup').open = profile.kind !== 'ollama';
 }
