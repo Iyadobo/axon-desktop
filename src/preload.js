@@ -12,7 +12,8 @@ function browserInvocation(toolName, args = {}) {
 }
 contextBridge.exposeInMainWorld('nocli', {
   listModels: () => ipcRenderer.invoke('list-models'),
-  openCodeModels: () => ipcRenderer.invoke('opencode-models'),
+    openCodeModels: () => ipcRenderer.invoke('opencode-models'),
+    openRouterFreeModels: () => ipcRenderer.invoke('openrouter-free-models'),
   modelCapabilities: (model, productMode, provider) => ipcRenderer.invoke('model-capabilities', { model, productMode, provider }),
   refreshCloudModels: () => ipcRenderer.invoke('refresh-cloud-models'),
   downloadCatalogue: () => ipcRenderer.invoke('model-download-catalogue'),

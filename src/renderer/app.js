@@ -342,6 +342,7 @@ function openSettings() {
   syncRuntimeFields();
   renderProviderProfiles();
   if (settings.providerProfiles.some((profile) => profile.kind === 'opencode')) refreshOpenCodeModels();
+  if (settings.providerProfiles.some((profile) => /openrouter\.ai/i.test(String(profile.endpoint || '')))) refreshOpenRouterFreeModels();
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncScope();
   loadEngineAvailability();
@@ -906,6 +907,7 @@ window.nocli.on('model-pull-progress', (update) => {
 let modelCatalogue = [];
 let localModelCatalogue = [];
 let openCodeModelCatalogue = [];
+let openRouterFreeCatalogue = [];
 let modelInventoryState = 'loading';
 let modelInventoryError = '';
 let pickerCursor = 0;
@@ -1617,8 +1619,22 @@ function profileModels(profile) {
     if (name && !models.some((model) => model.name === name)) models.unshift({ name, source: 'api', details: { parameter_size: 'OpenCode' } });
     return models;
   }
+  if (/openrouter\.ai/i.test(String(profile.endpoint || ''))) {
+    const models = [{ name: 'openrouter/free', source: 'api', details: { parameter_size: 'Auto · Free' } }];
+    for (const free of openRouterFreeCatalogue) models.push({ name: free.id, source: 'api', details: { parameter_size: free.vision ? 'Free · Vision' : 'Free' } });
+    if (name && !models.some((model) => model.name === name)) models.unshift({ name, source: 'api', details: { parameter_size: 'OpenRouter' } });
+    return models;
+  }
   const source = profile.kind === 'codex-cli' ? 'Codex CLI' : profile.kind === 'claude-cli' ? 'Claude Code' : profile.kind === 'responses' ? 'Responses API' : 'API route';
   return name ? [{ name, source: 'api', details: { parameter_size: source } }] : [];
+}
+async function refreshOpenRouterFreeModels() {
+  try {
+    const data = await window.nocli.openRouterFreeModels();
+    openRouterFreeCatalogue = Array.isArray(data?.models) ? data.models : [];
+  } catch { openRouterFreeCatalogue = []; }
+  applyProviderModelChoices();
+  return openRouterFreeCatalogue;
 }
 // The unified list: every connected provider's models in one place, each tagged
 // with the profile that owns it. Picking a model routes that conversation to
@@ -1771,6 +1787,7 @@ function startApiProviderSetup() {
 }
 const PROVIDER_PRESETS = {
   custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
+  free: { name: 'Free tier (OpenRouter)', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: 'openrouter/free', free: true },
   openai: { name: 'OpenAI', kind: 'responses', endpoint: 'https://api.openai.com/v1', model: '' },
   openrouter: { name: 'OpenRouter', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: '' },
   opencodeGo: { name: 'OpenCode Go', kind: 'opencode', engine: 'opencode', endpoint: '', model: 'opencode-go/kimi-k3' },
@@ -1797,6 +1814,7 @@ function syncProviderRouteFields() {
 function applyProviderPreset() {
   const key = $('providerPreset').value;
   if (key === 'hybrid') return applyHybridPreset();
+  if (key === 'free') return applyFreePreset();
   const preset = PROVIDER_PRESETS[key] || PROVIDER_PRESETS.custom;
   fillProviderFields(preset);
   const profile = currentProviderProfile();
@@ -1805,6 +1823,25 @@ function applyProviderPreset() {
   $('providerImportStatus').textContent = preset.kind === 'opencode'
     ? 'Preset applied. Choose an available Go or Zen model, then save. Authentication stays in OpenCode.'
     : 'Preset applied. Add a model ID and API key, then save the profile.';
+}
+// Free tier: a dedicated OpenRouter profile (never overwriting the local
+// runtime) whose default model is the auto free router.
+async function applyFreePreset() {
+  let profile = settings.providerProfiles.find((p) => /openrouter\.ai/i.test(String(p.endpoint || '')) && p.kind !== 'ollama');
+  if (!profile) {
+    profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'Free tier (OpenRouter)', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: 'openrouter/free', credentialId: '' };
+    settings.providerProfiles.push(profile);
+  } else {
+    profile.name = 'Free tier (OpenRouter)';
+    profile.kind = 'openai-compatible';
+    profile.engine = 'opencode';
+    profile.endpoint = 'https://openrouter.ai/api/v1';
+    if (!String(profile.model || '').trim()) profile.model = 'openrouter/free';
+  }
+  settings.activeProviderProfileId = profile.id;
+  saveSettings(); renderProviderProfiles(); syncEngineSelect();
+  $('providerImportStatus').textContent = 'Free tier ready. Add your OpenRouter API key under Connection details and save; turns route across free models automatically (openrouter/free).';
+  await refreshOpenRouterFreeModels();
 }
 // Hybrid: keep Ollama and OpenCode Go connected side by side. The unified model
 // list then shows both, and each chat routes to whichever provider owns the

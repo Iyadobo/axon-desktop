@@ -1128,6 +1128,31 @@ ipcMain.handle('opencode-models', async () => {
   const models = output.split(/\r?\n/).map((line) => line.trim()).filter((line) => /^(opencode|opencode-go)\//.test(line));
   return { models: [...new Set(models)].sort() };
 });
+// OpenRouter publishes its catalogue openly, so the free tier can be discovered
+// without a key. `?max_price=0` returns only $0 models; we still verify both
+// prompt and completion pricing so a "free in, paid out" endpoint cannot slip in.
+let openRouterFreeCache = { at: 0, models: [] };
+async function openRouterFreeModels() {
+  if (openRouterFreeCache.models.length && Date.now() - openRouterFreeCache.at < 10 * 60 * 1000) return openRouterFreeCache.models;
+  const text = await readHttpsText('https://openrouter.ai/api/v1/models?max_price=0');
+  const data = JSON.parse(text);
+  const models = (Array.isArray(data?.data) ? data.data : [])
+    .filter((m) => m?.pricing && m.pricing.prompt === '0' && m.pricing.completion === '0')
+    .map((m) => ({
+      id: String(m.id || ''),
+      name: String(m.name || m.id || ''),
+      vision: Array.isArray(m.architecture?.input_modalities) ? m.architecture.input_modalities.includes('image') : null,
+      context: Number(m.context_length) || 0,
+    }))
+    .filter((m) => m.id)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  openRouterFreeCache = { at: Date.now(), models };
+  return models;
+}
+ipcMain.handle('openrouter-free-models', async () => {
+  try { return { models: await openRouterFreeModels() }; }
+  catch (error) { return { models: [], error: error?.message || 'Could not reach OpenRouter.' }; }
+});
 ipcMain.handle('model-capabilities', async (_e, { model, productMode, provider }) => resolveModelCapabilities(model, productMode, provider));
 ipcMain.handle('check-exo', async (_e, url) => checkExo(url));
 ipcMain.handle('set-runtime', async (_e, runtime) => {
