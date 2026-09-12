@@ -385,6 +385,12 @@ button, input, textarea, select { font-family: inherit; }
 }
 #send:not(.queue-send):hover { background: transparent; }
 
+/* The mark is white; flip it on light themes so it stays visible. */
+html[data-theme="light"] .calcium-mark,
+html[data-theme="paper"] .calcium-mark,
+html[data-theme="light"] .loading-mark img,
+html[data-theme="paper"] .loading-mark img { filter: invert(1); }
+
 /* Vision badge: unverified is neutral, not a "text-only" verdict. */
 .model-capability.unverified { color: var(--k-text-3); border-color: var(--k-line); }
 
