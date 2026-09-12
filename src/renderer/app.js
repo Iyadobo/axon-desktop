@@ -275,12 +275,16 @@ function loadSettings() {
     }));
     applyScope();
     // Free Model ships as the out-of-the-box tier: make sure it exists in every
-    // config, and land on it once so a fresh or legacy install has something
-    // that works with no key.
+    // config, land on it once, and persist that so it survives the next launch.
+    let freeChanged = false;
     let freeProfile = settings.providerProfiles.find((profile) => isFreeModelProfile(profile));
-    if (!freeProfile) { freeProfile = { ...FREE_MODEL_PROVIDER }; settings.providerProfiles.unshift(freeProfile); }
-    if (!saved.freeModelDefault) { settings.activeProviderProfileId = freeProfile.id; settings.freeModelDefault = true; }
+    if (!freeProfile) { freeProfile = { ...FREE_MODEL_PROVIDER }; settings.providerProfiles.unshift(freeProfile); freeChanged = true; }
+    if (freeProfile.name !== 'Free Model') { freeProfile.name = 'Free Model'; freeChanged = true; }
+    if (freeProfile.kind !== 'openai-compatible' || freeProfile.engine !== 'opencode') { freeProfile.kind = 'openai-compatible'; freeProfile.engine = 'opencode'; freeChanged = true; }
+    if (!String(freeProfile.model || '').trim()) { freeProfile.model = 'auto'; freeChanged = true; }
+    if (!saved.freeModelDefault) { settings.activeProviderProfileId = freeProfile.id; settings.freeModelDefault = true; freeChanged = true; }
     if (!settings.providerProfiles.some((profile) => profile.id === settings.activeProviderProfileId)) settings.activeProviderProfileId = settings.providerProfiles[0].id;
+    if (freeChanged) saveSettings();
   } catch {}
 }
 function saveState(key, value) { persisted[key] = value; window.nocli.saveState({ [key]: value }).catch(() => {}); }
