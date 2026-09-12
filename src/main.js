@@ -537,7 +537,13 @@ function refreshShortcutIcons(iconPath) {
   const quote = (value) => String(value).replace(/'/g, "''");
   const list = shortcuts.map((shortcut) => `'${quote(shortcut)}'`).join(',');
   const ps = `$icon='${quote(iconPath)}';@(${list})|ForEach-Object { if(Test-Path -LiteralPath $_){$s=(New-Object -ComObject WScript.Shell).CreateShortcut($_);$s.IconLocation=\"$icon,0\";$s.Save()} }`;
-  try { spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, stdio: 'ignore' }); } catch {}
+  // Updating the User PATH is best-effort maintenance, never startup-critical.
+  // A blocked PowerShell profile/COM call must not prevent the desktop window
+  // from being created on Windows.
+  try {
+    const updater = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true, detached: true, stdio: 'ignore' });
+    updater.unref();
+  } catch {}
 }
 function ensureCliCommand() {
   const dir = cliDirectory(); fs.mkdirSync(dir, { recursive: true });
@@ -1973,10 +1979,12 @@ app.whenReady().then(async () => {
     try { Object.assign(merged, JSON.parse(fs.readFileSync(file, 'utf8'))); } catch {}
   }
   config.save({ ...merged, ...state });
-  await startBrowserBridge();
-  ensureCliCommand();
   createTray();
   createWindow();
+  // The workspace should be visible immediately. Browser MCP setup and the
+  // optional terminal shim can finish after the first frame.
+  startBrowserBridge().catch(() => { browserBridge = null; });
+  ensureCliCommand();
   // Keeps visual/test launches from opening Windows' firewall prompt. Normal
   // packaged launches retain discovery unless the flag is explicitly set.
   if (process.env.NOCLI_DISABLE_LAN_DISCOVERY !== '1') startLanDiscovery();
