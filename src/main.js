@@ -775,6 +775,141 @@ function browserCursorScript(id, pulse = false) {
     return { ok: true, x: x, y: y };
   })()`;
 }
+// ---- research: web search, page extraction and a local document library ----
+// Sources are unified across the web and local files: each gets a stable id
+// (S1, S2, …) the model can cite, and both kinds flow through the same store.
+const researchSources = new Map();
+let researchSeq = 0;
+function addResearchSource(source) {
+  for (const existing of researchSources.values()) {
+    if (source.url && existing.url === source.url) return existing;
+    if (source.path && existing.path === source.path) return existing;
+  }
+  const id = 'S' + (++researchSeq);
+  const entry = { id, kind: source.kind || (source.url ? 'web' : 'file'), addedAt: Date.now(), ...source };
+  researchSources.set(id, entry);
+  return entry;
+}
+function listResearchSources() {
+  return [...researchSources.values()].map((s) => ({ id: s.id, kind: s.kind, title: s.title, url: s.url, path: s.path, snippet: (s.snippet || s.text || '').replace(/\s+/g, ' ').slice(0, 240) }));
+}
+function decodeEntities(value) {
+  return String(value || '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;|&#x27;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_m, code) => String.fromCharCode(Number(code)));
+}
+function stripHtml(html) {
+  return decodeEntities(String(html || '').replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+function fetchText(url, { headers = {}, max = 2 * 1024 * 1024, timeout = 15000, redirects = 4 } = {}) {
+  return new Promise((resolve, reject) => {
+    let target; try { target = new URL(url); } catch { return reject(new Error('Invalid URL.')); }
+    if (!['http:', 'https:'].includes(target.protocol)) return reject(new Error('Only http(s) is supported.'));
+    const client = target.protocol === 'https:' ? https : http;
+    const req = client.get(target, { headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36', accept: 'text/html,application/xhtml+xml,text/plain', ...headers } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        res.resume();
+        let next; try { next = new URL(res.headers.location, target).toString(); } catch { return reject(new Error('Bad redirect.')); }
+        return fetchText(next, { headers, max, timeout, redirects: redirects - 1 }).then(resolve, reject);
+      }
+      let text = ''; res.setEncoding('utf8');
+      res.on('data', (chunk) => { text += chunk; if (text.length > max) req.destroy(); });
+      res.on('end', () => resolve(text));
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.setTimeout(timeout, () => { req.destroy(); reject(new Error('Request timed out.')); });
+  });
+}
+async function webSearch(query, limit = 8) {
+  const q = String(query || '').trim();
+  if (!q) return { query: q, results: [] };
+  const html = await fetchText('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q));
+  const snippets = [];
+  const snippetRe = /class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  let sm; while ((sm = snippetRe.exec(html))) snippets.push(stripHtml(sm[1]).slice(0, 320));
+  const results = [];
+  const linkRe = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m; let index = 0;
+  while ((m = linkRe.exec(html)) && results.length < limit) {
+    let url = decodeEntities(m[1]);
+    const uddg = url.match(/[?&]uddg=([^&]+)/); if (uddg) { try { url = decodeURIComponent(uddg[1]); } catch {} }
+    if (url.startsWith('//')) url = 'https:' + url;
+    if (!/^https?:/i.test(url)) { index++; continue; }
+    results.push({ title: stripHtml(m[2]).slice(0, 160) || url, url, snippet: snippets[index] || '' });
+    index++;
+  }
+  return { query: q, results };
+}
+async function webFetch(url) {
+  const clean = validBrowserURL(url);
+  if (!clean) throw new Error('Use a full http:// or https:// address.');
+  const html = await fetchText(clean);
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const title = titleMatch ? stripHtml(titleMatch[1]).slice(0, 200) : clean;
+  const main = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) || html.match(/<main[^>]*>([\s\S]*?)<\/main>/i);
+  const text = stripHtml(main ? main[1] : html).slice(0, 14000);
+  const source = addResearchSource({ kind: 'web', title, url: clean, text });
+  return { id: source.id, title, url: clean, text };
+}
+// ---- local document library ----
+let libraryFolders = [];
+const LIBRARY_EXT = new Set(['.txt', '.md', '.markdown', '.json', '.csv', '.tsv', '.yaml', '.yml', '.toml', '.xml', '.html', '.htm', '.js', '.ts', '.jsx', '.tsx', '.py', '.rb', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.hpp', '.css', '.sql', '.sh', '.ps1', '.ini', '.log', '.rst']);
+function setLibraryFolders(next) {
+  if (Array.isArray(next)) libraryFolders = next.filter((f) => typeof f === 'string' && f.trim()).slice(0, 20);
+  return libraryStatus();
+}
+function libraryFiles(limit = 800) {
+  const out = [];
+  const walk = (dir, depth) => {
+    if (out.length >= limit || depth > 6) return;
+    let entries; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (out.length >= limit) return;
+      if (entry.name.startsWith('.')) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, depth + 1);
+      else if (LIBRARY_EXT.has(path.extname(entry.name).toLowerCase())) out.push(full);
+    }
+  };
+  for (const folder of libraryFolders) walk(folder, 0);
+  return out;
+}
+function libraryStatus() {
+  const files = libraryFiles();
+  return { folders: [...libraryFolders], files: files.length };
+}
+function libraryTokens(text) { return String(text || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2); }
+function librarySearch(query, limit = 6) {
+  const terms = [...new Set(libraryTokens(query))];
+  if (!terms.length) return { matches: [] };
+  const docs = [];
+  for (const file of libraryFiles().slice(0, 500)) {
+    let text = ''; try { const buf = fs.readFileSync(file); if (buf.length > 200000) continue; text = buf.toString('utf8'); } catch { continue; }
+    docs.push({ file, text, toks: libraryTokens(text) });
+  }
+  const df = new Map();
+  for (const d of docs) for (const t of new Set(d.toks)) df.set(t, (df.get(t) || 0) + 1);
+  const N = docs.length || 1;
+  const avg = docs.reduce((sum, d) => sum + d.toks.length, 0) / N || 1;
+  const k1 = 1.5, b = 0.75;
+  const scored = docs.map((d) => {
+    const tf = new Map(); for (const t of d.toks) tf.set(t, (tf.get(t) || 0) + 1);
+    let score = 0;
+    for (const t of terms) { const f = tf.get(t); if (!f) continue; const n = df.get(t) || 0; const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5)); score += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * d.toks.length / avg)); }
+    return { d, score };
+  }).filter((x) => x.score > 0).sort((a, b2) => b2.score - a.score).slice(0, limit);
+  const matches = scored.map(({ d }) => {
+    const lower = d.text.toLowerCase();
+    let at = -1; for (const t of terms) { const i = lower.indexOf(t); if (i >= 0 && (at < 0 || i < at)) at = i; }
+    const snippet = at >= 0 ? d.text.slice(Math.max(0, at - 160), at + 240).replace(/\s+/g, ' ').trim() : d.text.replace(/\s+/g, ' ').slice(0, 300);
+    const source = addResearchSource({ kind: 'file', title: path.basename(d.file), path: d.file, snippet });
+    return { id: source.id, path: d.file, title: path.basename(d.file), snippet };
+  });
+  return { matches };
+}
+function researchStatus() { return { sources: listResearchSources(), library: libraryStatus() }; }
 function revealBrowser(url) {
   const valid = validBrowserURL(url);
   if (!valid) throw new Error('Use a full http:// or https:// address.');
@@ -805,6 +940,16 @@ function startBrowserBridge() {
           await loaded;
           return done(200, { url: valid });
         }
+        // Research actions do not need the visible browser.
+        if (action === 'search') {
+          const out = await webSearch(payload.query, Number(payload.limit) || 8);
+          out.results.forEach((r) => addResearchSource({ kind: 'web', title: r.title, url: r.url, snippet: r.snippet }));
+          return done(200, { query: out.query, results: out.results, sources: listResearchSources() });
+        }
+        if (action === 'fetch') return done(200, await webFetch(payload.url));
+        if (action === 'sources') return done(200, { sources: listResearchSources() });
+        if (action === 'library-search') return done(200, librarySearch(payload.query, Number(payload.limit) || 6));
+        if (action === 'library-status') return done(200, libraryStatus());
         // Any native browser tool invocation should reveal the sidecar. In
         // particular, agents commonly start with browser_read rather than
         // browser_open, and failed interactions should still be visible.
@@ -1847,6 +1992,20 @@ ipcMain.handle('browser-open-external', async (_e, url) => {
   if (!target) return { error: 'No page to open.' };
   try { await shell.openExternal(target); return { ok: true }; } catch (error) { return { error: error.message }; }
 });
+ipcMain.handle('library-set-folders', (_e, folders) => setLibraryFolders(folders));
+ipcMain.handle('library-status', () => libraryStatus());
+ipcMain.handle('library-pick-folder', async () => {
+  const result = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'multiSelections'], title: 'Add folders to the research library' });
+  if (result.canceled || !result.filePaths?.length) return libraryStatus();
+  return setLibraryFolders([...libraryFolders, ...result.filePaths]);
+});
+ipcMain.handle('research-sources', () => listResearchSources());
+ipcMain.handle('research-search', async (_e, query) => {
+  const out = await webSearch(query, 8);
+  out.results.forEach((r) => addResearchSource({ kind: 'web', title: r.title, url: r.url, snippet: r.snippet }));
+  return { ...out, sources: listResearchSources() };
+});
+ipcMain.handle('research-library-search', (_e, query) => librarySearch(query, 6));
 ipcMain.handle('provider-save', (_e, profile, apiKey) => {
   const value = profile || {};
   const migrated = migrateProvider(value);

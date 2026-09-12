@@ -26,6 +26,11 @@ function tools() {
     { name: 'browser_scroll', description: 'Scroll the page down or up (default 700px) to reveal more content.', inputSchema: { type: 'object', properties: { direction: { type: 'string', enum: ['down', 'up'] }, amount: { type: 'number' } } } },
     { name: 'browser_wait', description: 'Wait until the given text appears on the page (for async content or popups), up to timeout ms (default 8000).', inputSchema: { type: 'object', properties: { text: { type: 'string' }, timeout: { type: 'number' } }, required: ['text'] } },
     { name: 'browser_dismiss', description: 'Dismiss a popup/cookie banner: presses Escape then clicks the first visible close/dismiss/accept control. Use when browser_read reports a dialog.', inputSchema: { type: 'object', properties: {} } },
+    { name: 'web_search', description: 'Search the web (DuckDuckGo) and return result titles, URLs and snippets. Each result is added to the shared source list with an id you can cite. Use this before browser_open/browser_read.', inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] } },
+    { name: 'web_fetch', description: 'Fetch a URL and return its main readable text plus a source id, without opening the browser panel. Prefer this over browser_read for research; it is faster.', inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } },
+    { name: 'library_search', description: 'Search the user\'s local research library (folders they added) and return matching files with a snippet and source id.', inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'number' } }, required: ['query'] } },
+    { name: 'library_status', description: 'List the local research library folders and how many documents are indexed.', inputSchema: { type: 'object', properties: {} } },
+    { name: 'sources', description: 'List every source gathered this session (web and local files) with its id, title and URL/path — use these ids for citations.', inputSchema: { type: 'object', properties: {} } },
     { name: 'browser_screenshot', description: 'Capture a screenshot only when visual inspection is necessary and the model supports vision. Text-only models should use browser_read instead.', inputSchema: { type: 'object', properties: {} } },
   ];
 }
@@ -35,7 +40,7 @@ async function handle(message) {
   if (method === 'notifications/initialized') return;
   if (method === 'tools/list') return reply(id, { tools: tools() });
   if (method !== 'tools/call') return fail(id, 'Unsupported MCP method.');
-  const action = { browser_open: 'open', browser_read: 'read', browser_find: 'find', browser_point: 'point', browser_click: 'click', browser_type: 'type', browser_press: 'press', browser_scroll: 'scroll', browser_wait: 'wait', browser_dismiss: 'dismiss', browser_screenshot: 'screenshot' }[params.name];
+  const action = { browser_open: 'open', browser_read: 'read', browser_find: 'find', browser_point: 'point', browser_click: 'click', browser_type: 'type', browser_press: 'press', browser_scroll: 'scroll', browser_wait: 'wait', browser_dismiss: 'dismiss', web_search: 'search', web_fetch: 'fetch', library_search: 'library-search', library_status: 'library-status', sources: 'sources', browser_screenshot: 'screenshot' }[params.name];
   if (!action) return fail(id, 'Unknown browser tool.');
   try {
     if (action === 'screenshot' && process.env.NOCLI_BROWSER_ALLOW_SCREENSHOT !== '1') {

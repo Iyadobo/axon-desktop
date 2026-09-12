@@ -183,7 +183,7 @@ function syncCompactComposerLabels() {
   });
 }
 addEventListener('resize', syncCompactComposerLabels, { passive: true });
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FFFFFF', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', reasoning: 'auto', scope: 'chat', providerProfiles: [{ ...FREE_MODEL_PROVIDER }, { ...DEFAULT_PROVIDER }], activeProviderProfileId: 'free-model', activeConversationIds: {} };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FFFFFF', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', reasoning: 'auto', scope: 'chat', providerProfiles: [{ ...FREE_MODEL_PROVIDER }, { ...DEFAULT_PROVIDER }], activeProviderProfileId: 'free-model', activeConversationIds: {}, libraryFolders: [] };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
 function swarmProviderLimit() { return (currentProviderProfile()?.kind || 'ollama') === 'ollama' ? 3 : null; }
@@ -362,7 +362,7 @@ function openSettings() {
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncScope();
   loadEngineAvailability();
-  syncPaletteInputs(); renderProjects(); renderCloudCatalogueInfo();
+  syncPaletteInputs(); renderProjects(); renderCloudCatalogueInfo(); syncLibrary();
   $('settings').classList.add('show');
   $('settings').setAttribute('aria-hidden', 'false');
   syncTopNav('settings');
@@ -2157,6 +2157,7 @@ window.nocli.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   }
   activeTurns.delete(requestId); stopping.delete(requestId); steering.delete(requestId);
   renderRecents(); syncComposerState();
+  if (sourcesOpen) renderSources();
   if (turn.conversationId === activeId) scrollBottom();
   runNextQueued(turn.conversationId);
 });
@@ -2598,6 +2599,55 @@ window.nocli.on('browser-status', (s) => {
   }
 });
 window.nocli.on('browser-invoked', (s) => { setBrowserOpen(true); if (s?.url) $('browserUrl').value = s.url; });
+// ---- research: sources panel + local library --------------------------------
+let sourcesOpen = false;
+function setSourcesOpen(open) {
+  sourcesOpen = open;
+  $('view-chat').classList.toggle('sources-open', open);
+  $('sourcesPanel').classList.toggle('show', open);
+  $('sourcesToggle').classList.toggle('active', open);
+  $('sourcesToggle').setAttribute('aria-expanded', String(open));
+  if (open) renderSources();
+}
+async function renderSources() {
+  const list = $('sourcesList'); if (!list) return;
+  let sources = [];
+  try { sources = (await window.nocli.researchSources()) || []; } catch {}
+  $('sourcesCount').textContent = sources.length ? sources.length + ' found' : '';
+  if (!sources.length) { list.innerHTML = '<div class="sources-empty">Sources gathered by web search, page reads, and your local library appear here with citation ids.</div>'; return; }
+  list.innerHTML = '';
+  for (const s of sources) {
+    const row = document.createElement('button'); row.type = 'button'; row.className = 'source-row';
+    const badge = document.createElement('span'); badge.className = 'source-badge ' + (s.kind || 'web'); badge.textContent = s.kind === 'file' ? 'FILE' : 'WEB';
+    const main = document.createElement('span'); main.className = 'source-main';
+    const title = document.createElement('span'); title.className = 'source-title'; title.textContent = s.title || s.url || s.path || 'Source';
+    const meta = document.createElement('span'); meta.className = 'source-meta'; meta.textContent = (s.url || s.path || '').slice(0, 90);
+    main.append(title, meta);
+    const cite = document.createElement('span'); cite.className = 'source-cite'; cite.textContent = '[' + s.id + ']';
+    row.append(badge, main, cite);
+    row.onclick = () => { navigator.clipboard.writeText('[' + s.id + '] ' + (s.url || s.path || '')); row.classList.add('copied'); setTimeout(() => row.classList.remove('copied'), 900); };
+    list.appendChild(row);
+  }
+}
+$('sourcesToggle').onclick = () => setSourcesOpen(!sourcesOpen);
+$('sourcesClose').onclick = () => setSourcesOpen(false);
+function renderLibrary(status) {
+  const folders = $('libraryFolders'); if (!folders) return;
+  const list = (status && status.folders) || settings.libraryFolders || [];
+  $('libraryStatus').textContent = status ? `${status.files || 0} documents indexed` : '';
+  folders.textContent = list.length ? list.join('  ·  ') : 'No folders added yet.';
+}
+async function syncLibrary() {
+  try { const status = await window.nocli.librarySetFolders(settings.libraryFolders || []); renderLibrary(status); } catch {}
+}
+if ($('libraryAdd')) $('libraryAdd').onclick = async () => {
+  try {
+    const status = await window.nocli.libraryPickFolder();
+    settings.libraryFolders = status?.folders || settings.libraryFolders || [];
+    saveSettings(); renderLibrary(status);
+  } catch {}
+};
+if ($('libraryClear')) $('libraryClear').onclick = async () => { settings.libraryFolders = []; saveSettings(); await syncLibrary(); };
 window.nocli.on('subagent-update', (agent) => {
   if (agent?.swarmId) { upsertSwarmAgent(agent); if (!activeSwarmId) activeSwarmId = agent.swarmId; if (activeSwarmId === agent.swarmId) showSentryConsole(); return; }
   const prior = subagents.get(agent.id) || {}; subagents.set(agent.id, { ...prior, ...agent }); setSubagentsOpen(true); renderSubagents();

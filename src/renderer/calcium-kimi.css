@@ -421,6 +421,23 @@ html[data-theme="paper"] .loading-mark img { filter: invert(1); }
 #browserPanel #browserContextHint { color: var(--k-text-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #browserPanel .browser-nav button.is-stop { color: var(--k-text); }
 
+/* ---- Research sources panel ---- */
+#sourcesPanel { position: absolute; z-index: 10; top: 0; right: 0; bottom: 0; width: min(400px, 42vw); display: none; flex-direction: column; background: var(--k-bg); border-left: 1px solid var(--k-line); }
+#sourcesPanel.show { display: flex; }
+#view-chat.sources-open #sourcesPanel { position: relative; z-index: 2; right: auto; width: 340px; min-width: 300px; max-width: 48%; flex: 0 0 340px; }
+#sourcesPanel .browserbar { flex: none; display: flex; align-items: center; gap: 8px; }
+.sources-count { margin-left: auto; color: var(--k-text-3); font-size: 11px; }
+.sources-list { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.sources-empty { padding: 14px; color: var(--k-text-3); font-size: 12.5px; line-height: 1.5; }
+.source-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 9px 10px; border: 1px solid var(--k-line); border-radius: 10px; background: var(--k-surface); color: var(--k-text); cursor: pointer; }
+.source-row:hover { border-color: var(--k-line-strong); }
+.source-row.copied { border-color: var(--k-text-2); }
+.source-badge { flex: none; font-size: 9px; font-weight: 700; letter-spacing: .06em; padding: 2px 6px; border-radius: 5px; border: 1px solid var(--k-line); color: var(--k-text-3); }
+.source-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.source-title { font-size: 12.5px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-meta { font-size: 11px; color: var(--k-text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-cite { flex: none; font-size: 11px; color: var(--k-text-2); }
+
 /* Unified model list: a provider label above each group in the sidebar list. */
 #modelsSidebarList .sidebar-model-provider { margin: 9px 0 2px; padding: 0 10px; color: var(--k-text-3); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
 
