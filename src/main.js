@@ -492,6 +492,11 @@ function createWindow() {
     startBackgroundUpdateChecks();
     setTimeout(revealWindow, 0);
   });
+  // Treat visibility as a startup guarantee, not a renderer-side side effect.
+  // In particular, a slow GPU or a failed first paint must never leave Calcium
+  // running only in the tray with no way for the person who launched it to see
+  // what happened.
+  setTimeout(revealWindow, 1200);
   // Frameless Electron windows do not reliably inherit Chromium's browser
   // zoom shortcuts. Keep this scoped to NoCLI.ai's shell (not the agent browser).
   win.webContents.on('before-input-event', (event, input) => {
