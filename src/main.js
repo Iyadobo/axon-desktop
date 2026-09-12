@@ -648,13 +648,26 @@ async function ensureOmniRoute() {
 }
 function ensureBrowserPanel() {
   if (browserPanel) return browserPanel;
-  browserPanel = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+  // A persistent partition keeps browser logins (cookies, sessions) across
+  // restarts, isolated from the app's own session.
+  browserPanel = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'persist:calcium-browser' } });
   win.contentView.addChildView(browserPanel);
-  browserPanel.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-  const report = () => win?.webContents.send('browser-status', { url: browserPanel.webContents.getURL(), title: browserPanel.webContents.getTitle(), canBack: browserPanel.webContents.canGoBack(), canForward: browserPanel.webContents.canGoForward() });
-  browserPanel.webContents.on('did-navigate', report);
-  browserPanel.webContents.on('page-title-updated', report);
-  browserPanel.webContents.loadURL('https://www.google.com/');
+  const wc = browserPanel.webContents;
+  wc.setWindowOpenHandler(({ url }) => { try { if (/^https?:/i.test(url)) shell.openExternal(url); } catch {} return { action: 'deny' }; });
+  const report = (extra = {}) => {
+    const url = wc.getURL() || '';
+    let host = '', secure = false;
+    try { const parsed = new URL(url); host = parsed.host; secure = parsed.protocol === 'https:'; } catch {}
+    win?.webContents.send('browser-status', { url, title: wc.getTitle(), canBack: wc.canGoBack(), canForward: wc.canGoForward(), loading: wc.isLoading(), secure, host, ...extra });
+  };
+  wc.on('did-navigate', () => report());
+  wc.on('did-navigate-in-page', () => report());
+  wc.on('page-title-updated', () => report());
+  wc.on('did-start-loading', () => report());
+  wc.on('did-stop-loading', () => report());
+  wc.on('page-favicon-updated', (_event, favicons) => report({ favicon: favicons?.[0] || '' }));
+  wc.on('did-fail-load', (_event, code, desc, validatedURL, isMainFrame) => { if (isMainFrame && code !== -3) report({ failed: { code, desc, url: validatedURL } }); });
+  wc.loadURL('https://www.google.com/');
   return browserPanel;
 }
 function setBrowserBounds(bounds) {
@@ -1725,7 +1738,13 @@ ipcMain.handle('browser-action', (_e, action) => {
   if (action === 'back' && view.canGoBack()) view.goBack();
   else if (action === 'forward' && view.canGoForward()) view.goForward();
   else if (action === 'reload') view.reload();
+  else if (action === 'stop') view.stop();
   return true;
+});
+ipcMain.handle('browser-open-external', async (_e, url) => {
+  const target = validBrowserURL(url) || browserPanel?.webContents.getURL() || '';
+  if (!target) return { error: 'No page to open.' };
+  try { await shell.openExternal(target); return { ok: true }; } catch (error) { return { error: error.message }; }
 });
 ipcMain.handle('provider-save', (_e, profile, apiKey) => {
   const value = profile || {};

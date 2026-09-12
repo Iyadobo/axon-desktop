@@ -394,6 +394,33 @@ html[data-theme="paper"] .loading-mark img { filter: invert(1); }
 /* Vision badge: unverified is neutral, not a "text-only" verdict. */
 .model-capability.unverified { color: var(--k-text-3); border-color: var(--k-line); }
 
+/* ---- Agent browser: real browser chrome ---- */
+#browserPanel .browserbar { gap: 7px; padding: 8px 10px; background: var(--k-bg); border-bottom: 1px solid var(--k-line); }
+#browserPanel .browser-nav { display: flex; gap: 2px; }
+#browserPanel .browserbar .browser-nav button,
+#browserPanel .browserbar .browser-iconbtn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--k-text-2); cursor: pointer; }
+#browserPanel .browserbar .browser-nav button:hover,
+#browserPanel .browserbar .browser-iconbtn:hover { background: var(--k-hover); color: var(--k-text); }
+#browserPanel .browserbar button:disabled { opacity: .32; cursor: default; background: transparent; }
+#browserPanel .browser-iconbtn { margin-left: 2px; }
+.browser-address { flex: 1 1 auto; display: flex; align-items: center; gap: 7px; min-width: 0; height: 34px; padding: 0 12px; border: 1px solid var(--k-line); border-radius: 999px; background: var(--k-surface); transition: border-color .15s ease, background .15s ease; }
+.browser-address:hover { border-color: var(--k-line-strong); }
+.browser-address:focus-within { border-color: var(--k-line-strong); background: var(--k-bg); }
+.browser-lock { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; flex: none; color: var(--k-text-3); }
+.browser-lock.secure { color: var(--k-text-2); }
+.browser-favicon { width: 15px; height: 15px; border-radius: 3px; flex: none; }
+.browser-favicon[hidden] { display: none; }
+.browser-address input { flex: 1 1 auto; min-width: 0; height: 100%; padding: 0; border: 0 !important; border-radius: 0; background: transparent !important; color: var(--k-text); font-size: 12.5px; }
+.browser-address input:focus { outline: none !important; border: 0 !important; }
+.browser-progress { position: relative; height: 2px; overflow: hidden; background: transparent; }
+.browser-progress[hidden] { display: none; }
+.browser-progress::after { content: ''; position: absolute; top: 0; bottom: 0; width: 35%; background: linear-gradient(90deg, transparent, var(--k-text-2), transparent); animation: browser-progress 1s linear infinite; }
+@keyframes browser-progress { from { left: -35%; } to { left: 100%; } }
+#browserPanel .browser-context { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-bottom: 1px solid var(--k-line); background: var(--k-bg); }
+#browserPanel #browserPageTitle { color: var(--k-text); font-size: 12.5px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#browserPanel #browserContextHint { color: var(--k-text-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#browserPanel .browser-nav button.is-stop { color: var(--k-text); }
+
 /* Unified model list: a provider label above each group in the sidebar list. */
 #modelsSidebarList .sidebar-model-provider { margin: 9px 0 2px; padding: 0 10px; color: var(--k-text-3); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
 

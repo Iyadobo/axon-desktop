@@ -2522,8 +2522,18 @@ function setBrowserOpen(open) {
   $('browserToggle').title = open ? 'Close agent browser' : 'Open agent browser';
   if (open) { setBrowserWidth(browserWidth); requestAnimationFrame(syncBrowserBounds); } else window.nocli.browserHide();
 }
+let browserLoading = false;
+function normalizeBrowserInput(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  if (/^https?:\/\//i.test(text)) return text;
+  if (!text.includes(' ') && /^[\w-]+(\.[\w-]+)+([/?#].*)?$/.test(text)) return 'https://' + text;
+  return 'https://www.google.com/search?q=' + encodeURIComponent(text);
+}
 function openBrowserAt(url) {
-  setBrowserOpen(true); $('browserUrl').value = url; window.nocli.browserNavigate(url);
+  const target = normalizeBrowserInput(url);
+  if (!target) return;
+  setBrowserOpen(true); $('browserUrl').value = target; window.nocli.browserNavigate(target);
 }
 $('browserToggle').onclick = () => setBrowserOpen(!browserOpen);
 $('browserResizeHandle').addEventListener('pointerdown', (event) => {
@@ -2550,14 +2560,43 @@ $('windowClose').onclick = () => window.nocli.windowControl('close');
 $('browserClose').onclick = () => setBrowserOpen(false);
 $('browserBack').onclick = () => window.nocli.browserAction('back');
 $('browserForward').onclick = () => window.nocli.browserAction('forward');
-$('browserReload').onclick = () => window.nocli.browserAction('reload');
+$('browserReload').onclick = () => { window.nocli.browserAction(browserLoading ? 'stop' : 'reload'); $('browserReload').title = browserLoading ? 'Stop' : 'Reload'; };
+$('browserExternal').onclick = () => window.nocli.browserOpenExternal($('browserUrl').value.trim());
 $('browserUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') openBrowserAt($('browserUrl').value.trim()); });
 document.addEventListener('keydown', (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'l' && browserOpen) { event.preventDefault(); $('browserUrl').focus(); $('browserUrl').select(); }
   if (event.key === 'Escape' && browserOpen && document.activeElement === $('browserUrl')) { $('browserUrl').blur(); }
 });
 window.addEventListener('resize', () => requestAnimationFrame(syncBrowserBounds));
-window.nocli.on('browser-status', (s) => { if (s.url) $('browserUrl').value = s.url; if (s.title) $('browserPageTitle').textContent = s.title; $('browserBack').disabled = !s.canBack; $('browserForward').disabled = !s.canForward; });
+window.nocli.on('browser-status', (s) => {
+  if (!s) return;
+  browserLoading = !!s.loading;
+  if (s.url && document.activeElement !== $('browserUrl')) $('browserUrl').value = s.url;
+  if (s.canBack !== undefined) $('browserBack').disabled = !s.canBack;
+  if (s.canForward !== undefined) $('browserForward').disabled = !s.canForward;
+  $('browserPanel').classList.toggle('loading', browserLoading);
+  $('browserProgress').hidden = !browserLoading;
+  const reload = $('browserReload'); reload.classList.toggle('is-stop', browserLoading); reload.title = browserLoading ? 'Stop' : 'Reload';
+  if (s.title) $('browserPageTitle').textContent = s.title;
+  const https = /^https:/i.test(s.url || '');
+  const http = /^http:/i.test(s.url || '');
+  const lock = $('browserLock');
+  lock.className = 'browser-lock' + (https ? ' secure' : http ? ' insecure' : '');
+  lock.innerHTML = https
+    ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>'
+    : http
+      ? '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 4 3 20h18L12 4Z"/><path d="M12 10v4M12 17h.01"/></svg>'
+      : '';
+  const favicon = $('browserFavicon');
+  if (s.favicon) { favicon.src = s.favicon; favicon.hidden = false; }
+  else if (s.url) { favicon.hidden = true; favicon.removeAttribute('src'); }
+  if (s.failed) {
+    $('browserPageTitle').textContent = s.failed.desc || 'Page could not be loaded';
+    $('browserContextHint').textContent = s.failed.url || '';
+  } else if (s.host) {
+    $('browserContextHint').textContent = https ? `Secure connection · ${s.host}` : `Not secure · ${s.host}`;
+  }
+});
 window.nocli.on('browser-invoked', (s) => { setBrowserOpen(true); if (s?.url) $('browserUrl').value = s.url; });
 window.nocli.on('subagent-update', (agent) => {
   if (agent?.swarmId) { upsertSwarmAgent(agent); if (!activeSwarmId) activeSwarmId = agent.swarmId; if (activeSwarmId === agent.swarmId) showSentryConsole(); return; }

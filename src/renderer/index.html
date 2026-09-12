@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:;" />
 <title>Calcium</title>
 <style>
   :root {
@@ -1470,8 +1470,9 @@
     </div>
     <aside id="browserPanel" aria-label="Agent browser">
       <div id="browserResizeHandle" class="browser-resize-handle" role="separator" aria-label="Resize browser" aria-orientation="vertical" tabindex="0"></div>
-      <div class="browserbar"><div class="browser-nav"><button id="browserBack" title="Back" aria-label="Back">←</button><button id="browserForward" title="Forward" aria-label="Forward">→</button><button id="browserReload" title="Reload" aria-label="Reload">↻</button></div><input id="browserUrl" aria-label="Browser address" placeholder="Search or enter an address" /><button id="browserClose" title="Close browser" aria-label="Close browser">×</button></div>
-      <div class="browser-context"><span class="browser-context-kicker">Agent browser</span><span id="browserPageTitle">Ready for a focused lookup</span><span id="browserContextHint">Agents can open pages here; you remain in control of navigation.</span></div>
+      <div class="browserbar"><div class="browser-nav"><button id="browserBack" title="Back" aria-label="Back"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button><button id="browserForward" title="Forward" aria-label="Forward"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg></button><button id="browserReload" title="Reload" aria-label="Reload"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/></svg></button></div><label class="browser-address"><span id="browserLock" class="browser-lock" aria-hidden="true"></span><img id="browserFavicon" class="browser-favicon" alt="" hidden /><input id="browserUrl" aria-label="Browser address" placeholder="Search or enter an address" spellcheck="false" /></label><button id="browserExternal" class="browser-iconbtn" title="Open in your browser" aria-label="Open in your browser"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button><button id="browserClose" class="browser-iconbtn" title="Close browser" aria-label="Close browser"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+      <div class="browser-progress" id="browserProgress" hidden></div>
+      <div class="browser-context"><span id="browserPageTitle">Ready for a focused lookup</span><span id="browserContextHint">Pages you open here stay signed in across restarts.</span></div>
       <div id="browserSlot"></div>
     </aside>
     <aside id="subagentsPanel" aria-label="Active subagents"><div class="browserbar"><strong>Subagents</strong><button id="subagentsClose" title="Close subagents">×</button></div><div id="subagentsList"></div></aside>
