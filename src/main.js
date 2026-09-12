@@ -18,7 +18,7 @@ const { openCodeLaunchConfig } = require('./opencode-adapter');
 const { migrateNocliHome, prepareHarnessContext } = require('./nocli-home');
 
 // Set once so the window groups under its own taskbar entry (pinnable) instead of Electron's.
-try { app.setAppUserModelId('io.nocli.workspace'); } catch {}
+try { app.setAppUserModelId('ai.nocli.desktop'); } catch {}
 // A stable display name also stabilizes Electron's userData folder across dev
 // and packaged launches (Windows otherwise kept both `nocli` and `NoCLI.ai`).
 try { app.setName('Calcium'); } catch {}

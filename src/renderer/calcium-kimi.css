@@ -1,0 +1,335 @@
+/* Calcium — Kimi-style desktop shell.
+   Loaded after desktop-shell.css so it wins the cascade at equal specificity.
+   The palette is re-pointed in app.js (THEME_PALETTES); this file handles the
+   structural / visual language: near-black canvas, one inset content panel,
+   flat sidebar rows, a segmented Work|Code|Chat control, and a hero composer. */
+
+:root {
+  /* Kimi desktop dark ramp (lifted from the shipped Kimi bundle). */
+  --k-bg: #0d0d0d;
+  --k-panel: #121212;
+  --k-surface: #1a1a1a;
+  --k-surface-2: #1f1f1f;
+  --k-surface-3: #292929;
+  --k-line: rgba(255, 255, 255, 0.08);
+  --k-line-strong: rgba(255, 255, 255, 0.14);
+  --k-text: rgba(255, 255, 255, 0.92);
+  --k-text-2: rgba(255, 255, 255, 0.56);
+  --k-text-3: rgba(255, 255, 255, 0.42);
+  --k-text-4: rgba(255, 255, 255, 0.26);
+  --k-hover: rgba(255, 255, 255, 0.06);
+  --k-active: rgba(255, 255, 255, 0.1);
+  --k-accent: #1783ff;
+  --k-radius-sm: 8px;
+  --k-radius: 12px;
+  --k-radius-lg: 16px;
+  --k-sidebar-w: 275px;
+  /* Monochrome status: no hue anywhere in the UI. Error/warning/done states are
+     conveyed by copy and weight, not colour. */
+  --color-bad: #EDEDED;
+  --color-warning: #EDEDED;
+  --color-info: #EDEDED;
+  --color-success: #EDEDED;
+  --k-font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  --k-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+
+  /* Re-point the shell tokens so every existing desktop-shell rule inherits the
+     Kimi ramp without a rewrite. */
+  --shell-black: var(--k-bg);
+  --shell-ink: var(--k-panel);
+  --shell-panel: var(--k-surface);
+  --shell-sidebar: var(--k-bg);
+  --shell-raised: var(--k-surface);
+  --shell-line: var(--k-line);
+  --shell-line-strong: var(--k-line-strong);
+  --shell-hover: var(--k-hover);
+  --shell-active: var(--k-active);
+  --shell-muted: var(--k-text-2);
+  --shell-faint: var(--k-text-3);
+}
+
+html, body {
+  background: var(--k-bg) !important;
+  color: var(--k-text);
+  font-family: var(--k-font);
+  letter-spacing: 0;
+}
+
+/* Monochrome identity: the accent rides the text colour, so anything drawn on
+   the accent flips to the opposite pole. */
+html[data-theme="dark"], html[data-theme="midnight"] { --color-on-accent: #0A0A0A; }
+html[data-theme="light"], html[data-theme="paper"] { --color-on-accent: #FFFFFF; }
+#stopRun:hover { background: rgba(255, 255, 255, 0.1) !important; color: var(--k-text) !important; }
+
+button, input, textarea, select { font-family: inherit; }
+
+/* The old ambient paintburst cursor smears red behind the top-left controls;
+   Kimi has no such effect. */
+#cursorPaint { display: none !important; }
+#side .top-nav-btn.active { box-shadow: none; }
+#side .top-nav-btn > svg, #side .settings-glyph > svg { width: 18px; height: 18px; flex: none; opacity: .9; }
+#side .top-nav-btn > span { flex: 1; text-align: left; }
+#side .top-nav-btn > .settings-glyph { flex: 0 0 18px; width: 18px; display: inline-flex; align-items: center; justify-content: center; }
+
+/* ---- Titlebar: no menubar, left-aligned segmented mode, controls at right ---- */
+.titlebar {
+  height: 52px;
+  padding: 0 8px 0 12px;
+  background: var(--k-bg);
+  border-bottom: 0;
+  gap: 8px;
+}
+#app { height: calc(100vh - 52px); }
+.window-menubar { display: none !important; }
+.window-task-label { display: none !important; }
+
+.mode-switch {
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  height: 36px;
+  margin: 0 6px 0 2px;
+  padding: 3px;
+  gap: 2px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--k-surface);
+  -webkit-app-region: no-drag;
+  z-index: 2;
+}
+.mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--k-text-2);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+.mode-switch button svg { opacity: .85; }
+.mode-switch button:hover { color: var(--k-text); }
+.mode-switch button.active {
+  background: var(--k-active);
+  color: var(--k-text);
+  box-shadow: none;
+}
+
+.utility-icon, .window-control {
+  min-width: 38px;
+  min-height: 38px;
+  border-radius: 8px !important;
+  color: var(--k-text-2) !important;
+}
+.utility-icon:hover, .window-control:hover { background: var(--k-hover) !important; color: var(--k-text) !important; }
+.window-control.close:hover { background: rgba(255, 255, 255, 0.16) !important; color: var(--k-text) !important; }
+.title-recent { min-height: 38px; color: var(--k-text-2); font-size: 12px; }
+
+/* ---- App frame: sidebar flush on the canvas, content in one inset panel ---- */
+#side {
+  width: var(--k-sidebar-w);
+  padding: 6px 10px 10px;
+  border-right: 0;
+  background: var(--k-bg);
+}
+#main {
+  margin: 0 8px 8px 0;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-lg);
+  background: var(--k-panel);
+  overflow: hidden;
+}
+
+/* ---- Sidebar rows: flat, 40px, muted, section labels tiny ---- */
+#side .brand {
+  min-height: 40px;
+  margin: 0 0 6px;
+  padding: 0 8px;
+  color: var(--k-text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+#side .newchat {
+  min-height: 40px;
+  margin: 0 0 10px;
+  padding: 0 10px;
+  border: 1px solid var(--k-line);
+  border-radius: 10px;
+  background: var(--k-surface);
+  color: var(--k-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+#side .newchat:hover { background: var(--k-surface-2); border-color: var(--k-line-strong); }
+#side .newchat span:first-child { width: 16px; color: var(--k-text-2); }
+
+#side .title-nav { gap: 1px; margin: 0 0 10px; padding: 0 0 10px; border-bottom: 1px solid var(--k-line); }
+#side .top-nav-btn {
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--k-text-2);
+  font-size: 13.5px;
+  font-weight: 450;
+}
+#side .top-nav-btn:hover { background: var(--k-hover); color: var(--k-text); }
+#side .top-nav-btn.active { background: var(--k-active); color: var(--k-text); font-weight: 550; }
+
+#side .swarm-launch {
+  min-height: 40px;
+  margin: 0 0 10px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--k-text-2);
+}
+#side .swarm-launch:hover { background: var(--k-hover); color: var(--k-text); }
+.swarm-launch-copy strong { font-size: 13.5px; font-weight: 450; }
+#side .swarm-launch.active { background: var(--k-active); color: var(--k-text); box-shadow: none; }
+
+.recents-label { min-height: 34px; color: var(--k-text-3); font-size: 12px; font-weight: 500; }
+.recent, .sidebar-project { min-height: 38px; border-radius: 8px; color: var(--k-text-2); font-size: 13px; }
+.recent:hover, .sidebar-project:hover { background: var(--k-hover); color: var(--k-text); }
+.recent.active, .sidebar-project.active { background: var(--k-active); color: var(--k-text); font-weight: 550; }
+
+.sidefoot { padding: 10px 2px 0; border-top: 1px solid var(--k-line); }
+.local-workspace { min-height: 44px; border-radius: 10px; }
+.local-workspace-copy strong { font-size: 13px; font-weight: 550; color: var(--k-text); }
+.local-workspace-copy small { color: var(--k-text-3); font-size: 12px; }
+
+/* ---- Home / hero ---- */
+#home { padding: 0; }
+#home .wrap { width: min(820px, calc(100% - 64px)); padding: 64px 0 88px; }
+.hero-mascot {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: 0 auto 10px;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: none;
+}
+.hero-mascot[hidden] { display: none; }
+#home #greet {
+  font-family: var(--k-display);
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--k-text);
+}
+#home .sub { margin: 8px 0 26px; color: var(--k-text-2); font-size: 14px; }
+
+/* ---- Composer: the hero surface ---- */
+#composerCard {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-lg);
+  background: var(--k-surface);
+  box-shadow: none;
+  transition: border-color .15s ease;
+}
+#composerCard:focus-within { border-color: var(--k-line-strong); box-shadow: none; }
+#home #prompt, #prompt {
+  min-height: 86px;
+  padding: 16px 18px 6px;
+  color: var(--k-text);
+  font-size: 15px;
+  line-height: 1.6;
+}
+#prompt::placeholder { color: var(--k-text-3); opacity: 1; }
+.composer-foot { min-height: 54px; padding: 6px 8px 8px; }
+.iconbtn { width: 40px; color: var(--k-text-2); border-radius: 8px; }
+.iconbtn:hover { background: var(--k-hover); color: var(--k-text); }
+.model-btn, .composer-mode {
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--k-text-2);
+  font-size: 12.5px;
+  font-weight: 450;
+}
+.model-btn:hover, .composer-mode:hover { background: var(--k-hover); color: var(--k-text); }
+#send {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 16px;
+}
+#send:hover { background: rgba(255, 255, 255, 0.24); transform: none; }
+
+/* ---- Suggestion chips: bordered pills under the composer ---- */
+#chips { justify-content: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+#chips .chip {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--k-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--k-text-2);
+  font-size: 12.5px;
+  font-weight: 450;
+}
+#chips .chip:hover { background: var(--k-hover); color: var(--k-text); border-color: var(--k-line-strong); }
+
+/* ---- Conversation column ---- */
+#log { width: min(100%, 820px); padding: 36px 28px 24px; }
+.turn { margin-bottom: 28px; }
+.turnhead { color: var(--k-text-3); font-size: 11px; }
+.turn.user .bubble {
+  max-width: min(78%, 620px);
+  padding: 10px 14px;
+  border: 0;
+  border-radius: var(--k-radius) var(--k-radius) 6px var(--k-radius);
+  background: var(--k-surface-2);
+  color: var(--k-text);
+}
+.turn.ai .block.text { color: var(--k-text); font-size: 15px; line-height: 1.68; }
+.block.tool, .block.think {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius);
+  background: var(--k-surface);
+}
+#composerSlot { padding: 12px max(24px, calc((100% - 820px) / 2)) 18px; }
+
+/* ---- Supporting screens ---- */
+.view-scroll { max-width: 1040px; padding: 40px 48px; }
+.ops-page-header { border-bottom: 1px solid var(--k-line); }
+.ops-page-header h2, .view-scroll > h2 { font-family: var(--k-display); font-size: 26px; font-weight: 550; letter-spacing: -0.02em; }
+.ops-card, .model-row, .ops-empty, .automation-form, .automation-row {
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius);
+  background: var(--k-surface);
+}
+.ops-page-header, .modal-head, .sentry-modal-head, .sentry-modal-actions { border-color: var(--k-line); }
+.modal-card, .sentry-modal-panel { border: 1px solid var(--k-line-strong); border-radius: var(--k-radius-lg); background: var(--k-panel); }
+#browserPanel, #subagentsPanel { border-left: 1px solid var(--k-line); background: var(--k-bg); }
+.browserbar { min-height: 52px; border-bottom: 1px solid var(--k-line); background: var(--k-bg); }
+.browserbar button { width: 40px; height: 40px; color: var(--k-text-2); }
+
+/* Settings keeps its own full-page rail, widened to the Kimi sidebar. */
+.modal#settings { padding: 0 0 0 var(--k-sidebar-w); }
+.settings-head { min-height: 84px; }
+#settings .modal-body > .fld { border: 1px solid var(--k-line); border-radius: var(--k-radius); background: var(--k-surface); }
+
+@media (max-width: 980px) {
+  :root { --k-sidebar-w: 240px; }
+  #home .wrap { width: min(760px, calc(100% - 40px)); }
+  .view-scroll { padding: 34px 30px; }
+}
+@media (max-width: 760px) {
+  #side { width: 72px; }
+  #main { margin: 0 6px 6px 0; border-radius: 12px; }
+  .modal#settings { padding-left: 0; }
+  #chips { display: none; }
+}

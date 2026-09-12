@@ -1344,6 +1344,7 @@
   }
 </style>
 <link rel="stylesheet" href="desktop-shell.css" />
+<link rel="stylesheet" href="calcium-kimi.css" />
 </head>
 <body>
 <div id="loading" role="status" aria-live="polite"><div class="loading-mark"><img src="../assets/calcium-bone.png" alt="" /><strong>CALCIUM</strong><span id="loadingText">Starting local workspace…</span></div></div>
@@ -1352,7 +1353,7 @@
 <header class="titlebar" aria-label="Calcium window controls">
   <span class="window-task-label"><img class="calcium-mark" src="../assets/calcium-bone.png" alt="" />CALCIUM</span>
   <nav class="window-menubar" aria-label="Application menu"><button type="button" data-title-menu="file">File</button><button type="button" data-title-menu="edit">Edit</button><button type="button" data-title-menu="view">View</button><button type="button" data-title-menu="help">Help</button></nav>
-  <nav class="mode-switch" aria-label="Workspace mode"><button type="button" data-product-mode="chat" class="active">CHAT</button><button type="button" data-product-mode="work">WORK</button><button type="button" data-product-mode="code">CODE</button></nav>
+  <nav class="mode-switch" aria-label="Workspace mode"><button type="button" data-product-mode="work"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M8.5 7V5.6A1.6 1.6 0 0 1 10.1 4h3.8a1.6 1.6 0 0 1 1.6 1.6V7"/><path d="M3 12h18"/></svg><span>Work</span></button><button type="button" data-product-mode="code"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="m9 8-4 4 4 4"/><path d="m15 8 4 4-4 4"/></svg><span>Code</span></button><button type="button" data-product-mode="chat" class="active"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20 12a7.5 7.5 0 0 1-11 6.7L4 20l1.3-4.1A7.5 7.5 0 1 1 20 12Z"/></svg><span>Chat</span></button></nav>
   <div id="titleMenuPopover" class="title-menu-popover" hidden></div>
   <div class="window-spacer"></div>
   <button class="title-recent" id="recentPopupToggle" type="button" aria-expanded="false" aria-controls="recentPopup">Recent chats</button>
@@ -1364,7 +1365,7 @@
     <button id="swarmLaunch" class="swarm-launch" type="button" aria-label="Open Calcium Swarm">
       <svg class="swarm-launch-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="2"/><circle cx="18" cy="7" r="2"/><circle cx="12" cy="17" r="2"/><path d="M7.7 8.2 10.7 15M16.3 8.2 13.3 15"/></svg><span class="swarm-launch-copy"><strong>Swarm</strong><small>Parallel independent workers</small></span><span class="swarm-arrow" aria-hidden="true">↗</span>
     </button>
-  <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><span>Tasks</span></button><button class="top-nav-btn" data-view="projects" type="button"><span>Projects</span></button><button class="top-nav-btn" data-view="automations" type="button"><span>Automations</span></button><button class="top-nav-btn" data-view="models" type="button"><span>Models</span></button><button class="top-nav-btn settings-nav" data-view="settings" type="button" aria-label="Settings"><span class="settings-glyph" aria-hidden="true">⚙</span><span>Settings</span></button></nav>
+  <nav class="title-nav" aria-label="Primary navigation"><button class="top-nav-btn active" data-view="chat" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m4 7 2 2 3-3.5"/><path d="M13 8h7"/><path d="m4 15 2 2 3-3.5"/><path d="M13 16h7"/></svg><span>Tasks</span></button><button class="top-nav-btn" data-view="projects" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z"/></svg><span>Projects</span></button><button class="top-nav-btn" data-view="automations" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4.5l3 1.8"/></svg><span>Automations</span></button><button class="top-nav-btn" data-view="models" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3.5 20 8v8l-8 4.5L4 16V8Z"/><path d="m4 8 8 4.5L20 8"/><path d="M12 12.5v8"/></svg><span>Models</span></button><button class="top-nav-btn settings-nav" data-view="settings" type="button" aria-label="Settings"><span class="settings-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M17.9 6.1l-1.6 1.6M7.7 16.3l-1.6 1.6M17.9 17.9l-1.6-1.6M7.7 7.7 6.1 6.1"/></svg></span><span>Settings</span></button></nav>
     <div class="workspace-note" id="workspaceNote">One conversation · scope is per turn</div>
     <button class="newchat" id="newchat" type="button"><span aria-hidden="true" style="opacity:.6">+</span><span id="newChatLabel">New chat</span></button>
     <div id="chatSidebar" class="sidebar-view active">
@@ -1404,6 +1405,7 @@
             <div class="code-actions" aria-label="Common code tasks"><button type="button" data-mode-prompt="Inspect this repository and explain the most important files.">Inspect</button><button type="button" data-mode-prompt="Find the likely cause of this bug and propose a minimal fix.">Debug</button><button type="button" data-mode-prompt="Run the relevant tests and summarize what they prove.">Test</button></div>
           </section>
         </div>
+        <img id="heroMascot" class="hero-mascot" src="../assets/calcium-mascot.png" alt="" hidden />
         <h1 id="greet">Good afternoon.</h1>
         <p class="sub">What are we working on?</p>
         <section id="swarmControls" class="swarm-controls" hidden aria-label="Swarm settings">

@@ -10,11 +10,11 @@ if ([string]::IsNullOrWhiteSpace($Repository)) {
 }
 $repo = $Repository
 $root = Split-Path -Parent $PSScriptRoot
-$installer = Join-Path $root "dist\nocli.ai-Setup-$Version.exe"
+$installer = Join-Path $root "dist\Calcium-Setup-$Version.exe"
 $checksum = "$installer.sha256"
 
 if (-not (Test-Path -LiteralPath $installer)) {
-  throw "Build nocli.ai-Setup-$Version.exe first with npm run dist:win."
+  throw "Build Calcium-Setup-$Version.exe first with npm run dist:win."
 }
 
 $sha256 = [System.Security.Cryptography.SHA256]::Create()
@@ -23,5 +23,5 @@ try {
   try { $hash = ([System.BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant() }
   finally { $stream.Dispose() }
 } finally { $sha256.Dispose() }
-[System.IO.File]::WriteAllText($checksum, "$hash  nocli.ai-Setup-$Version.exe`n", [System.Text.UTF8Encoding]::new($false))
-gh release create "v$Version" $installer $checksum --repo $repo --title "NoCLI.ai $Version" --notes "Windows installer for NoCLI.ai $Version. Verify the attached SHA-256 checksum before installation."
+[System.IO.File]::WriteAllText($checksum, "$hash  Calcium-Setup-$Version.exe`n", [System.Text.UTF8Encoding]::new($false))
+gh release create "v$Version" $installer $checksum --repo $repo --title "Calcium $Version" --notes "Windows installer for Calcium $Version. Verify the attached SHA-256 checksum before installation."

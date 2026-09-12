@@ -17,7 +17,7 @@ function installerExtensions(platform) {
 }
 
 function releaseInstallerNames(platform, version) {
-  if (platform === 'win32') return [`nocli.ai-Setup-${version}.exe`];
+  if (platform === 'win32') return [`Calcium-Setup-${version}.exe`];
   if (platform === 'linux') return [`nocli.ai_${version}_amd64.deb`];
   return [];
 }

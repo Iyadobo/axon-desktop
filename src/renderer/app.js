@@ -108,10 +108,10 @@ function syncModeScene({ animate = false } = {}) {
 }
 // ---- settings / appearance --------------------------------------------------
 const THEME_PALETTES = {
-  light: { accent: '#FF3B30', background: '#FFFFFF', surface: '#F4F4F4', text: '#0A0A0A' },
-  dark: { accent: '#FF3B30', background: '#0A0A0A', surface: '#141414', text: '#FFFFFF' },
-  midnight: { accent: '#FF3B30', background: '#080808', surface: '#111111', text: '#FFFFFF' },
-  paper: { accent: '#FF3B30', background: '#FFFFFF', surface: '#F4F4F4', text: '#0A0A0A' },
+  light: { accent: '#0A0A0A', background: '#FFFFFF', surface: '#F4F4F4', text: '#0A0A0A' },
+  dark: { accent: '#FFFFFF', background: '#0D0D0D', surface: '#1A1A1A', text: '#EDEDED' },
+  midnight: { accent: '#FFFFFF', background: '#0D0D0D', surface: '#1A1A1A', text: '#EDEDED' },
+  paper: { accent: '#0A0A0A', background: '#FFFFFF', surface: '#F4F4F4', text: '#0A0A0A' },
 };
 const FONT_STACKS = {
   system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
@@ -249,9 +249,9 @@ function loadSettings() {
   try {
     const saved = persisted.osettings || {};
     settings = { ...DEFAULT_SETTINGS, ...saved, colors: { ...THEME_PALETTES[saved.theme] || THEME_PALETTES.midnight, ...(saved.colors || {}) } };
-    // Migrate the old blue/pink defaults to NoCLI.ai's red signal without
-    // overwriting a deliberately customized palette.
-    const legacyAccents = new Set(['#2a4bd6', '#4ea1ff', '#f45f96', '#d95185']);
+    // Migrate the retired blue/pink and red defaults to Calcium's monochrome
+    // signal without overwriting a deliberately customized palette.
+    const legacyAccents = new Set(['#2a4bd6', '#4ea1ff', '#f45f96', '#d95185', '#ff3b30']);
     const savedAccent = String(saved.colors?.accent || saved.accent || '').toLowerCase();
     if (!savedAccent || legacyAccents.has(savedAccent)) {
       settings.theme = 'midnight';
@@ -2878,6 +2878,15 @@ function refreshGridColor() {
   $('prompt').value = typeof persisted.odraft === 'string' ? persisted.odraft : '';
   autosize();
   applyAppearance();
+  // Reveal the hero mascot only when its art actually loads, so a missing or
+  // not-yet-generated asset never shows a broken image or a console error.
+  const heroMascot = $('heroMascot');
+  if (heroMascot) {
+    const showMascot = () => { if (heroMascot.naturalWidth) heroMascot.hidden = false; };
+    heroMascot.addEventListener('load', showMascot);
+    heroMascot.addEventListener('error', () => { heroMascot.hidden = true; });
+    if (heroMascot.complete) showMascot();
+  }
   syncScope();
   syncCompactComposerLabels();
   syncProductMode();
