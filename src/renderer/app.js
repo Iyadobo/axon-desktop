@@ -341,7 +341,7 @@ function openSettings() {
   $('exoUrl').value = persisted.oExoUrl || 'http://127.0.0.1:52415';
   syncRuntimeFields();
   renderProviderProfiles();
-  if (currentProviderProfile()?.kind === 'opencode') refreshOpenCodeModels();
+  if (settings.providerProfiles.some((profile) => profile.kind === 'opencode')) refreshOpenCodeModels();
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncScope();
   loadEngineAvailability();
@@ -963,9 +963,9 @@ const prettyParams = (n) => (!n ? '' : n >= 1e9 ? +(n / 1e9).toFixed(n >= 1e10 ?
 const prettyBytes = (n) => (!n || n < 1e6 ? '' : n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.round(n / 1e6) + ' MB');
 function syncModelButton() {
   const name = $('model').value || '';
-  const entry = modelCatalogue.find((m) => m.name === name);
+  const entry = modelEntryFor(name);
   $('modelBtnName').textContent = name || 'Select a model';
-  $('modelBtn').title = name ? name + (entry?.source === 'cloud' ? ' · cloud' : ' · local') : 'Choose a model';
+  $('modelBtn').title = name ? name + (entry?.providerName ? ' · ' + entry.providerName : entry?.source === 'cloud' ? ' · cloud' : ' · local') : 'Choose a model';
   $('modelBtn').querySelector('.model-dot').className = 'model-dot ' + (entry?.source || '');
   const mark = $('modelBtnMark');
   if (name) { const m = familyMarkup(familyOf(name)); mark.style.color = m.color; mark.innerHTML = m.svg; }
@@ -995,7 +995,7 @@ function pickerRows() {
   if (sort === 'params') rows.sort((a, b) => paramCount(b) - paramCount(a) || byName(a, b));
   else if (sort === 'disk') rows.sort((a, b) => (b.size || 0) - (a.size || 0) || byName(a, b));
   else if (sort === 'name') rows.sort(byName);
-  else rows.sort((a, b) => (a.source === b.source ? byName(a, b) : a.source === 'local' ? -1 : 1));
+  else rows.sort((a, b) => (a.providerName === b.providerName ? byName(a, b) : String(a.providerName || '').localeCompare(String(b.providerName || ''))));
   return rows;
 }
 function renderPicker() {
@@ -1022,12 +1022,13 @@ function renderPicker() {
   if (pickerCursor >= rows.length) pickerCursor = rows.length - 1;
   if (pickerCursor < 0) pickerCursor = 0;
   let lastGroup = null;
-  const grouped = $('modelSort').value === 'source';
+  const grouped = $('modelSort').value === 'source' || new Set(rows.map((m) => m.providerName)).size > 1;
   rows.forEach((m, index) => {
-    if (grouped && m.source !== lastGroup) {
-      lastGroup = m.source;
+    const groupKey = grouped ? (m.providerName || m.source) : null;
+    if (grouped && groupKey !== lastGroup) {
+      lastGroup = groupKey;
       const head = document.createElement('div'); head.className = 'picker-group';
-      head.textContent = m.source === 'local' ? 'On this machine' : 'Cloud';
+      head.textContent = m.providerName || (m.source === 'local' ? 'On this machine' : m.source === 'cloud' ? 'Cloud' : 'API');
       list.appendChild(head);
     }
     const family = familyOf(m.name);
@@ -1059,7 +1060,7 @@ function chooseModel(name) {
   if (![...sel.options].some((o) => o.value === name)) {
     const option = document.createElement('option'); option.value = name; option.textContent = name; sel.appendChild(option);
   }
-  sel.value = name; saveState('omodel', name);
+  sel.value = name; activateModelProvider(name); saveState('omodel', name);
   syncModelButton(); closeModelPicker();
 }
 function openModelPicker() {
@@ -1074,7 +1075,7 @@ function closeModelPicker() { $('modelPicker').classList.remove('show'); }
 function setModelByName(name) {
   const sel = $('model');
   const opt = [...sel.options].find((o) => o.value === name || o.value.startsWith(name));
-  if (opt) { sel.value = opt.value; saveState('omodel', sel.value); syncModelButton(); showChatView(); addSysNote('Model set to ' + opt.value + '.'); }
+  if (opt) { sel.value = opt.value; activateModelProvider(opt.value); saveState('omodel', sel.value); syncModelButton(); showChatView(); addSysNote('Model set to ' + opt.value + '.'); }
   else { showChatView(); addSysNote('Model "' + name + '" not found. Available: ' + [...sel.options].map((o) => o.value).join(', ')); }
   scrollBottom();
 }
@@ -1605,17 +1606,48 @@ function openCodeModelsFor(source = currentProviderProfile()) {
   const family = openCodeModelFamily(source);
   return openCodeModelCatalogue.filter((model) => family === 'go' ? model.startsWith('opencode-go/') : family === 'zen' ? model.startsWith('opencode/') : /^(opencode|opencode-go)\//.test(model));
 }
-function providerModelChoices() {
-  const profile = currentProviderProfile();
-  if (profile?.kind === 'ollama') return localModelCatalogue;
-  const name = String(profile?.model || '').trim();
-  if (profile?.kind === 'opencode') {
+function profileById(id) { return settings.providerProfiles.find((profile) => profile.id === id) || null; }
+function profileModels(profile) {
+  if (!profile) return [];
+  if (profile.kind === 'ollama') return localModelCatalogue;
+  const name = String(profile.model || '').trim();
+  if (profile.kind === 'opencode') {
     const models = openCodeModelsFor(profile).map((model) => ({ name: model, source: 'api', details: { parameter_size: model.startsWith('opencode-go/') ? 'OpenCode Go' : 'OpenCode Zen' } }));
     if (name && !models.some((model) => model.name === name)) models.unshift({ name, source: 'api', details: { parameter_size: 'OpenCode' } });
     return models;
   }
-  const source = profile?.kind === 'codex-cli' ? 'Codex CLI' : profile?.kind === 'claude-cli' ? 'Claude Code' : profile?.kind === 'responses' ? 'Responses API' : 'API route';
+  const source = profile.kind === 'codex-cli' ? 'Codex CLI' : profile.kind === 'claude-cli' ? 'Claude Code' : profile.kind === 'responses' ? 'Responses API' : 'API route';
   return name ? [{ name, source: 'api', details: { parameter_size: source } }] : [];
+}
+// The unified list: every connected provider's models in one place, each tagged
+// with the profile that owns it. Picking a model routes that conversation to
+// its own provider, so Ollama and OpenCode Go can be used at the same time.
+function providerModelChoices() {
+  const out = []; const seen = new Set();
+  for (const profile of settings.providerProfiles) {
+    for (const model of profileModels(profile)) {
+      const key = profile.id + '\u241f' + model.name;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ ...model, profileId: profile.id, providerName: profile.name || 'Provider', providerKind: profile.kind });
+    }
+  }
+  return out;
+}
+function modelEntryFor(name) {
+  return modelCatalogue.find((m) => m.name === name && m.profileId === settings.activeProviderProfileId)
+    || modelCatalogue.find((m) => m.name === name) || null;
+}
+// Selecting a model that belongs to another connected provider makes that
+// provider active, so a single picker spans every provider at once.
+function activateModelProvider(name) {
+  const entry = modelEntryFor(name);
+  if (!entry || !entry.profileId || entry.profileId === settings.activeProviderProfileId) return;
+  settings.activeProviderProfileId = entry.profileId;
+  const profile = profileById(entry.profileId);
+  if (profile && profile.kind !== 'ollama') { profile.model = name; if ($('providerModel')) $('providerModel').value = name; }
+  saveSettings();
+  renderProviderProfiles();
 }
 async function refreshOpenCodeModels() {
   let data;
@@ -1624,7 +1656,7 @@ async function refreshOpenCodeModels() {
     openCodeModelCatalogue = Array.isArray(data?.models) ? data.models : [];
   } catch { openCodeModelCatalogue = []; }
   renderOpenCodeProviderModelChoices(data?.error);
-  if (currentProviderProfile()?.kind === 'opencode') applyProviderModelChoices();
+  applyProviderModelChoices();
   return openCodeModelCatalogue;
 }
 function renderOpenCodeProviderModelChoices(error = '') {
@@ -1667,21 +1699,29 @@ async function testOpenCodeProvider() {
   finally { renderOpenCodeProviderModelChoices(); }
 }
 function applyProviderModelChoices() {
-  const profile = currentProviderProfile(); const sel = $('model'); if (!sel) return;
+  const sel = $('model'); if (!sel) return;
   const models = providerModelChoices(); const prior = sel.value;
   modelCatalogue = models;
   sel.replaceChildren(...models.map((model) => { const option = document.createElement('option'); option.value = model.name; option.textContent = model.name + (model.details?.parameter_size ? ' · ' + model.details.parameter_size : model.source === 'api' ? ' · API' : ''); return option; }));
-  const preferred = profile?.kind === 'ollama' ? persisted.omodel : profile?.model;
+  const conv = activeId ? conversations.find((c) => c.id === activeId) : null;
+  const profile = currentProviderProfile();
+  const preferred = (conv && conv.model) || (profile?.kind === 'ollama' ? persisted.omodel : profile?.model) || persisted.omodel;
   if (models.some((model) => model.name === preferred)) sel.value = preferred;
   else if (models.some((model) => model.name === prior)) sel.value = prior;
   syncModelButton();
   if ($('modelPicker').classList.contains('show')) renderPicker();
   const sidebar = $('modelsSidebarList'); if (!sidebar) return;
   sidebar.innerHTML = '';
-  if (!models.length) { sidebar.textContent = profile?.kind === 'ollama' ? 'No local models installed' : 'Set this profile\'s default model in Settings'; return; }
-  for (const model of models.slice(0, 10)) {
+  if (!models.length) { sidebar.textContent = 'No models from the connected providers yet'; return; }
+  let lastProvider = null;
+  for (const model of models.slice(0, 12)) {
+    if (model.providerName && model.providerName !== lastProvider) {
+      lastProvider = model.providerName;
+      const head = document.createElement('div'); head.className = 'sidebar-model-provider'; head.textContent = model.providerName;
+      sidebar.appendChild(head);
+    }
     const item = document.createElement('button'); item.type = 'button'; item.className = 'sidebar-model-choice'; item.textContent = model.name;
-    item.onclick = () => { sel.value = model.name; if (profile?.kind === 'ollama') saveState('omodel', model.name); else if (profile?.kind === 'opencode') { profile.model = model.name; $('providerModel').value = model.name; saveSettings(); } syncModelButton(); if (swarmMode) syncSwarmRoles(); };
+    item.onclick = () => { sel.value = model.name; activateModelProvider(model.name); if (model.providerKind === 'ollama') saveState('omodel', model.name); syncModelButton(); if (swarmMode) syncSwarmRoles(); };
     sidebar.appendChild(item);
   }
 }
@@ -1754,7 +1794,9 @@ function syncProviderRouteFields() {
   renderOpenCodeProviderModelChoices();
 }
 function applyProviderPreset() {
-  const preset = PROVIDER_PRESETS[$('providerPreset').value] || PROVIDER_PRESETS.custom;
+  const key = $('providerPreset').value;
+  if (key === 'hybrid') return applyHybridPreset();
+  const preset = PROVIDER_PRESETS[key] || PROVIDER_PRESETS.custom;
   fillProviderFields(preset);
   const profile = currentProviderProfile();
   if (profile && preset.engine) { profile.engine = preset.engine; saveSettings(); syncEngineSelect(); }
@@ -1762,6 +1804,26 @@ function applyProviderPreset() {
   $('providerImportStatus').textContent = preset.kind === 'opencode'
     ? 'Preset applied. Choose an available Go or Zen model, then save. Authentication stays in OpenCode.'
     : 'Preset applied. Add a model ID and API key, then save the profile.';
+}
+// Hybrid: keep Ollama and OpenCode Go connected side by side. The unified model
+// list then shows both, and each chat routes to whichever provider owns the
+// model that was picked.
+async function applyHybridPreset() {
+  let ollama = settings.providerProfiles.find((profile) => profile.kind === 'ollama');
+  if (!ollama) { ollama = { ...DEFAULT_PROVIDER }; settings.providerProfiles.unshift(ollama); }
+  ollama.engine = ollama.engine || 'codex';
+  let opencode = settings.providerProfiles.find((profile) => profile.kind === 'opencode');
+  if (!opencode) {
+    opencode = { ...DEFAULT_PROVIDER, id: rid(), name: 'OpenCode Go', kind: 'opencode', engine: 'opencode', endpoint: '', model: 'opencode-go/kimi-k3', credentialId: '' };
+    settings.providerProfiles.push(opencode);
+  } else if (!String(opencode.model || '').trim()) {
+    opencode.model = 'opencode-go/kimi-k3';
+  }
+  settings.activeProviderProfileId = ollama.id;
+  saveSettings(); renderProviderProfiles(); syncEngineSelect();
+  $('providerImportStatus').textContent = 'Hybrid enabled: Ollama and OpenCode Go now share one model list. Pick any model to send that chat through its provider.';
+  await refreshOpenCodeModels();
+  applyProviderModelChoices();
 }
 function openCodeProviderEntry(config) {
   const candidates = config?.provider || config?.providers || config;
@@ -2017,9 +2079,11 @@ function syncComposerState() {
 }
 function renderRunQueue() {
   const host = $('runQueue'); if (!host) return;
+  const items = $('runQueueItems');
   const queue = activeId ? (queuedMessages.get(activeId) || []) : [];
-  host.hidden = !queue.length;
-  host.innerHTML = queue.length ? `<span class="queue-label">UP NEXT · ${queue.length}</span>${queue.map((entry, index) => `<button type="button" data-queue-index="${index}" title="Remove from queue"><span>${index + 1}</span>${esc(entry.text || '(attachment)')}</button>`).join('')}` : '';
+  const running = !!currentTurn();
+  host.hidden = !queue.length && !running;
+  if (items) items.innerHTML = queue.length ? `<span class="queue-label">UP NEXT · ${queue.length}</span>${queue.map((entry, index) => `<button type="button" data-queue-index="${index}" title="Remove from queue"><span>${index + 1}</span>${esc(entry.text || '(attachment)')}</button>`).join('')}` : '';
   host.querySelectorAll('[data-queue-index]').forEach((button) => { button.onclick = () => { queue.splice(Number(button.dataset.queueIndex), 1); if (!queue.length) queuedMessages.delete(activeId); renderRunQueue(); }; });
 }
 
@@ -2041,8 +2105,10 @@ function takeComposerEntry() {
   const text = $('prompt').value.trim();
   if (!text && !attachments.length) return null;
   const images = attachments.filter((a) => a.image).map((a) => ({ name: a.name, type: a.type, data: a.data }));
-  const provider = currentProviderProfile();
-  const entry = { text, combined: inlineAttachments(text), images, productMode: settings.productMode, providerProfileId: provider?.id, model: provider?.model || $('model').value };
+  const selected = $('model').value;
+  const picked = modelEntryFor(selected);
+  const provider = picked ? profileById(picked.profileId) : currentProviderProfile();
+  const entry = { text, combined: inlineAttachments(text), images, productMode: settings.productMode, providerProfileId: provider?.id, model: picked?.name || provider?.model || selected };
   clearInput(); clearAttachments(); return entry;
 }
 

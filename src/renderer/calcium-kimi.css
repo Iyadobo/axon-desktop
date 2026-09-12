@@ -201,7 +201,7 @@ button, input, textarea, select { font-family: inherit; }
 .recent:hover, .sidebar-project:hover { background: var(--k-hover); color: var(--k-text); }
 .recent.active, .sidebar-project.active { background: var(--k-active); color: var(--k-text); font-weight: 550; }
 
-.sidefoot { padding: 10px 2px 0; border-top: 1px solid var(--k-line); }
+.sidefoot { display: none; padding: 10px 2px 0; border-top: 1px solid var(--k-line); }
 .local-workspace { min-height: 44px; border-radius: 10px; }
 .local-workspace-copy strong { font-size: 13px; font-weight: 550; color: var(--k-text); }
 .local-workspace-copy small { color: var(--k-text-3); font-size: 12px; }
@@ -333,3 +333,66 @@ button, input, textarea, select { font-family: inherit; }
   .modal#settings { padding-left: 0; }
   #chips { display: none; }
 }
+
+/* ---- Cream kit icons (segmented from the Calcium asset sheet) ----
+   Icons live on ::before pseudo-elements so the existing hover rules, which
+   set the button's `background` shorthand, cannot reset or reposition them. */
+.window-control > svg { display: none !important; }
+.window-control { display: inline-flex !important; align-items: center; justify-content: center; }
+.window-control::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+#windowMinimize::before { background-image: url('../assets/ui/win-min.png'); }
+#windowMaximize::before { background-image: url('../assets/ui/win-max.png'); }
+#windowClose::before { background-image: url('../assets/ui/win-close.png'); }
+
+#side .top-nav-btn > svg, #side .top-nav-btn > .settings-glyph { display: none !important; }
+#side .top-nav-btn { display: flex; align-items: center; }
+#side .top-nav-btn::before {
+  content: '';
+  flex: none;
+  width: 19px;
+  height: 19px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+#side .top-nav-btn[data-view="chat"]::before { background-image: url('../assets/ui/tasks.png'); }
+#side .top-nav-btn[data-view="projects"]::before { background-image: url('../assets/ui/projects.png'); }
+#side .top-nav-btn[data-view="automations"]::before { background-image: url('../assets/ui/automations.png'); }
+#side .top-nav-btn[data-view="models"]::before { background-image: url('../assets/ui/models.png'); }
+#side .top-nav-btn[data-view="settings"]::before { background-image: url('../assets/ui/settings.png'); }
+
+#attachBtn > svg { display: none !important; }
+#attachBtn { display: inline-flex !important; align-items: center; justify-content: center; }
+#attachBtn::before {
+  content: '';
+  width: 19px;
+  height: 19px;
+  background: url('../assets/ui/attach.png') center / contain no-repeat;
+}
+#send:not(.queue-send) { display: inline-flex; align-items: center; justify-content: center; background: transparent; color: transparent; }
+#send:not(.queue-send)::before {
+  content: '';
+  width: 38px;
+  height: 38px;
+  background: url('../assets/ui/send.png') center / contain no-repeat;
+}
+#send:not(.queue-send):hover { background: transparent; }
+
+/* Unified model list: a provider label above each group in the sidebar list. */
+#modelsSidebarList .sidebar-model-provider { margin: 9px 0 2px; padding: 0 10px; color: var(--k-text-3); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+
+/* Queued-message strip owns the run controls (Steer / Stop) instead of the
+   composer's control row. */
+#runQueue { gap: 8px; margin: 0; padding: 7px 8px; border-bottom: 1px solid var(--k-line); overflow: visible; }
+#runQueueItems { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; overflow-x: auto; }
+#runQueue .run-queue-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+#runQueue .run-queue-actions button { max-width: none; min-height: 32px; padding: 0 14px; border: 1px solid var(--k-line); border-radius: 8px; background: transparent; color: var(--k-text-2); font-size: 12.5px; font-weight: 450; }
+#runQueue .run-queue-actions button:hover { background: var(--k-hover); color: var(--k-text); }
+#runQueue .run-queue-actions button:disabled { opacity: .5; }
