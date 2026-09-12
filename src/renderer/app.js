@@ -2146,6 +2146,10 @@ window.nocli.on('chat-done', ({ requestId, sessionId, steered } = {}) => {
   if (turn.started && text) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
     if (conv) { conv.turns = conv.turns || []; conv.turns.push({ role: 'assistant', content: text, steps: turn.record || [] }); conv.updatedAt = Date.now(); saveConvs(); publishConversation(conv); }
+    // Name the chat from the first exchange, using the model itself.
+    if (conv && !conv.titleGenerated && (conv.turns || []).filter((t) => t.role === 'assistant').length <= 2) {
+      generateChatTitle(conv).catch(() => {});
+    }
   }
   if (sessionId) {
     const conv = conversations.find((c) => c.id === turn.conversationId);
@@ -2242,6 +2246,43 @@ async function send() {
   const entry = takeComposerEntry();
   startMessage(entry);
 }
+// ---- basic per-chat retrieval (BM25 over this conversation's own turns) -----
+const RAG_STOP = new Set(['the', 'a', 'an', 'and', 'or', 'to', 'of', 'in', 'is', 'it', 'for', 'on', 'with', 'this', 'that', 'you', 'your', 'i', 'we', 'be', 'as', 'at', 'by', 'from', 'are', 'was', 'were', 'but', 'not', 'so', 'if', 'then', 'than', 'into', 'out', 'up', 'down', 'can', 'will', 'would', 'should', 'could', 'have', 'has', 'had', 'do', 'does', 'did', 'me', 'my', 'our', 'their', 'they', 'he', 'she', 'them', 'us', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'about', 'also', 'just', 'like']);
+function ragTokens(text) { return String(text || '').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2 && !RAG_STOP.has(t)); }
+function ragContext(turns, query, maxDocs = 4) {
+  const docs = (turns || []).map((t) => ({ role: t.role, text: String(t.content || ''), toks: ragTokens(t.content) })).filter((d) => d.toks.length >= 3);
+  if (!docs.length) return '';
+  const df = new Map(); const lens = docs.map((d) => d.toks.length); const avg = lens.reduce((a, b) => a + b, 0) / lens.length || 1;
+  for (const d of docs) for (const t of new Set(d.toks)) df.set(t, (df.get(t) || 0) + 1);
+  const q = [...new Set(ragTokens(query))]; if (!q.length) return '';
+  const N = docs.length, k1 = 1.5, b = 0.75;
+  const scored = docs.map((d, i) => {
+    const tf = new Map(); for (const t of d.toks) tf.set(t, (tf.get(t) || 0) + 1);
+    let s = 0;
+    for (const t of q) { const f = tf.get(t); if (!f) continue; const n = df.get(t) || 0; const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5)); s += idf * (f * (k1 + 1)) / (f + k1 * (1 - b + b * lens[i] / avg)); }
+    return { ...d, score: s };
+  }).filter((d) => d.score > 0).sort((a, b2) => b2.score - a.score).slice(0, maxDocs);
+  if (!scored.length) return '';
+  return scored.map((d) => `${d.role === 'user' ? 'You' : 'Assistant'} said earlier: ${d.text.replace(/\s+/g, ' ').slice(0, 500)}`).join('\n');
+}
+// Let the active model name the conversation after its first exchange.
+async function generateChatTitle(conv) {
+  const provider = settings.providerProfiles.find((p) => p.id === conv.providerProfileId) || currentProviderProfile();
+  const userTurn = (conv.turns || []).find((t) => t.role === 'user');
+  const assistantTurn = (conv.turns || []).find((t) => t.role === 'assistant');
+  const prompt = `User: ${String(userTurn?.content || '').slice(0, 800)}\nAssistant: ${String(assistantTurn?.content || '').slice(0, 800)}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let raw = '';
+    try { raw = await window.nocli.generateTitle({ provider, model: conv.model, prompt }); } catch { raw = ''; }
+    const clean = String(raw || '').replace(/^[\s"'#*]+|[\s"'*.]+$/g, '').split('\n')[0].trim();
+    if (clean.length >= 3 && clean.split(/\s+/).length <= 8) {
+      conv.title = clean.slice(0, 48);
+      conv.titleGenerated = true;
+      saveConvs(); renderRecents();
+      return;
+    }
+  }
+}
 async function startMessage(entry) {
   const { text, combined, images, model } = entry;
   // Modes have intentionally different runtimes and system boundaries. Never
@@ -2266,7 +2307,16 @@ async function startMessage(entry) {
   activeTurns.set(requestId, turn);
   renderRecents(); syncComposerState();
   const provider = settings.providerProfiles.find((profile) => profile.id === (conv.providerProfileId || entry.providerProfileId)) || currentProviderProfile();
-  const history = (conv.turns || []).filter((turn) => turn && (turn.role === 'user' || turn.role === 'assistant') && typeof turn.content === 'string').slice(-40).map((turn) => ({ role: turn.role, content: turn.content }));
+  const validTurns = (conv.turns || []).filter((turn) => turn && (turn.role === 'user' || turn.role === 'assistant') && typeof turn.content === 'string');
+  const recentTurns = validTurns.slice(-40);
+  const olderTurns = validTurns.slice(0, -40);
+  // Basic per-chat RAG: when turns fall outside the recent window (or the model
+  // changed mid-chat), pull the most relevant older turns back in by keyword.
+  const modelChanged = !!conv.model && conv.model !== model;
+  const retrieved = (olderTurns.length || modelChanged) ? ragContext(olderTurns, combined) : '';
+  const history = (
+    retrieved ? [{ role: 'system', content: 'Relevant earlier context from this same chat (may be partial). Use it if useful:\n' + retrieved }, ...recentTurns] : recentTurns
+  ).map((turn) => ({ role: turn.role, content: turn.content }));
   const result = await window.nocli.chat(conv.model, combined, conv.sessionId, { systemPrompt, cwd: projectCwd(), images, requestId, productMode: conv.productMode || entry.productMode, provider, mode: settings.permissionMode, scope: settings.scope, grants: conv.grants || [], history });
   if (!result?.ok) {
     const failed = activeTurns.get(requestId);

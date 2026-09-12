@@ -827,6 +827,36 @@ function warmProvider(provider, model) {
     req.end(payload);
   });
 }
+// A single non-streaming completion, used for small side tasks like naming a chat.
+async function completeOnce(provider, model, messages, maxTokens = 24) {
+  return new Promise((resolve) => {
+    const kind = provider?.kind || 'ollama';
+    const responses = kind === 'responses';
+    let base = provider?.endpoint;
+    if (!base && kind === 'ollama') base = `${activeOllamaUrl().replace(/\/$/, '')}/v1`;
+    let target; try { target = apiEndpoint(base, responses ? 'responses' : 'chat/completions'); } catch { return resolve(''); }
+    const key = readProviderSecret(provider?.credentialId);
+    const keylessLocal = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(\/|$)/i.test(String(base || ''));
+    if (!key && !keylessLocal && kind !== 'ollama') return resolve('');
+    const client = target.protocol === 'https:' ? https : http;
+    const payload = JSON.stringify(responses
+      ? { model, input: messages, max_output_tokens: maxTokens, stream: false }
+      : { model, messages, max_tokens: maxTokens, temperature: 0.2, stream: false });
+    const req = client.request(target, { method: 'POST', headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }, agent: agentFor(target) }, (res) => {
+      let body = ''; res.setEncoding('utf8'); res.on('data', (chunk) => (body += chunk));
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(body);
+          const text = responses ? (json.output_text || json.output?.[0]?.content?.[0]?.text || '') : (json.choices?.[0]?.message?.content || '');
+          resolve(String(text || '').trim());
+        } catch { resolve(''); }
+      });
+    });
+    req.on('error', () => resolve(''));
+    req.setTimeout(30000, () => { req.destroy(); resolve(''); });
+    req.end(payload);
+  });
+}
 function runApiChat(model, prompt, sessionId, send, systemPrompt, holder, provider, history, user) {
   return new Promise((resolve) => {
     const key = readProviderSecret(provider?.credentialId);
@@ -1221,6 +1251,10 @@ ipcMain.handle('openrouter-free-models', async () => {
 ipcMain.handle('omniroute-status', async () => ({ running: await omnirouteHealth(), installed: !!omnirouteBin(), endpoint: OMNIROUTE_ENDPOINT }));
 ipcMain.handle('omniroute-ensure', () => ensureOmniRoute());
 ipcMain.handle('warm-provider', (_e, { provider, model } = {}) => warmProvider(migrateProvider(provider || {}), model));
+ipcMain.handle('generate-title', (_e, { provider, model, prompt } = {}) => completeOnce(migrateProvider(provider || {}), model, [
+  { role: 'system', content: 'You name chat conversations. Reply with only a 3 to 6 word title in Title Case. No quotes, no trailing punctuation, no explanation, no preamble.' },
+  { role: 'user', content: String(prompt || '').slice(0, 2000) },
+], 256));
 ipcMain.handle('omniroute-install', async () => {
   if (omnirouteBin()) return ensureOmniRoute();
   const npm = whereFirst(process.platform === 'win32' ? 'npm.cmd' : 'npm') || 'npm';
