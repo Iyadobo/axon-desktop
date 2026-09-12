@@ -480,7 +480,18 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false },
   });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.webContents.once('did-finish-load', () => startBackgroundUpdateChecks());
+  const revealWindow = () => {
+    if (!win || win.isDestroyed()) return;
+    if (!win.isMaximized()) win.maximize();
+    win.show(); win.focus();
+  };
+  // `ready-to-show` can be skipped on some Windows/GPU combinations even
+  // though the local renderer finished normally. A loaded UI must always get
+  // a visible, focused window rather than becoming a tray-only background app.
+  win.webContents.once('did-finish-load', () => {
+    startBackgroundUpdateChecks();
+    setTimeout(revealWindow, 0);
+  });
   // Frameless Electron windows do not reliably inherit Chromium's browser
   // zoom shortcuts. Keep this scoped to NoCLI.ai's shell (not the agent browser).
   win.webContents.on('before-input-event', (event, input) => {
@@ -499,7 +510,7 @@ function createWindow() {
   // Open maximized: NoCLI.ai is a workspace, and the transcript plus the browser
   // pane both want room. Maximize before showing so there is no resize flash;
   // the width/height above stay as the restore-down size.
-  win.once('ready-to-show', () => { win.maximize(); win.show(); });
+  win.once('ready-to-show', revealWindow);
   // NoCLI.ai is an agent host: closing the window keeps active work alive in the
   // background. The tray's explicit Quit item remains the kill switch.
   win.on('close', (event) => {
