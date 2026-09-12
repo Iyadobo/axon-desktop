@@ -24,7 +24,11 @@ try { app.setAppUserModelId('io.nocli.workspace'); } catch {}
 try { app.setName('Calcium'); } catch {}
 // Keep the established data directory for the first Calcium release so saved
 // projects, chats, connections, and official-harness context are not stranded.
-try { app.setPath('userData', path.join(app.getPath('appData'), 'NoCLI.ai')); } catch {}
+// A supplied user-data directory is intentionally left alone for source previews
+// and visual tests, which need their own single-instance scope.
+if (!app.commandLine.getSwitchValue('user-data-dir')) {
+  try { app.setPath('userData', path.join(app.getPath('appData'), 'NoCLI.ai')); } catch {}
+}
 
 function migrateLegacyUserData(targetDirectory) {
   const targetSettings = path.join(targetDirectory, 'settings.json');
