@@ -123,6 +123,10 @@ const FONT_STACKS = {
 // can still choose another installed engine, while provider-specific profiles
 // (OpenCode Go/Zen, API routes) keep their explicit engine selection.
 const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Local runtime', kind: 'ollama', engine: 'codex', endpoint: '', model: '', credentialId: '' };
+// Free Model is the out-of-the-box tier: the local OmniRoute gateway, model
+// `auto`, no key. It is presented simply as a model so it needs no explanation.
+const FREE_MODEL_PROVIDER = { id: 'free-model', name: 'Free Model', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto', credentialId: '' };
+function isFreeModelProfile(profile) { return /20128/.test(String(profile?.endpoint || '')); }
 // Scope is the single control that replaced the Chat/Code/Work split and the
 // separate permission selector. It still resolves to the productMode and
 // permission the capability contract and the engines expect.
@@ -179,7 +183,7 @@ function syncCompactComposerLabels() {
   });
 }
 addEventListener('resize', syncCompactComposerLabels, { passive: true });
-const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FF3B30', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', reasoning: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
+const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FFFFFF', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', reasoning: 'auto', scope: 'chat', providerProfiles: [{ ...FREE_MODEL_PROVIDER }, { ...DEFAULT_PROVIDER }], activeProviderProfileId: 'free-model', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
 function swarmProviderLimit() { return (currentProviderProfile()?.kind || 'ollama') === 'ollama' ? 3 : null; }
@@ -270,6 +274,12 @@ function loadSettings() {
       kind: ['ollama', 'openai-compatible', 'responses', 'opencode'].includes(profile.kind) ? profile.kind : 'ollama',
     }));
     applyScope();
+    // Free Model ships as the out-of-the-box tier: make sure it exists in every
+    // config, and land on it once so a fresh or legacy install has something
+    // that works with no key.
+    let freeProfile = settings.providerProfiles.find((profile) => isFreeModelProfile(profile));
+    if (!freeProfile) { freeProfile = { ...FREE_MODEL_PROVIDER }; settings.providerProfiles.unshift(freeProfile); }
+    if (!saved.freeModelDefault) { settings.activeProviderProfileId = freeProfile.id; settings.freeModelDefault = true; }
     if (!settings.providerProfiles.some((profile) => profile.id === settings.activeProviderProfileId)) settings.activeProviderProfileId = settings.providerProfiles[0].id;
   } catch {}
 }
@@ -967,8 +977,8 @@ const prettyBytes = (n) => (!n || n < 1e6 ? '' : n >= 1e9 ? (n / 1e9).toFixed(1)
 function syncModelButton() {
   const name = $('model').value || '';
   const entry = modelEntryFor(name);
-  $('modelBtnName').textContent = name || 'Select a model';
-  $('modelBtn').title = name ? name + (entry?.providerName ? ' · ' + entry.providerName : entry?.source === 'cloud' ? ' · cloud' : ' · local') : 'Choose a model';
+  $('modelBtnName').textContent = entry?.label || name || 'Select a model';
+  $('modelBtn').title = (entry?.label || name) ? (entry?.label || name) + (entry?.providerName ? ' · ' + entry.providerName : entry?.source === 'cloud' ? ' · cloud' : ' · local') : 'Choose a model';
   $('modelBtn').querySelector('.model-dot').className = 'model-dot ' + (entry?.source || '');
   const mark = $('modelBtnMark');
   if (name) { const m = familyMarkup(familyOf(name)); mark.style.color = m.color; mark.innerHTML = m.svg; }
@@ -978,6 +988,8 @@ function syncModelButton() {
 async function refreshModelCapabilityBadge() {
   const badge = $('modelCapabilityBadge'); const model = $('model').value;
   if (!badge || !model) { if (badge) badge.hidden = true; return; }
+  // Free Model is a router, not one model, so a single capability verdict is noise.
+  if (modelEntryFor(model)?.label === 'Free Model') { badge.hidden = true; return; }
   try {
     const report = await window.nocli.modelCapabilities(model, settings.productMode, currentProviderProfile());
     if ($('model').value !== model) return;
@@ -995,11 +1007,12 @@ function pickerRows() {
   const sort = $('modelSort').value;
   let rows = modelCatalogue.filter((m) => (filter === 'all' || m.source === filter)
     && (!query || m.name.toLowerCase().includes(query) || familyOf(m.name).name.toLowerCase().includes(query)));
-  const byName = (a, b) => a.name.localeCompare(b.name);
-  if (sort === 'params') rows.sort((a, b) => paramCount(b) - paramCount(a) || byName(a, b));
-  else if (sort === 'disk') rows.sort((a, b) => (b.size || 0) - (a.size || 0) || byName(a, b));
-  else if (sort === 'name') rows.sort(byName);
-  else rows.sort((a, b) => (a.providerName === b.providerName ? byName(a, b) : String(a.providerName || '').localeCompare(String(b.providerName || ''))));
+  const byName = (a, b) => (a.label || a.name).localeCompare(b.label || b.name);
+  const byProvider = (a, b) => String(a.providerName || '').localeCompare(String(b.providerName || ''));
+  const cmp = sort === 'params' ? (a, b) => paramCount(b) - paramCount(a) || byName(a, b)
+    : sort === 'disk' ? (a, b) => (b.size || 0) - (a.size || 0) || byName(a, b)
+    : byName;
+  rows.sort((a, b) => byProvider(a, b) || cmp(a, b));
   return rows;
 }
 function renderPicker() {
@@ -1044,7 +1057,7 @@ function renderPicker() {
     const logo = document.createElement('span'); logo.className = 'mlogo'; logo.style.color = mark.color;
     logo.innerHTML = mark.svg;
     const main = document.createElement('span'); main.className = 'mmain';
-    const nameEl = document.createElement('span'); nameEl.className = 'mname'; nameEl.textContent = m.name;
+    const nameEl = document.createElement('span'); nameEl.className = 'mname'; nameEl.textContent = m.label || m.name;
     const meta = document.createElement('span'); meta.className = 'mmeta';
     meta.textContent = [family.name, prettyParams(paramCount(m)), prettyBytes(m.size), m.details?.quantization_level].filter(Boolean).join(' · ');
     main.append(nameEl, meta);
@@ -1626,8 +1639,8 @@ function profileModels(profile) {
     if (name && !models.some((model) => model.name === name)) models.unshift({ name, source: 'api', details: { parameter_size: 'OpenRouter' } });
     return models;
   }
-  if (/127\.0\.0\.1:20128|localhost:20128/i.test(String(profile.endpoint || ''))) {
-    return [{ name: 'auto', source: 'api', details: { parameter_size: 'FREE MODEL' } }];
+  if (isFreeModelProfile(profile)) {
+    return [{ name: 'auto', label: 'Free Model', source: 'api', details: { parameter_size: 'No key' } }];
   }
   const source = profile.kind === 'codex-cli' ? 'Codex CLI' : profile.kind === 'claude-cli' ? 'Claude Code' : profile.kind === 'responses' ? 'Responses API' : 'API route';
   return name ? [{ name, source: 'api', details: { parameter_size: source } }] : [];
@@ -1723,7 +1736,7 @@ function applyProviderModelChoices() {
   const sel = $('model'); if (!sel) return;
   const models = providerModelChoices(); const prior = sel.value;
   modelCatalogue = models;
-  sel.replaceChildren(...models.map((model) => { const option = document.createElement('option'); option.value = model.name; option.textContent = model.name + (model.details?.parameter_size ? ' · ' + model.details.parameter_size : model.source === 'api' ? ' · API' : ''); return option; }));
+  sel.replaceChildren(...models.map((model) => { const option = document.createElement('option'); option.value = model.name; option.textContent = (model.label || model.name) + (model.details?.parameter_size ? ' · ' + model.details.parameter_size : model.source === 'api' ? ' · API' : ''); return option; }));
   const conv = activeId ? conversations.find((c) => c.id === activeId) : null;
   const profile = currentProviderProfile();
   const preferred = (conv && conv.model) || (profile?.kind === 'ollama' ? persisted.omodel : profile?.model) || persisted.omodel;
@@ -1741,7 +1754,7 @@ function applyProviderModelChoices() {
       const head = document.createElement('div'); head.className = 'sidebar-model-provider'; head.textContent = model.providerName;
       sidebar.appendChild(head);
     }
-    const item = document.createElement('button'); item.type = 'button'; item.className = 'sidebar-model-choice'; item.textContent = model.name;
+    const item = document.createElement('button'); item.type = 'button'; item.className = 'sidebar-model-choice'; item.textContent = model.label || model.name;
     item.onclick = () => { sel.value = model.name; activateModelProvider(model.name); if (model.providerKind === 'ollama') saveState('omodel', model.name); syncModelButton(); if (swarmMode) syncSwarmRoles(); };
     sidebar.appendChild(item);
   }
@@ -1791,7 +1804,7 @@ function startApiProviderSetup() {
 }
 const PROVIDER_PRESETS = {
   custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
-  freemodel: { name: 'FREE MODEL', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto', omni: true },
+  freemodel: { name: 'Free Model', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto', omni: true },
   free: { name: 'Free tier (OpenRouter)', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: 'openrouter/free', free: true },
   openai: { name: 'OpenAI', kind: 'responses', endpoint: 'https://api.openai.com/v1', model: '' },
   openrouter: { name: 'OpenRouter', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: '' },
@@ -1852,12 +1865,12 @@ async function applyFreePreset() {
 // FREE MODEL: OmniRoute's local gateway. The model is always `auto`, so there is
 // nothing to choose — the gateway routes across free/keyless providers itself.
 async function applyFreeModelPreset() {
-  let profile = settings.providerProfiles.find((p) => /20128/.test(String(p.endpoint || '')));
+  let profile = settings.providerProfiles.find((p) => isFreeModelProfile(p));
   if (!profile) {
-    profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'FREE MODEL', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto', credentialId: '' };
+    profile = { ...FREE_MODEL_PROVIDER };
     settings.providerProfiles.push(profile);
   } else {
-    profile.name = 'FREE MODEL';
+    profile.name = 'Free Model';
     profile.kind = 'openai-compatible';
     profile.engine = 'opencode';
     profile.endpoint = 'http://127.0.0.1:20128/v1';
@@ -1865,16 +1878,16 @@ async function applyFreeModelPreset() {
   }
   settings.activeProviderProfileId = profile.id;
   saveSettings(); renderProviderProfiles(); syncEngineSelect();
-  $('providerImportStatus').textContent = 'FREE MODEL starting · launching the local OmniRoute gateway…';
+  $('providerImportStatus').textContent = 'Free Model starting · launching the local OmniRoute gateway…';
   let status = { running: false };
   try { status = await window.nocli.omnirouteEnsure(); } catch {}
   if (!status.running && !status.installed) {
-    $('providerImportStatus').textContent = 'FREE MODEL needs the OmniRoute gateway. Installing it now (this can take a few minutes)…';
+    $('providerImportStatus').textContent = 'Free Model needs the OmniRoute gateway. Installing it now (this can take a few minutes)…';
     try { status = await window.nocli.omnirouteInstall(); } catch {}
   }
   $('providerImportStatus').textContent = status.running
-    ? 'FREE MODEL ready · OmniRoute routes across free providers automatically (model: auto).'
-    : 'FREE MODEL could not start OmniRoute. ' + (status.error || 'The gateway is not responding yet.');
+    ? 'Free Model ready · OmniRoute routes across free providers automatically.'
+    : 'Free Model could not start OmniRoute. ' + (status.error || 'The gateway is not responding yet.');
   applyProviderModelChoices();
 }
 // Hybrid: keep Ollama and OpenCode Go connected side by side. The unified model
