@@ -385,6 +385,9 @@ button, input, textarea, select { font-family: inherit; }
 }
 #send:not(.queue-send):hover { background: transparent; }
 
+/* Vision badge: unverified is neutral, not a "text-only" verdict. */
+.model-capability.unverified { color: var(--k-text-3); border-color: var(--k-line); }
+
 /* Unified model list: a provider label above each group in the sidebar list. */
 #modelsSidebarList .sidebar-model-provider { margin: 9px 0 2px; padding: 0 10px; color: var(--k-text-3); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
 

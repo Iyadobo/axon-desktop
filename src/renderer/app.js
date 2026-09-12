@@ -978,10 +978,11 @@ async function refreshModelCapabilityBadge() {
   try {
     const report = await window.nocli.modelCapabilities(model, settings.productMode, currentProviderProfile());
     if ($('model').value !== model) return;
+    const unsupported = report.visionStatus === 'not-supported';
     badge.hidden = false;
-    badge.textContent = report.vision ? 'Vision checked' : 'Text-only';
-    badge.className = 'model-capability ' + (report.vision ? 'vision' : 'text-only');
-    $('modelBtn').title = model + ' · ' + (report.vision ? 'vision checked' : 'text-only; screenshots disabled') + (report.reasoning ? ' · reasoning available' : '');
+    badge.textContent = report.vision ? 'Vision checked' : unsupported ? 'Text-only' : 'Vision unverified';
+    badge.className = 'model-capability ' + (report.vision ? 'vision' : unsupported ? 'text-only' : 'unverified');
+    $('modelBtn').title = model + ' · ' + (report.vision ? 'vision checked' : unsupported ? 'text-only; screenshots disabled' : 'vision not verified; images are still sent') + (report.reasoning ? ' · reasoning available' : '');
     const reasoning = $('reasoningSel'); if (reasoning) { reasoning.disabled = report.reasoningStatus === 'not-supported'; if (reasoning.disabled) reasoning.value = 'off'; }
   } catch { badge.hidden = true; }
 }

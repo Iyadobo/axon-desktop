@@ -18,9 +18,10 @@ function tools() {
   return [
     { name: 'browser_open', description: 'Open a safe http(s) URL in the visible NoCLI.ai Browser sidebar.', inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } },
     { name: 'browser_read', description: 'Read the current page as structured text and interactable controls. Use this before clicking. Screenshots are intentionally not returned.', inputSchema: { type: 'object', properties: {} } },
-    { name: 'browser_click', description: 'Click an element ID returned by browser_read.', inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
-    { name: 'browser_type', description: 'Type text into an input element ID returned by browser_read.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, text: { type: 'string' } }, required: ['id', 'text'] } },
-    { name: 'browser_screenshot', description: 'Capture a screenshot only when visual inspection is necessary and the assigned model supports vision.', inputSchema: { type: 'object', properties: {} } },
+    { name: 'browser_point', description: 'Move the visible browser cursor onto an element ID returned by browser_read, without clicking. Use this to show which control you mean, or to place the cursor before a screenshot.', inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
+    { name: 'browser_click', description: 'Click an element ID returned by browser_read. The visible cursor moves to the element and pulses so the click is legible.', inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
+    { name: 'browser_type', description: 'Type text into an input element ID returned by browser_read. The visible cursor moves to the field first.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, text: { type: 'string' } }, required: ['id', 'text'] } },
+    { name: 'browser_screenshot', description: 'Capture a screenshot only when visual inspection is necessary and the assigned model supports vision. The visible cursor is included.', inputSchema: { type: 'object', properties: {} } },
   ];
 }
 async function handle(message) {
@@ -29,7 +30,7 @@ async function handle(message) {
   if (method === 'notifications/initialized') return;
   if (method === 'tools/list') return reply(id, { tools: tools() });
   if (method !== 'tools/call') return fail(id, 'Unsupported MCP method.');
-  const action = { browser_open: 'open', browser_read: 'read', browser_click: 'click', browser_type: 'type', browser_screenshot: 'screenshot' }[params.name];
+  const action = { browser_open: 'open', browser_read: 'read', browser_point: 'point', browser_click: 'click', browser_type: 'type', browser_screenshot: 'screenshot' }[params.name];
   if (!action) return fail(id, 'Unknown browser tool.');
   try {
     if (action === 'screenshot' && process.env.NOCLI_BROWSER_ALLOW_SCREENSHOT !== '1') {

@@ -444,9 +444,20 @@ async function modelSupportsReasoning(model) {
     reasoningCapability.set(model, supported); return supported;
   } catch { return null; }
 }
+// Non-Ollama routes expose no capability metadata, so infer from the model name.
+// true = vision, false = explicitly text-only, null = unknown. Unknown now
+// *allows* images instead of denying them, so vision models are never told they
+// cannot see.
+function modelNameVision(model) {
+  const m = String(model || '').toLowerCase();
+  if (!m) return null;
+  if (/(vision|multimodal|[\s/_.-]vl[\s/_.-]?|omni|llava|bakllava|moondream|pixtral|internvl|minicpm-?v|molmo|qwen[\w.-]*vl|glm-?4v|glm-4\.\d+v|deepseek[\w.-]*(vl|vision)|gemini|gpt-4o|gpt-4\.1|gpt-4-turbo|gpt-5|chatgpt|claude-3|claude-4|claude-[\w.-]*(sonnet|opus|haiku)|grok-[2-9]|grok-4|phi-[\w.-]*vision|llama[\w.-]*3\.2[\w.-]*vision|nemotron[\w.-]*vl|kimi[\w.-]*(vl|vision)|step-1v|internlm-xcomposer|ernie[\w.-]*vl|yi-[\w.-]*vision)/.test(m)) return true;
+  if (/(^|[\s/_.-])(text-?embedding|embed|rerank|whisper|tts|codex-mini)([\s/_.-]|$)/.test(m)) return false;
+  return null;
+}
 async function resolveModelCapabilities(model, productMode, provider) {
   const isOllama = !provider?.kind || provider.kind === 'ollama';
-  const advertisedVision = isOllama ? await modelSupportsVision(model) : null;
+  const advertisedVision = isOllama ? await modelSupportsVision(model) : modelNameVision(model);
   const advertisedReasoning = isOllama ? await modelSupportsReasoning(model) : null;
   return modelCapabilityReport({ model, productMode, providerKind: provider?.kind || 'ollama', advertisedVision, advertisedReasoning });
 }
@@ -636,6 +647,42 @@ async function readBrowser() {
   const panel = ensureBrowserPanel();
   return panel.webContents.executeJavaScript(browserSnapshotScript(), true);
 }
+// A visible cursor the agent can drive, so clicks/typing/points are legible to
+// the user and show up in screenshots. Built with CSSOM styles (not inline
+// style attributes) so page CSP cannot strip it.
+function browserCursorScript(id, pulse = false) {
+  return `(() => {
+    const el = document.querySelector('[data-nocli-browser-id="${id}"]');
+    if (!el) return { error: 'That page element is no longer available. Read the page again.' };
+    try { el.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+    const r = el.getBoundingClientRect();
+    const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2);
+    const doc = document, mount = doc.body || doc.documentElement;
+    let cursor = doc.getElementById('__nocli_cursor');
+    if (!cursor) {
+      cursor = doc.createElement('div');
+      cursor.id = '__nocli_cursor';
+      Object.assign(cursor.style, { position: 'fixed', left: '0px', top: '0px', width: '30px', height: '30px', zIndex: '2147483647', pointerEvents: 'none', transition: 'transform .2s cubic-bezier(.22,1,.36,1)', transform: 'translate(-300px,-300px)', willChange: 'transform' });
+      const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', '30'); svg.setAttribute('height', '30'); svg.setAttribute('viewBox', '0 0 24 24');
+      svg.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,.55))';
+      const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M5 3l14 8-6 1.7L10 19 5 3z');
+      path.setAttribute('fill', '#ffffff'); path.setAttribute('stroke', '#0d0d0d'); path.setAttribute('stroke-width', '1.2'); path.setAttribute('stroke-linejoin', 'round');
+      svg.appendChild(path); cursor.appendChild(svg);
+      mount.appendChild(cursor);
+    }
+    cursor.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+    if (${pulse ? 'true' : 'false'}) {
+      const halo = doc.createElement('div');
+      Object.assign(halo.style, { position: 'fixed', left: (x - 10) + 'px', top: (y - 10) + 'px', width: '20px', height: '20px', border: '2px solid rgba(255,255,255,.95)', borderRadius: '50%', zIndex: '2147483647', pointerEvents: 'none', transition: 'transform .5s ease-out, opacity .5s ease-out', transform: 'scale(1)', opacity: '.95' });
+      mount.appendChild(halo);
+      requestAnimationFrame(() => { halo.style.transform = 'scale(3)'; halo.style.opacity = '0'; });
+      setTimeout(() => { try { halo.remove(); } catch {} }, 560);
+    }
+    return { ok: true, x: x, y: y };
+  })()`;
+}
 function revealBrowser(url) {
   const valid = validBrowserURL(url);
   if (!valid) throw new Error('Use a full http:// or https:// address.');
@@ -663,11 +710,14 @@ function startBrowserBridge() {
         win?.webContents.send('browser-invoked', {});
         if (action === 'read') return done(200, await readBrowser());
         const panel = ensureBrowserPanel();
-        if (action === 'click' || action === 'type') {
+        if (action === 'click' || action === 'type' || action === 'point') {
           const id = String(payload.id || ''); if (!/^nocli-\d+$/.test(id)) throw new Error('Use an element ID returned by browser_read.');
+          const moved = await panel.webContents.executeJavaScript(browserCursorScript(id, action === 'click'), true);
+          if (moved?.error) throw new Error(moved.error);
+          if (action === 'point') return done(200, { ok: true, x: moved.x, y: moved.y });
           const text = action === 'type' ? String(payload.text || '') : '';
           const result = await panel.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-nocli-browser-id="${id}"]'); if (!el) return { error: 'That page element is no longer available. Read the page again.' }; if ('${action}' === 'click') { el.click(); return { ok: true }; } el.focus(); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set; if (!setter) return { error: 'That element cannot accept typed text.' }; setter.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true }; })()`, true);
-          if (result?.error) throw new Error(result.error); return done(200, result);
+          if (result?.error) throw new Error(result.error); return done(200, { ...result, x: moved.x, y: moved.y });
         }
         if (action === 'screenshot') {
           const image = await panel.webContents.capturePage();
@@ -1435,9 +1485,9 @@ ipcMain.handle('chat', async (_e, { model, prompt, sessionId, systemPrompt, cwd,
   const selectedMode = active.productMode;
   const bound = await capabilityBoundPrompt(systemPrompt, model, selectedMode, provider);
   let usableImages = safe;
-  if (selectedMode === 'chat' && safe.length && !bound.report.vision) {
+  if (selectedMode === 'chat' && safe.length && !bound.report.attachments) {
     usableImages = [];
-    send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not have verified vision support.` });
+    send('chat-step', { type: 'tool_result', result: `Images were not sent: ${model} does not support image input.` });
   }
   const decided = resolveRoute({ scope: active.id, engine: provider?.engine, providerKind: provider?.kind });
   const refusal = decided.reason
@@ -1825,8 +1875,8 @@ ipcMain.handle('lan-server-toggle', (_e, enabled) => {
           const images = safeImages(msg.images);
           const selectedMode = ['chat', 'code', 'agent'].includes(msg.productMode) ? msg.productMode : 'chat';
           const bound = await capabilityBoundPrompt(msg.systemPrompt, msg.model, selectedMode, msg.provider);
-          const usableImages = images.length && !bound.report.vision ? [] : images;
-          if (images.length && !usableImages.length) send('chat-step', { type: 'tool_result', result: `Images were not sent: ${msg.model} does not advertise vision support.` });
+          const usableImages = images.length && !bound.report.attachments ? [] : images;
+          if (images.length && !usableImages.length) send('chat-step', { type: 'tool_result', result: `Images were not sent: ${msg.model} does not support image input.` });
           return selectedMode === 'chat'
             ? runDirectChat(msg.model, msg.prompt, msg.sessionId, send, bound.systemPrompt, holder, usableImages, msg.provider)
             : runOfficialCli(msg.model, msg.prompt, msg.sessionId, send, bound.systemPrompt, null, holder, usableImages, normalizeMode(msg.mode), selectedMode, msg.provider, bound.report);
