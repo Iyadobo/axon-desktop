@@ -1,18 +1,37 @@
 // NoCLI.ai Browser MCP bridge. It speaks JSON-RPC over stdio and forwards only to
 // the local Electron main process; it never owns a browser profile itself.
-const endpoint = process.env.NOCLI_BROWSER_ENDPOINT;
-const token = process.env.NOCLI_BROWSER_TOKEN;
+const fs = require('fs');
+let creds = { endpoint: process.env.NOCLI_BROWSER_ENDPOINT || '', token: process.env.NOCLI_BROWSER_TOKEN || '' };
+// The bridge may have restarted (its port and token change) since this MCP was
+// spawned, so re-read the state file before every call and retry on failure.
+function refreshCreds() {
+  const statePath = process.env.NOCLI_BROWSER_STATE;
+  if (!statePath) return;
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, 'utf8'));
+    if (state && state.endpoint && state.token) creds = { endpoint: state.endpoint, token: state.token };
+  } catch {}
+}
 
 function reply(id, result) { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n'); }
 function fail(id, message) { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32000, message } }) + '\n'); }
 async function call(action, payload = {}) {
-  if (!endpoint || !token) throw new Error('NoCLI.ai Browser is unavailable for this session.');
-  const response = await fetch(endpoint + '/' + action, {
-    method: 'POST', headers: { 'content-type': 'application/json', 'x-nocli-browser-token': token }, body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  if (!response.ok || data.error) throw new Error(data.error || 'Browser action failed.');
-  return data;
+  refreshCreds();
+  if (!creds.endpoint || !creds.token) throw new Error('NoCLI.ai Browser is unavailable for this session.');
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt) { await new Promise((resolve) => setTimeout(resolve, 200)); refreshCreds(); }
+    try {
+      const response = await fetch(creds.endpoint + '/' + action, {
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-nocli-browser-token': creds.token }, body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && !data.error) return data;
+      lastError = new Error(data.error || ('Browser action failed (' + response.status + ').'));
+      if (![403, 404, 408, 429, 500, 502, 503].includes(response.status)) throw lastError;
+    } catch (error) { lastError = error; }
+  }
+  throw lastError || new Error('Browser action failed.');
 }
 function tools() {
   return [

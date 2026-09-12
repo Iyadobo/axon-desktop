@@ -822,25 +822,111 @@ function fetchText(url, { headers = {}, max = 2 * 1024 * 1024, timeout = 15000, 
     req.setTimeout(timeout, () => { req.destroy(); reject(new Error('Request timed out.')); });
   });
 }
-async function webSearch(query, limit = 8) {
-  const q = String(query || '').trim();
-  if (!q) return { query: q, results: [] };
-  const html = await fetchText('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q));
-  const snippets = [];
-  const snippetRe = /class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
-  let sm; while ((sm = snippetRe.exec(html))) snippets.push(stripHtml(sm[1]).slice(0, 320));
+function parseDuckDuckGo(html, limit) {
   const results = [];
-  const linkRe = /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-  let m; let index = 0;
-  while ((m = linkRe.exec(html)) && results.length < limit) {
-    let url = decodeEntities(m[1]);
+  const decodeUrl = (raw) => {
+    let url = decodeEntities(raw);
     const uddg = url.match(/[?&]uddg=([^&]+)/); if (uddg) { try { url = decodeURIComponent(uddg[1]); } catch {} }
     if (url.startsWith('//')) url = 'https:' + url;
+    return url;
+  };
+  const snippetRe = /class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/gi;
+  const snippets = []; let sm;
+  while ((sm = snippetRe.exec(html))) snippets.push(stripHtml(sm[1]).slice(0, 320));
+  const linkRe = /<a[^>]*class="[^"]*(?:result__a|result-link)[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  let m; let index = 0;
+  while ((m = linkRe.exec(html)) && results.length < limit) {
+    const url = decodeUrl(m[1]);
     if (!/^https?:/i.test(url)) { index++; continue; }
     results.push({ title: stripHtml(m[2]).slice(0, 160) || url, url, snippet: snippets[index] || '' });
     index++;
   }
-  return { query: q, results };
+  return results;
+}
+// Search engines increasingly block scripted HTTP (202/captcha). When the plain
+// fetch returns nothing we drive a hidden real-browser view instead — same
+// persistent session, real JS — and scrape the rendered results.
+let searchView = null;
+function ensureSearchView() {
+  if (searchView) return searchView;
+  searchView = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, partition: 'persist:calcium-browser' } });
+  try { win.contentView.addChildView(searchView); searchView.setBounds({ x: 0, y: 0, width: 1, height: 1 }); } catch {}
+  return searchView;
+}
+async function browserKeylessSearch(query, limit = 8) {
+  const view = ensureSearchView();
+  const wc = view.webContents;
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, 12000);
+    wc.once('did-finish-load', () => { clearTimeout(timer); resolve(); });
+    wc.loadURL('https://duckduckgo.com/?q=' + encodeURIComponent(query) + '&ia=web').catch(() => { clearTimeout(timer); resolve(); });
+  });
+  const script = `(() => {
+    const out = []; const seen = new Set();
+    const anchors = document.querySelectorAll('a[data-testid="result-title-a"], a.result__a, h2 a');
+    for (const a of anchors) {
+      const title = (a.innerText || '').replace(/\\s+/g, ' ').trim(); const url = a.href;
+      if (!title || !url || !/^https?:/i.test(url) || seen.has(url)) continue; seen.add(url);
+      let snippet = '';
+      const container = a.closest('article, li, [data-testid="result"], .result');
+      const p = container ? container.querySelector('[data-result="snippet"], .result__snippet, p') : null;
+      if (p) snippet = (p.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 320);
+      out.push({ title: title.slice(0, 160), url, snippet });
+      if (out.length >= 20) break;
+    }
+    return out;
+  })()`;
+  for (let i = 0; i < 14; i++) {
+    const found = await wc.executeJavaScript(script, true).catch(() => []);
+    if (Array.isArray(found) && found.length) return found.slice(0, limit);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return [];
+}
+async function ddgInstant(query) {
+  const data = JSON.parse(await fetchText('https://api.duckduckgo.com/?q=' + encodeURIComponent(query) + '&format=json&no_html=1', { headers: { accept: 'application/json' } }));
+  const out = [];
+  if (data.AbstractText) out.push({ title: data.Heading || query, url: data.AbstractURL || ('https://duckduckgo.com/?q=' + encodeURIComponent(query)), snippet: String(data.AbstractText).slice(0, 320) });
+  const walk = (topics) => {
+    for (const topic of topics || []) {
+      if (topic.Topics) walk(topic.Topics);
+      else if (topic.FirstURL && topic.Text) out.push({ title: String(topic.Text).slice(0, 140), url: topic.FirstURL, snippet: String(topic.Text).slice(0, 320) });
+    }
+  };
+  walk(data.RelatedTopics);
+  for (const r of data.Results || []) if (r.FirstURL) out.push({ title: String(r.Text || '').slice(0, 140), url: r.FirstURL, snippet: String(r.Text || '').slice(0, 320) });
+  return out;
+}
+async function wikipediaSearch(query, limit = 6) {
+  const ua = 'Calcium/' + (app.getVersion ? app.getVersion() : '0.9') + ' (+https://github.com/Iyadobo/nocli.ai)';
+  const data = JSON.parse(await fetchText('https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=' + encodeURIComponent(query) + '&format=json&srlimit=' + Math.min(limit, 10) + '&srprop=snippet', { headers: { 'user-agent': ua, accept: 'application/json' } }));
+  return (data?.query?.search || []).map((row) => ({ title: row.title, url: 'https://en.wikipedia.org/wiki/' + encodeURIComponent(String(row.title).replace(/ /g, '_')), snippet: stripHtml(row.snippet || '') }));
+}
+async function webSearch(query, limit = 8) {
+  const q = String(query || '').trim();
+  if (!q) return { query: q, results: [] };
+  const results = [];
+  const push = (list) => {
+    for (const r of list || []) {
+      if (!r || !r.url || !/^https?:/i.test(r.url)) continue;
+      if (results.some((existing) => existing.url === r.url)) continue;
+      results.push({ title: r.title || r.url, url: r.url, snippet: r.snippet || '' });
+      if (results.length >= limit) return;
+    }
+  };
+  // 1) HTML engines — fast when they aren't captcha'd.
+  for (const base of ['https://html.duckduckgo.com/html/?q=', 'https://lite.duckduckgo.com/lite/?q=']) {
+    if (results.length) break;
+    try { push(parseDuckDuckGo(await fetchText(base + encodeURIComponent(q), { headers: { 'accept-language': 'en-US,en;q=0.9' } }), limit)); } catch {}
+  }
+  // 2) DuckDuckGo Instant Answer API — keyless and tolerant of scripted access.
+  if (results.length < limit) { try { push(await ddgInstant(q)); } catch {} }
+  // 3) Wikipedia search — reliable keyless source, but noisy on technical
+  // queries, so it contributes only a few results.
+  if (results.length < limit) { try { push(await wikipediaSearch(q, Math.min(limit, 3))); } catch {} }
+  // 4) Last resort: drive the hidden real browser.
+  if (!results.length) { try { push(await browserKeylessSearch(q, limit)); } catch {} }
+  return { query: q, results: results.slice(0, limit) };
 }
 async function webFetch(url) {
   const clean = validBrowserURL(url);
@@ -1017,18 +1103,29 @@ function startBrowserBridge() {
       } catch (error) { return done(400, { error: error.message }); }
     });
   });
+  browserBridge.on('clientError', (_error, socket) => { try { socket.destroy(); } catch {} });
   return new Promise((resolve, reject) => {
-    browserBridge.once('error', reject);
-    browserBridge.listen(0, '127.0.0.1', () => {
-      const address = browserBridge.address(); browserBridgeEndpoint = `http://127.0.0.1:${address.port}`; resolve();
+    const finish = () => {
+      const address = browserBridge.address();
+      browserBridgeEndpoint = `http://127.0.0.1:${address.port}`;
+      // Persist endpoint + token so a harness MCP that was spawned earlier (or
+      // resumed) can pick up the current values instead of a stale port.
+      try { fs.writeFileSync(browserBridgeStatePath(), JSON.stringify({ endpoint: browserBridgeEndpoint, token: browserBridgeToken }), 'utf8'); } catch {}
+      resolve();
+    };
+    browserBridge.once('error', (error) => {
+      if (error && error.code === 'EADDRINUSE') { browserBridge.listen(0, '127.0.0.1', finish); return; }
+      reject(error);
     });
+    browserBridge.listen(20129, '127.0.0.1', finish);
   });
 }
+function browserBridgeStatePath() { return path.join(app.getPath('userData'), 'browser-bridge.json'); }
 function ensureNocliBrowserMcpConfig(provider = null) {
   const home = path.join(app.getPath('userData'), 'terminal'); fs.mkdirSync(home, { recursive: true });
   const quote = (value) => JSON.stringify(String(value));
   const mcpScript = app.isPackaged ? path.join(process.resourcesPath, 'nocli-browser-mcp.js') : path.join(__dirname, 'nocli-browser-mcp.js');
-  let profile = `[mcp_servers.nocli_browser]\ncommand = ${quote(process.execPath)}\nargs = [${quote(mcpScript)}]\nenv = { ELECTRON_RUN_AS_NODE = "1" }\n`;
+  let profile = `[mcp_servers.nocli_browser]\ncommand = ${quote(process.execPath)}\nargs = [${quote(mcpScript)}]\nenv = { ELECTRON_RUN_AS_NODE = "1", NOCLI_BROWSER_STATE = ${quote(browserBridgeStatePath())} }\n`;
   if (provider?.kind === 'responses') {
     profile += `\nmodel_provider = "nocli_custom"\n[model_providers.nocli_custom]\nname = ${quote(provider.name || 'NoCLI.ai API')}\nbase_url = ${quote(provider.endpoint)}\nenv_key = "NOCLI_PROVIDER_API_KEY"\nwire_api = "responses"\n`;
   }
@@ -1040,7 +1137,7 @@ function browserMcpLaunch() {
   return {
     command: process.execPath,
     args: [script],
-    env: { ELECTRON_RUN_AS_NODE: '1', NOCLI_BROWSER_ENDPOINT: browserBridgeEndpoint, NOCLI_BROWSER_TOKEN: browserBridgeToken, NOCLI_BROWSER_ALLOW_SCREENSHOT: '1' },
+    env: { ELECTRON_RUN_AS_NODE: '1', NOCLI_BROWSER_ENDPOINT: browserBridgeEndpoint, NOCLI_BROWSER_TOKEN: browserBridgeToken, NOCLI_BROWSER_ALLOW_SCREENSHOT: '1', NOCLI_BROWSER_STATE: browserBridgeStatePath() },
   };
 }
 function browserMcpJson() {
