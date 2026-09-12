@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('nocli', {
     omnirouteEnsure: () => ipcRenderer.invoke('omniroute-ensure'),
     omnirouteStatus: () => ipcRenderer.invoke('omniroute-status'),
     omnirouteInstall: () => ipcRenderer.invoke('omniroute-install'),
+    warmProvider: (payload) => ipcRenderer.invoke('warm-provider', payload),
   modelCapabilities: (model, productMode, provider) => ipcRenderer.invoke('model-capabilities', { model, productMode, provider }),
   refreshCloudModels: () => ipcRenderer.invoke('refresh-cloud-models'),
   downloadCatalogue: () => ipcRenderer.invoke('model-download-catalogue'),

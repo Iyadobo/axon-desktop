@@ -803,6 +803,30 @@ function apiEndpoint(base, pathName) {
   const baseUrl = new URL(String(base || '').replace(/\/$/, '') + '/');
   return new URL(pathName.replace(/^\//, ''), baseUrl.href.endsWith('/v1/') ? baseUrl : new URL('v1/', baseUrl));
 }
+// Reuse connections across turns (and for the startup warm-up) so each request
+// does not pay a fresh TCP/TLS handshake before the first token.
+const keepAliveAgents = { 'http:': new http.Agent({ keepAlive: true, maxSockets: 8 }), 'https:': new https.Agent({ keepAlive: true, maxSockets: 8 }) };
+const agentFor = (target) => keepAliveAgents[target?.protocol];
+function warmProvider(provider, model) {
+  return new Promise((resolve) => {
+    const name = String(model || provider?.model || '').trim();
+    if (!provider || !provider.endpoint || !name) return resolve({ ok: false });
+    let target; try { target = apiEndpoint(provider.endpoint, provider.kind === 'responses' ? 'responses' : 'chat/completions'); } catch { return resolve({ ok: false }); }
+    const key = readProviderSecret(provider?.credentialId);
+    const keylessLocal = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(\/|$)/i.test(String(provider.endpoint || ''));
+    if (!key && !keylessLocal) return resolve({ ok: false });
+    const client = target.protocol === 'https:' ? https : http;
+    const payload = JSON.stringify(provider.kind === 'responses'
+      ? { model: name, input: 'ping', max_output_tokens: 8, stream: false }
+      : { model: name, messages: [{ role: 'user', content: 'ping' }], max_tokens: 8, stream: false });
+    const req = client.request(target, { method: 'POST', headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }, agent: agentFor(target) }, (res) => {
+      res.resume(); res.on('end', () => resolve({ ok: res.statusCode < 400, status: res.statusCode }));
+    });
+    req.on('error', () => resolve({ ok: false }));
+    req.setTimeout(30000, () => { req.destroy(); resolve({ ok: false }); });
+    req.end(payload);
+  });
+}
 function runApiChat(model, prompt, sessionId, send, systemPrompt, holder, provider, history, user) {
   return new Promise((resolve) => {
     const key = readProviderSecret(provider?.credentialId);
@@ -816,7 +840,7 @@ function runApiChat(model, prompt, sessionId, send, systemPrompt, holder, provid
     const body = responses ? { model, input: messages, stream: true } : { model, messages, stream: true };
     const client = target.protocol === 'https:' ? https : http;
     const payload = JSON.stringify(body);
-    const request = client.request(target, { method: 'POST', headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (response) => {
+    const request = client.request(target, { method: 'POST', headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }, agent: agentFor(target) }, (response) => {
       let buffer = '', assistant = '', completed = false;
       if (response.statusCode < 200 || response.statusCode >= 300) { response.setEncoding('utf8'); response.on('data', (chunk) => { buffer += chunk; }); response.on('end', () => { send('chat-error', `Provider request failed: ${buffer.slice(0, 300) || response.statusCode}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); }); return; }
       const finish = () => { if (completed) return; completed = true; directChatSessions.set(sid, [...history, user, { role: 'assistant', content: assistant }].slice(-40)); send('chat-done', { sessionId: sid, ok: true }); resolve(); };
@@ -827,7 +851,14 @@ function runApiChat(model, prompt, sessionId, send, systemPrompt, holder, provid
           if (!line || !line.startsWith('data:')) continue;
           const data = line.slice(5).trim(); if (data === '[DONE]') { finish(); continue; }
           let event; try { event = JSON.parse(data); } catch { continue; }
-          const text = responses ? (event.delta || event.text || '') : (event.choices?.[0]?.delta?.content || '');
+          const delta = event.choices?.[0]?.delta || {};
+          const reasoning = responses
+            ? (typeof event.type === 'string' && event.type.includes('reasoning') && typeof event.delta === 'string' ? event.delta : '')
+            : (delta.reasoning_content || delta.reasoning || '');
+          if (typeof reasoning === 'string' && reasoning) send('chat-step', { type: 'thinking', text: reasoning });
+          const text = responses
+            ? (typeof event.type === 'string' && event.type.includes('reasoning') ? '' : (event.delta || event.text || ''))
+            : (delta.content || '');
           if (typeof text === 'string' && text) { assistant += text; send('chat-delta', text); }
           if (event.type === 'response.completed') finish();
         }
@@ -843,7 +874,7 @@ function runLlamaCppChat(model, history, user, sessionId, send, systemPrompt, ho
     const messages = systemPrompt?.trim() ? [{ role: 'system', content: systemPrompt.trim() }, ...history, user] : [...history, user];
     const payload = JSON.stringify({ model, messages, stream: true });
     const target = new URL('/v1/chat/completions', `http://127.0.0.1:${llamaCppConfig.apiPort}`);
-    const request = http.request(target, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (response) => {
+    const request = http.request(target, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }, agent: agentFor(target) }, (response) => {
       let buffer = '', assistant = '', completed = false;
       const finish = (ok) => {
         if (completed) return; completed = true;
@@ -893,6 +924,7 @@ function runDirectChat(model, prompt, sessionId, send, systemPrompt, holder, ima
     const request = client.request(target, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) },
+      agent: agentFor(target),
     }, (response) => {
       if (response.statusCode !== 200) {
         let body = ''; response.setEncoding('utf8'); response.on('data', (chunk) => { body += chunk; });
@@ -1188,6 +1220,7 @@ ipcMain.handle('openrouter-free-models', async () => {
 });
 ipcMain.handle('omniroute-status', async () => ({ running: await omnirouteHealth(), installed: !!omnirouteBin(), endpoint: OMNIROUTE_ENDPOINT }));
 ipcMain.handle('omniroute-ensure', () => ensureOmniRoute());
+ipcMain.handle('warm-provider', (_e, { provider, model } = {}) => warmProvider(migrateProvider(provider || {}), model));
 ipcMain.handle('omniroute-install', async () => {
   if (omnirouteBin()) return ensureOmniRoute();
   const npm = whereFirst(process.platform === 'win32' ? 'npm.cmd' : 'npm') || 'npm';

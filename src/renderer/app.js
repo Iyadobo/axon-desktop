@@ -125,7 +125,7 @@ const FONT_STACKS = {
 const DEFAULT_PROVIDER = { id: 'ollama-local', name: 'Local runtime', kind: 'ollama', engine: 'codex', endpoint: '', model: '', credentialId: '' };
 // Free Model is the out-of-the-box tier: the local OmniRoute gateway, model
 // `auto`, no key. It is presented simply as a model so it needs no explanation.
-const FREE_MODEL_PROVIDER = { id: 'free-model', name: 'Free Model', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto', credentialId: '' };
+const FREE_MODEL_PROVIDER = { id: 'free-model', name: 'Free Model', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto/fast', credentialId: '' };
 function isFreeModelProfile(profile) { return /20128/.test(String(profile?.endpoint || '')); }
 // Scope is the single control that replaced the Chat/Code/Work split and the
 // separate permission selector. It still resolves to the productMode and
@@ -281,7 +281,7 @@ function loadSettings() {
     if (!freeProfile) { freeProfile = { ...FREE_MODEL_PROVIDER }; settings.providerProfiles.unshift(freeProfile); freeChanged = true; }
     if (freeProfile.name !== 'Free Model') { freeProfile.name = 'Free Model'; freeChanged = true; }
     if (freeProfile.kind !== 'openai-compatible' || freeProfile.engine !== 'opencode') { freeProfile.kind = 'openai-compatible'; freeProfile.engine = 'opencode'; freeChanged = true; }
-    if (!String(freeProfile.model || '').trim()) { freeProfile.model = 'auto'; freeChanged = true; }
+    if (!String(freeProfile.model || '').trim() || freeProfile.model === 'auto') { freeProfile.model = 'auto/fast'; freeChanged = true; }
     if (!saved.freeModelDefault) { settings.activeProviderProfileId = freeProfile.id; settings.freeModelDefault = true; freeChanged = true; }
     if (!settings.providerProfiles.some((profile) => profile.id === settings.activeProviderProfileId)) settings.activeProviderProfileId = settings.providerProfiles[0].id;
     if (freeChanged) saveSettings();
@@ -357,7 +357,8 @@ function openSettings() {
   renderProviderProfiles();
   if (settings.providerProfiles.some((profile) => profile.kind === 'opencode')) refreshOpenCodeModels();
   if (settings.providerProfiles.some((profile) => /openrouter\.ai/i.test(String(profile.endpoint || '')))) refreshOpenRouterFreeModels();
-  if (settings.providerProfiles.some((profile) => /20128/.test(String(profile.endpoint || '')))) window.nocli.omnirouteEnsure().then(() => applyProviderModelChoices()).catch(() => {});
+  if (settings.providerProfiles.some((profile) => /20128/.test(String(profile.endpoint || '')))) window.nocli.omnirouteEnsure().then(() => { applyProviderModelChoices(); warmActiveProvider(); }).catch(() => {});
+  setTimeout(warmActiveProvider, 1800);
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncScope();
   loadEngineAvailability();
@@ -1082,7 +1083,7 @@ function chooseModel(name) {
     const option = document.createElement('option'); option.value = name; option.textContent = name; sel.appendChild(option);
   }
   sel.value = name; activateModelProvider(name); saveState('omodel', name);
-  syncModelButton(); closeModelPicker();
+  syncModelButton(); warmActiveProvider(); closeModelPicker();
 }
 function openModelPicker() {
   $('modelPicker').classList.add('show');
@@ -1616,6 +1617,19 @@ function addToolCall(turn, s) {
 function currentProviderProfile() {
   return settings.providerProfiles.find((profile) => profile.id === settings.activeProviderProfileId) || settings.providerProfiles[0];
 }
+// Fire a tiny request to the active provider so its connection and route are
+// warm before the user's first real message (lowers TTFT).
+let lastWarmedSignature = '';
+function warmActiveProvider() {
+  const provider = currentProviderProfile();
+  if (!provider) return;
+  const model = provider.kind === 'ollama' ? $('model').value : (provider.model || $('model').value);
+  if (!model) return;
+  const signature = provider.id + '|' + model;
+  if (signature === lastWarmedSignature) return;
+  lastWarmedSignature = signature;
+  try { window.nocli.warmProvider({ provider, model }).catch(() => {}); } catch {}
+}
 function openCodeModelFamily(source = currentProviderProfile()) {
   const model = String(source?.model || '').trim();
   const name = String(source?.name || '').trim();
@@ -1636,6 +1650,9 @@ function profileModels(profile) {
     const models = openCodeModelsFor(profile).map((model) => ({ name: model, source: 'api', details: { parameter_size: model.startsWith('opencode-go/') ? 'OpenCode Go' : 'OpenCode Zen' } }));
     if (name && !models.some((model) => model.name === name)) models.unshift({ name, source: 'api', details: { parameter_size: 'OpenCode' } });
     return models;
+  }
+  if (isFreeModelProfile(profile)) {
+    return [{ name: name || 'auto/fast', label: 'Free Model', source: 'api', details: { parameter_size: 'No key' } }];
   }
   if (/openrouter\.ai/i.test(String(profile.endpoint || ''))) {
     const models = [{ name: 'openrouter/free', source: 'api', details: { parameter_size: 'Auto · Free' } }];
@@ -1686,6 +1703,7 @@ function activateModelProvider(name) {
   if (profile && profile.kind !== 'ollama') { profile.model = name; if ($('providerModel')) $('providerModel').value = name; }
   saveSettings();
   renderProviderProfiles();
+  warmActiveProvider();
 }
 async function refreshOpenCodeModels() {
   let data;
@@ -1808,7 +1826,7 @@ function startApiProviderSetup() {
 }
 const PROVIDER_PRESETS = {
   custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
-  freemodel: { name: 'Free Model', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto', omni: true },
+  freemodel: { name: 'Free Model', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto/fast', omni: true },
   free: { name: 'Free tier (OpenRouter)', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: 'openrouter/free', free: true },
   openai: { name: 'OpenAI', kind: 'responses', endpoint: 'https://api.openai.com/v1', model: '' },
   openrouter: { name: 'OpenRouter', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: '' },
@@ -1865,6 +1883,7 @@ async function applyFreePreset() {
   saveSettings(); renderProviderProfiles(); syncEngineSelect();
   $('providerImportStatus').textContent = 'Free tier ready. Add your OpenRouter API key under Connection details and save; turns route across free models automatically (openrouter/free).';
   await refreshOpenRouterFreeModels();
+  warmActiveProvider();
 }
 // FREE MODEL: OmniRoute's local gateway. The model is always `auto`, so there is
 // nothing to choose — the gateway routes across free/keyless providers itself.
@@ -1878,7 +1897,7 @@ async function applyFreeModelPreset() {
     profile.kind = 'openai-compatible';
     profile.engine = 'opencode';
     profile.endpoint = 'http://127.0.0.1:20128/v1';
-    profile.model = 'auto';
+    profile.model = 'auto/fast';
   }
   settings.activeProviderProfileId = profile.id;
   saveSettings(); renderProviderProfiles(); syncEngineSelect();
@@ -1893,6 +1912,7 @@ async function applyFreeModelPreset() {
     ? 'Free Model ready · OmniRoute routes across free providers automatically.'
     : 'Free Model could not start OmniRoute. ' + (status.error || 'The gateway is not responding yet.');
   applyProviderModelChoices();
+  warmActiveProvider();
 }
 // Hybrid: keep Ollama and OpenCode Go connected side by side. The unified model
 // list then shows both, and each chat routes to whichever provider owns the
@@ -1913,6 +1933,7 @@ async function applyHybridPreset() {
   $('providerImportStatus').textContent = 'Hybrid enabled: Ollama and OpenCode Go now share one model list. Pick any model to send that chat through its provider.';
   await refreshOpenCodeModels();
   applyProviderModelChoices();
+  warmActiveProvider();
 }
 function openCodeProviderEntry(config) {
   const candidates = config?.provider || config?.providers || config;
