@@ -1395,12 +1395,13 @@
             </div>
           </section>
           <section class="mode-scene mode-scene-code" data-mode-scene="code" aria-label="Code workspace" hidden>
-            <div class="code-rail"><span>PROJECT</span><button type="button" data-mode-action="projects">Choose workspace</button></div>
-            <div class="code-surface">
-              <div class="code-tab"><span class="code-live-dot"></span><span id="codeProjectName">No project selected</span><span>LOCAL</span></div>
-              <div class="code-lines" aria-hidden="true"><span>01</span><b>Inspect the codebase before changing it.</b><span>02</span><b>Run the smallest useful check.</b><span>03</span><b>Ship one verified improvement.</b></div>
+            <div class="code-working-set">
+              <span class="code-live-dot" aria-hidden="true"></span>
+              <div class="code-working-copy"><span>WORKING SET</span><strong id="codeProjectName">No project selected</strong></div>
+              <span class="code-working-host">LOCAL</span>
+              <button type="button" data-mode-action="projects">Choose workspace</button>
             </div>
-            <div class="code-actions"><button type="button" data-mode-prompt="Inspect this repository and explain the most important files.">Inspect</button><button type="button" data-mode-prompt="Find the likely cause of this bug and propose a minimal fix.">Debug</button><button type="button" data-mode-prompt="Run the relevant tests and summarize what they prove.">Test</button></div>
+            <div class="code-actions" aria-label="Common code tasks"><button type="button" data-mode-prompt="Inspect this repository and explain the most important files.">Inspect</button><button type="button" data-mode-prompt="Find the likely cause of this bug and propose a minimal fix.">Debug</button><button type="button" data-mode-prompt="Run the relevant tests and summarize what they prove.">Test</button></div>
           </section>
         </div>
         <h1 id="greet">Good afternoon.</h1>
@@ -1428,8 +1429,8 @@
                 <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
               </button>
               <span class="select-tag" hidden><select id="model"></select></span>
-              <select id="permissionSel" class="composer-mode" title="Permission level"><option value="approve">Read only</option><option value="auto">Workspace edits</option><option value="full">Full access</option></select>
-              <select id="reasoningSel" class="composer-mode" title="Reasoning mode"><option value="auto">Reasoning: Auto</option><option value="on">Reasoning: On</option><option value="off">Reasoning: Off</option></select>
+              <select id="permissionSel" class="composer-mode" title="Permission level"><option value="approve">Read</option><option value="auto">Edit</option><option value="full">Full</option></select>
+              <select id="reasoningSel" class="composer-mode" title="Reasoning mode"><option value="auto">Think</option><option value="on">Think on</option><option value="off">Think off</option></select>
             </span>
             <button id="steer" title="Continue the current task with this message" hidden>Steer</button>
             <button id="stopRun" title="Stop the current run" hidden>Stop</button>

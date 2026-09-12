@@ -167,6 +167,18 @@ function selectProductMode(mode) {
   if (activeId && conversations.find((chat) => chat.id === activeId)?.productMode !== settings.productMode) newChat();
   $('prompt')?.focus();
 }
+function syncCompactComposerLabels() {
+  const compact = matchMedia('(max-width: 760px)').matches;
+  const labels = {
+    permissionSel: compact ? ['Read', 'Edit', 'Full'] : ['Read only', 'Workspace edits', 'Full access'],
+    reasoningSel: compact ? ['Think', 'Think on', 'Think off'] : ['Reasoning: Auto', 'Reasoning: On', 'Reasoning: Off'],
+  };
+  Object.entries(labels).forEach(([id, text]) => {
+    const select = $(id); if (!select) return;
+    [...select.options].forEach((option, index) => { option.textContent = text[index] || option.textContent; });
+  });
+}
+addEventListener('resize', syncCompactComposerLabels, { passive: true });
 const DEFAULT_SETTINGS = { systemPrompt: '', accent: '#FF3B30', colors: { ...THEME_PALETTES.midnight }, theme: 'midnight', density: 'normal', motion: 'standard', font: 'system', productMode: 'chat', permissionMode: 'auto', reasoning: 'auto', scope: 'chat', providerProfiles: [DEFAULT_PROVIDER], activeProviderProfileId: 'ollama-local', activeConversationIds: {} };
 let settings = { ...DEFAULT_SETTINGS };
 const persisted = {};
@@ -2867,6 +2879,7 @@ function refreshGridColor() {
   autosize();
   applyAppearance();
   syncScope();
+  syncCompactComposerLabels();
   syncProductMode();
   syncModes();
   renderRecents();

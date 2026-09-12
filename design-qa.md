@@ -1,69 +1,41 @@
-**Design QA**
+# Calcium desktop-layout QA
 
-- Source visual truth: `C:\Users\Iyad\AppData\Local\Temp\codex-clipboard-22fcc992-a7bb-40f0-9ccf-693dd04cb109.png`
-- Implementation: `C:\Users\Iyad\ollama-desktop-harness\scripts\audit-shell-1440-chat.png`
-- Combined comparison: `C:\Users\Iyad\ollama-desktop-harness\scripts\design-comparison.png`
-- Viewport: 1440 x 900 CSS px, desktop dark theme, empty task state
-- Source pixels: 1919 x 975. Implementation capture: 1800 x 949 due Windows display scaling. Both were normalized to 1440 x 900 in the combined comparison; density differences were not treated as design defects.
+## Comparison target
 
-**Full-view comparison evidence**
+- Source visual truth: `C:\Users\Iyad\.codex\attachments\82f0519a-4218-43f0-af21-2321a7542a32\image-1.png`
+- Implementation: `C:\Users\Iyad\ollama-desktop-harness\scripts\audit-shell-1440-chat-code.png`
+- Same implementation state: Code empty workspace, dark theme, no selected project.
+- Viewport: 1440 x 900 CSS px at the preview's 1.25 device scale factor.
+- Source pixels: 1917 x 974. Implementation pixels: 1800 x 949. The full-view comparison normalizes both captures to a shared 949 px height: `scripts/design-qa-comparison.png`.
 
-The implementation preserves the source's quiet dark shell, narrow persistent sidebar, top utilities, centered task surface, and restrained borders. It intentionally replaces the source's single chat destination with a compact CHAT / WORK / CODE mode switch and adds Automations as a first-class operational destination. The empty state is denser and more centered than the running-state source, which is appropriate for the compared state.
+## Comparison history
 
-**Focused region comparison evidence**
+### Pass 1 — blocked
 
-The titlebar, sidebar hierarchy, and composer were readable in the combined 2880 x 900 comparison, so no additional crop was required. Separate captures were inspected for Automations and Settings because those surfaces are not present in the source screenshot.
+- Finding [P1]: Code led with a large decorative fake editor, which competed with the actual composer and made the empty state read as a prototype rather than a desktop working surface.
+- Fix: replaced it with a compact working-set strip plus real Inspect, Debug, and Test actions; reduced red elevation and removed the ambient accent glow.
+- Finding [P1]: Settings floated beside an absent application rail instead of becoming a full configuration workspace.
+- Fix: removed settings' artificial sidebar offset so its own navigation rail owns the full page.
 
-**Required fidelity surfaces**
+### Pass 2 — post-fix evidence
 
-- Fonts and typography: Segoe UI Variable and Cascadia Code preserve the source's Windows desktop character. Mode labels use a deliberate compact uppercase treatment; content hierarchy remains clear.
-- Spacing and layout rhythm: 48 px chrome, 44 px primary targets, a 260 px sidebar, and an 820 px composer form one consistent grid. No horizontal overflow was measured at 1440 px.
-- Colors and visual tokens: near-black background, subtly raised surfaces, restrained neutral borders, and one red accent remain consistent with the source.
-- Image quality and assets: the shell is intentionally text-only per the request. The only retained image is the established browser utility asset; no source logo was approximated with CSS or a custom SVG.
-- Copy and content: labels are concise and operational. CHAT, WORK, CODE, Tasks, Automations, Browser, and Settings describe product behavior directly.
+- The Code canvas now has one dominant action surface (the real composer), a compact project context, fixed top chrome, and the existing real side rail.
+- The full-page Settings capture at `scripts/audit-shell-1440-settings.png` has a dedicated left settings rail and no orphaned application-sidebar gutter.
+- The focused mobile Code capture at `scripts/audit-shell-390-chat-code.png` confirms that the working-set controls and compact permission/reasoning controls remain readable without horizontal overflow.
 
-**Findings**
+## Required fidelity surfaces
 
-- No actionable P0, P1, or P2 visual mismatch remains.
-- P3: the settings workspace remains long because it exposes advanced runtime and LAN controls; future work could add section navigation without changing the current information architecture.
+- **Typography:** The same existing Segoe/Cascadia system remains in use. The revised Code hierarchy reduces the oversized top panel and keeps the task heading as the primary reading target.
+- **Spacing and layout rhythm:** The full-view comparison shows the Code surface collapsed from a second dashboard-sized region into a 50 px working-set strip. The composer is now adjacent to its context instead of separated by a competing panel.
+- **Colors and tokens:** The black/neutral rule system is retained; red is now limited to selection, status, and the send action rather than a canvas glow and tab underline.
+- **Image quality and assets:** The existing Calcium bone asset remains the only product mark; no visual asset was substituted or approximated.
+- **Copy and content:** The Code context uses actual app actions and the selected project name. No fabricated code output remains in the empty state.
 
-**Comparison history**
+## Residual notes
 
-- Initial audit found the CHAT / WORK / CODE controls below the 44 px interaction target. Their hit area was increased to 44 px and the implementation was recaptured.
-- Post-fix evidence: the updated titlebar retains the same compact visual height while providing full-height mode targets and no horizontal overflow.
+- The supplied source is a prior Calcium Code capture, not a separate Codex Desktop screenshot. The deliberate deviations in this pass are the requested Codex-like desktop hierarchy: quiet chrome, compact context, a functional left rail, and a single dominant composer.
+- No P0, P1, or P2 issue remains in the checked Code, Work, Settings, and narrow Code states.
 
-**Implementation checklist**
+## Final result
 
-- [x] Text-only NOCLI identity
-- [x] Persistent CHAT / WORK / CODE modes
-- [x] Explicit queue, steer, and stop controls
-- [x] Dedicated Automations surface
-- [x] Settings workspace restyle
-- [x] Desktop render and overflow check
-
-**Settings full-page follow-up — 2026-09-11**
-
-- Source visual truth: `C:\Users\Iyad\AppData\Local\Temp\codex-clipboard-f61ddcd3-31a3-47bc-ab6e-36578ca81f09.png` (1622 x 971 px)
-- Implementation: `C:\Users\Iyad\ollama-desktop-harness\scripts\audit-shell-1440-settings.png` (1800 x 949 px at 1440 x 900 CSS viewport and Windows display scaling)
-- Combined normalized comparison: `C:\Users\Iyad\ollama-desktop-harness\scripts\design-comparison-settings-full.png`
-- State: Settings open, dark theme, local runtime selected.
-- Finding: the source showed a floating 1040 px settings sheet with unused black space at the left of the main workspace. The implementation now fills the entire workspace from sidebar to right edge and from titlebar to bottom, while preserving the internal header and card rhythm.
-- Interaction and regulation check: Settings open/close behavior remains intact; `overflowX: 0`; application checks passed. No P0/P1/P2 issue remains. A focused crop was unnecessary because the full-page boundary and content edges are clearly visible in the combined comparison.
-
-final result: passed
-
-**Codex-inspired red/black shell — 2026-09-11**
-
-- Visual reference: `C:\Users\Iyad\AppData\Local\Temp\codex-clipboard-2aff2e21-5569-4ef1-bee2-f723fe2597d1.png` and `C:\Users\Iyad\AppData\Local\Temp\codex-clipboard-51ff82c3-a790-455d-9701-1b476e96e038.png`.
-- Implementation captures: `scripts/audit-shell-1440-chat.png`, `scripts/audit-shell-1440-settings.png`, and `scripts/audit-shell-390-chat.png`.
-- Deliberate translation: framed desktop chrome, a centered three-mode control, layered sidebar, and a full settings rail were retained as layout ideas; NoCLI uses its own red/black identity, labels, and working controls.
-- Interaction fidelity: menu entries operate real views and controls; settings rail entries scroll to their live settings sections; the canvas paintburst follows the theme accent and is disabled for calm/reduced-motion preferences.
-- Regulation output: 1440 px chat, 1440 px settings, and 390 px chat each reported `overflowX: 0` and `smallTargets: []`. `npm run check` passed 33 checks; `node --check src/renderer/app.js` and `git diff --check` passed.
-
-**Mode-specific canvases — 2026-09-11**
-
-- Source intent: the user requested that CHAT, WORK, and CODE feel like distinct environments rather than permission variants.
-- Captures: `scripts/audit-shell-1440-chat-chat.png`, `scripts/audit-shell-1440-chat-work.png`, `scripts/audit-shell-1440-chat-code.png`, `scripts/audit-shell-390-chat-work.png`, and `scripts/audit-shell-390-chat-code.png`.
-- Result: Chat leads with an animated conversation bubble; Work adds a three-step task desk whose notes prefill the live composer; Code presents workspace selection, code-first context, and Inspect/Debug/Test actions that prefill the same live composer. The composition and headings change by mode alongside their real scope/permission mapping.
-- Motion: the scene uses a short bubble expansion, note drop, or rail reveal. Reduced-motion and the existing Calm setting retain the different static canvas but suppress animation.
-- Regulation output: 1440 px Chat/Work/Code and 390 px Work/Code each reported `overflowX: 0` and `smallTargets: []`. `npm run check` passed 33 checks; renderer/audit syntax and `git diff --check` passed.
+passed
