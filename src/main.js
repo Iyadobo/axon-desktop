@@ -615,6 +615,37 @@ function openGenuineTerminal() {
 function validBrowserURL(value) {
   try { const url = new URL(String(value)); return ['http:', 'https:'].includes(url.protocol) ? url.href : null; } catch { return null; }
 }
+// ---- OmniRoute (bundled local free-model gateway) --------------------------
+// OmniRoute is an MIT local gateway that aggregates free/keyless providers behind
+// one OpenAI-compatible endpoint. Its `auto` model routes and fails over with no
+// key required, which is what the FREE MODEL tier uses.
+const OMNIROUTE_ENDPOINT = 'http://127.0.0.1:20128/v1';
+let omnirouteProc = null;
+function omnirouteHealth(timeout = 2500) {
+  return new Promise((resolve) => {
+    const req = http.get('http://127.0.0.1:20128/api/health', { timeout }, (res) => {
+      let text = ''; res.on('data', (chunk) => (text += chunk));
+      res.on('end', () => { try { resolve(JSON.parse(text)?.status === 'ok'); } catch { resolve(false); } });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+function omnirouteBin() {
+  return whereFirst(process.platform === 'win32' ? 'omniroute.cmd' : 'omniroute') || whereFirst('omniroute');
+}
+// Starts the gateway if OmniRoute is installed but not already serving.
+async function ensureOmniRoute() {
+  if (await omnirouteHealth()) return { running: true, started: false, installed: true, endpoint: OMNIROUTE_ENDPOINT };
+  const bin = omnirouteBin();
+  if (!bin) return { running: false, installed: false, endpoint: OMNIROUTE_ENDPOINT };
+  try {
+    omnirouteProc = spawn(bin, ['serve'], { detached: true, stdio: 'ignore', windowsHide: true, shell: process.platform === 'win32' });
+    omnirouteProc.unref();
+  } catch { return { running: false, installed: true, endpoint: OMNIROUTE_ENDPOINT, error: 'Could not start OmniRoute.' }; }
+  for (let i = 0; i < 16; i++) { await new Promise((r) => setTimeout(r, 2500)); if (await omnirouteHealth()) return { running: true, started: true, installed: true, endpoint: OMNIROUTE_ENDPOINT }; }
+  return { running: false, installed: true, endpoint: OMNIROUTE_ENDPOINT, error: 'OmniRoute did not become ready in time.' };
+}
 function ensureBrowserPanel() {
   if (browserPanel) return browserPanel;
   browserPanel = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
@@ -775,7 +806,9 @@ function apiEndpoint(base, pathName) {
 function runApiChat(model, prompt, sessionId, send, systemPrompt, holder, provider, history, user) {
   return new Promise((resolve) => {
     const key = readProviderSecret(provider?.credentialId);
-    if (!key) { send('chat-error', 'This provider profile has no saved API key. Add one in Settings.'); send('chat-done', { sessionId, ok: false }); return resolve(); }
+    // Loopback gateways (OmniRoute and local bridges) are keyless by design.
+    const keylessLocal = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(\/|$)/i.test(String(provider?.endpoint || ''));
+    if (!key && !keylessLocal) { send('chat-error', 'This provider profile has no saved API key. Add one in Settings.'); send('chat-done', { sessionId, ok: false }); return resolve(); }
     const sid = sessionId || crypto.randomUUID();
     const responses = provider.kind === 'responses';
     let target; try { target = apiEndpoint(provider.endpoint, responses ? 'responses' : 'chat/completions'); } catch { send('chat-error', 'This provider has an invalid endpoint.'); send('chat-done', { sessionId: sid, ok: false }); return resolve(); }
@@ -783,7 +816,7 @@ function runApiChat(model, prompt, sessionId, send, systemPrompt, holder, provid
     const body = responses ? { model, input: messages, stream: true } : { model, messages, stream: true };
     const client = target.protocol === 'https:' ? https : http;
     const payload = JSON.stringify(body);
-    const request = client.request(target, { method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (response) => {
+    const request = client.request(target, { method: 'POST', headers: { ...(key ? { authorization: `Bearer ${key}` } : {}), 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) } }, (response) => {
       let buffer = '', assistant = '', completed = false;
       if (response.statusCode < 200 || response.statusCode >= 300) { response.setEncoding('utf8'); response.on('data', (chunk) => { buffer += chunk; }); response.on('end', () => { send('chat-error', `Provider request failed: ${buffer.slice(0, 300) || response.statusCode}`); send('chat-done', { sessionId: sid, ok: false }); resolve(); }); return; }
       const finish = () => { if (completed) return; completed = true; directChatSessions.set(sid, [...history, user, { role: 'assistant', content: assistant }].slice(-40)); send('chat-done', { sessionId: sid, ok: true }); resolve(); };
@@ -1152,6 +1185,15 @@ async function openRouterFreeModels() {
 ipcMain.handle('openrouter-free-models', async () => {
   try { return { models: await openRouterFreeModels() }; }
   catch (error) { return { models: [], error: error?.message || 'Could not reach OpenRouter.' }; }
+});
+ipcMain.handle('omniroute-status', async () => ({ running: await omnirouteHealth(), installed: !!omnirouteBin(), endpoint: OMNIROUTE_ENDPOINT }));
+ipcMain.handle('omniroute-ensure', () => ensureOmniRoute());
+ipcMain.handle('omniroute-install', async () => {
+  if (omnirouteBin()) return ensureOmniRoute();
+  const npm = whereFirst(process.platform === 'win32' ? 'npm.cmd' : 'npm') || 'npm';
+  const output = await runQuiet(npm, ['install', '-g', 'omniroute'], 10 * 60 * 1000);
+  if (!omnirouteBin()) return { running: false, installed: false, endpoint: OMNIROUTE_ENDPOINT, error: output || 'npm could not install OmniRoute.' };
+  return ensureOmniRoute();
 });
 ipcMain.handle('model-capabilities', async (_e, { model, productMode, provider }) => resolveModelCapabilities(model, productMode, provider));
 ipcMain.handle('check-exo', async (_e, url) => checkExo(url));
@@ -2041,6 +2083,7 @@ ipcMain.handle('install-dependencies', async () => {
   const run = async (command, args, label) => { const output = await runQuiet(command, args, 10 * 60 * 1000); steps.push(label + (output ? ': ' + output.split(/\r?\n/).pop() : ' started')); };
   if (!before.ollama) await run('winget.exe', ['install', '--id', 'Ollama.Ollama', '--exact', '--accept-package-agreements', '--accept-source-agreements'], 'Ollama');
   if (!before.node) await run('winget.exe', ['install', '--id', 'OpenJS.NodeJS.LTS', '--exact', '--accept-package-agreements', '--accept-source-agreements'], 'Node.js');
+  if (!omnirouteBin()) await run('npm.cmd', ['install', '-g', 'omniroute'], 'OmniRoute');
   return { ok: true, steps, status: await dependencyStatus() };
 });
 

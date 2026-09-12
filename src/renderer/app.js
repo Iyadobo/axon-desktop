@@ -343,6 +343,7 @@ function openSettings() {
   renderProviderProfiles();
   if (settings.providerProfiles.some((profile) => profile.kind === 'opencode')) refreshOpenCodeModels();
   if (settings.providerProfiles.some((profile) => /openrouter\.ai/i.test(String(profile.endpoint || '')))) refreshOpenRouterFreeModels();
+  if (settings.providerProfiles.some((profile) => /20128/.test(String(profile.endpoint || '')))) window.nocli.omnirouteEnsure().then(() => applyProviderModelChoices()).catch(() => {});
   if ($('runtimeSel').value === 'llamacpp') refreshLlamaCppStatus();
   syncScope();
   loadEngineAvailability();
@@ -1625,6 +1626,9 @@ function profileModels(profile) {
     if (name && !models.some((model) => model.name === name)) models.unshift({ name, source: 'api', details: { parameter_size: 'OpenRouter' } });
     return models;
   }
+  if (/127\.0\.0\.1:20128|localhost:20128/i.test(String(profile.endpoint || ''))) {
+    return [{ name: 'auto', source: 'api', details: { parameter_size: 'FREE MODEL' } }];
+  }
   const source = profile.kind === 'codex-cli' ? 'Codex CLI' : profile.kind === 'claude-cli' ? 'Claude Code' : profile.kind === 'responses' ? 'Responses API' : 'API route';
   return name ? [{ name, source: 'api', details: { parameter_size: source } }] : [];
 }
@@ -1787,6 +1791,7 @@ function startApiProviderSetup() {
 }
 const PROVIDER_PRESETS = {
   custom: { name: 'Custom API', kind: 'openai-compatible', endpoint: '', model: '' },
+  freemodel: { name: 'FREE MODEL', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto', omni: true },
   free: { name: 'Free tier (OpenRouter)', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: 'openrouter/free', free: true },
   openai: { name: 'OpenAI', kind: 'responses', endpoint: 'https://api.openai.com/v1', model: '' },
   openrouter: { name: 'OpenRouter', kind: 'openai-compatible', engine: 'opencode', endpoint: 'https://openrouter.ai/api/v1', model: '' },
@@ -1815,6 +1820,7 @@ function applyProviderPreset() {
   const key = $('providerPreset').value;
   if (key === 'hybrid') return applyHybridPreset();
   if (key === 'free') return applyFreePreset();
+  if (key === 'freemodel') return applyFreeModelPreset();
   const preset = PROVIDER_PRESETS[key] || PROVIDER_PRESETS.custom;
   fillProviderFields(preset);
   const profile = currentProviderProfile();
@@ -1842,6 +1848,34 @@ async function applyFreePreset() {
   saveSettings(); renderProviderProfiles(); syncEngineSelect();
   $('providerImportStatus').textContent = 'Free tier ready. Add your OpenRouter API key under Connection details and save; turns route across free models automatically (openrouter/free).';
   await refreshOpenRouterFreeModels();
+}
+// FREE MODEL: OmniRoute's local gateway. The model is always `auto`, so there is
+// nothing to choose — the gateway routes across free/keyless providers itself.
+async function applyFreeModelPreset() {
+  let profile = settings.providerProfiles.find((p) => /20128/.test(String(p.endpoint || '')));
+  if (!profile) {
+    profile = { ...DEFAULT_PROVIDER, id: rid(), name: 'FREE MODEL', kind: 'openai-compatible', engine: 'opencode', endpoint: 'http://127.0.0.1:20128/v1', model: 'auto', credentialId: '' };
+    settings.providerProfiles.push(profile);
+  } else {
+    profile.name = 'FREE MODEL';
+    profile.kind = 'openai-compatible';
+    profile.engine = 'opencode';
+    profile.endpoint = 'http://127.0.0.1:20128/v1';
+    profile.model = 'auto';
+  }
+  settings.activeProviderProfileId = profile.id;
+  saveSettings(); renderProviderProfiles(); syncEngineSelect();
+  $('providerImportStatus').textContent = 'FREE MODEL starting · launching the local OmniRoute gateway…';
+  let status = { running: false };
+  try { status = await window.nocli.omnirouteEnsure(); } catch {}
+  if (!status.running && !status.installed) {
+    $('providerImportStatus').textContent = 'FREE MODEL needs the OmniRoute gateway. Installing it now (this can take a few minutes)…';
+    try { status = await window.nocli.omnirouteInstall(); } catch {}
+  }
+  $('providerImportStatus').textContent = status.running
+    ? 'FREE MODEL ready · OmniRoute routes across free providers automatically (model: auto).'
+    : 'FREE MODEL could not start OmniRoute. ' + (status.error || 'The gateway is not responding yet.');
+  applyProviderModelChoices();
 }
 // Hybrid: keep Ollama and OpenCode Go connected side by side. The unified model
 // list then shows both, and each chat routes to whichever provider owns the
