@@ -678,13 +678,61 @@ function setBrowserBounds(bounds) {
 }
 function browserSnapshotScript() {
   return `(() => {
-    const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
-    const controls = [...document.querySelectorAll('a,button,input,textarea,select,[role="button"]')]
-      .filter(visible).slice(0, 120).map((el, index) => {
-        const id = el.dataset.nocliBrowserId || ('nocli-' + (index + 1)); el.dataset.nocliBrowserId = id;
-        return { id, tag: el.tagName.toLowerCase(), text: (el.innerText || el.value || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').trim().slice(0, 180), href: el.href || undefined, type: el.type || undefined };
-      });
-    return { title: document.title, url: location.href, text: (document.body?.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 12000), controls };
+    const seq = (window.__nocliSeq = window.__nocliSeq || 100000);
+    const out = [];
+    const seen = new Set();
+    const attr = (el, n) => (el.getAttribute ? el.getAttribute(n) : '');
+    const nameOf = (el) => {
+      const aria = attr(el, 'aria-label'); if (aria) return String(aria).trim();
+      const lb = attr(el, 'aria-labelledby');
+      if (lb) { const root = el.getRootNode ? el.getRootNode() : document; const t = lb.split(/\\s+/).map((id) => { const n = root.getElementById ? root.getElementById(id) : (document.getElementById ? document.getElementById(id) : null); return n ? (n.innerText || n.textContent || '') : ''; }).join(' ').trim(); if (t) return t; }
+      if (el.labels && el.labels.length) { const t = [...el.labels].map((l) => l.innerText || l.textContent || '').join(' ').trim(); if (t) return t; }
+      for (const a of ['placeholder', 'alt', 'title', 'name']) { const v = attr(el, a); if (v) return String(v).trim(); }
+      return (el.innerText || el.textContent || el.value || '').replace(/\\s+/g, ' ').trim().slice(0, 160);
+    };
+    const visible = (el) => {
+      if (el.tagName === 'INPUT' && el.type === 'hidden') return false;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return false;
+      const s = getComputedStyle(el);
+      return s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity) !== 0;
+    };
+    const selector = 'a,button,input,textarea,select,summary,[role="button"],[role="link"],[role="tab"],[role="menuitem"],[role="option"],[role="checkbox"],[role="switch"],[contenteditable=""],[contenteditable="true"],[onclick],[tabindex]:not([tabindex="-1"])';
+    const push = (el) => {
+      if (out.length >= 180 || seen.has(el) || !el.tagName || !visible(el)) return;
+      seen.add(el);
+      let id = el.dataset ? el.dataset.nocliBrowserId : '';
+      if (!id) { id = 'nocli-' + (++window.__nocliSeq); try { el.dataset.nocliBrowserId = id; } catch {} }
+      const r = el.getBoundingClientRect();
+      const dialog = !!(el.closest && el.closest('dialog[open],[role="dialog"],[aria-modal="true"]'));
+      out.push({ id, tag: el.tagName.toLowerCase(), role: attr(el, 'role') || undefined, name: nameOf(el), type: el.type || undefined, value: (el.value !== undefined && el.type !== 'password') ? String(el.value).slice(0, 100) : undefined, disabled: (el.disabled || attr(el, 'aria-disabled') === 'true') || undefined, checked: typeof el.checked === 'boolean' ? el.checked : undefined, dialog: dialog || undefined, inView: (r.top >= -2 && r.bottom <= innerHeight + 2) || undefined, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) });
+    };
+    const walk = (root) => {
+      let nodes; try { nodes = root.querySelectorAll(selector); } catch { return; }
+      for (const el of nodes) push(el);
+      let all; try { all = root.querySelectorAll('*'); } catch { return; }
+      for (const el of all) {
+        if (el.shadowRoot) walk(el.shadowRoot);
+        if (el.tagName === 'IFRAME' || el.tagName === 'FRAME') { try { if (el.contentDocument) { for (const f of el.contentDocument.querySelectorAll(selector)) push(f); } } catch {} }
+      }
+    };
+    walk(document);
+    const dialogs = document.querySelectorAll('dialog[open],[role="dialog"],[aria-modal="true"]').length;
+    const text = (document.body ? document.body.innerText : '').replace(/\\n{3,}/g, '\\n\\n').trim().slice(0, 12000);
+    return { title: document.title, url: location.href, dialogCount: dialogs, text, controls: out, hint: out.some((c) => c.dialog) ? 'A dialog is open; its controls are marked dialog:true.' : undefined };
+  })()`;
+}
+// Resolve a snapshot id to viewport coordinates (walking out of same-origin
+// iframes) plus what the element is.
+function browserResolveScript(id) {
+  return `(() => {
+    const el = document.querySelector('[data-nocli-browser-id="${id}"]');
+    if (!el) return { error: 'That page element is no longer available. Read the page again.' };
+    try { el.scrollIntoView({ block: 'center', inline: 'center' }); } catch {}
+    const r = el.getBoundingClientRect();
+    let x = r.left + r.width / 2, y = r.top + r.height / 2;
+    try { let w = window; while (w !== window.top) { const fe = w.frameElement; if (!fe) break; const fr = fe.getBoundingClientRect(); x += fr.left; y += fr.top; w = w.parent; } } catch {}
+    return { ok: true, x: Math.round(x), y: Math.round(y), tag: el.tagName.toLowerCase(), editable: !!(el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'), name: (el.innerText || el.value || el.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim().slice(0, 80) };
   })()`;
 }
 async function readBrowser() {
@@ -747,24 +795,77 @@ function startBrowserBridge() {
       let payload = {}; try { payload = raw ? JSON.parse(raw) : {}; } catch { return done(400, { error: 'Invalid browser request.' }); }
       try {
         const action = request.url?.replace(/^\//, '');
-        if (action === 'open') return done(200, revealBrowser(payload.url));
+        if (action === 'open') {
+          const valid = validBrowserURL(payload.url);
+          if (!valid) throw new Error('Use a full http:// or https:// address.');
+          win?.webContents.send('browser-invoked', { url: valid });
+          const target = ensureBrowserPanel().webContents;
+          const loaded = new Promise((resolve) => { const timer = setTimeout(resolve, 12000); target.once('did-finish-load', () => { clearTimeout(timer); resolve(); }); });
+          target.loadURL(valid);
+          await loaded;
+          return done(200, { url: valid });
+        }
         // Any native browser tool invocation should reveal the sidecar. In
         // particular, agents commonly start with browser_read rather than
         // browser_open, and failed interactions should still be visible.
         win?.webContents.send('browser-invoked', {});
         if (action === 'read') return done(200, await readBrowser());
-        const panel = ensureBrowserPanel();
-        if (action === 'click' || action === 'type' || action === 'point') {
-          const id = String(payload.id || ''); if (!/^nocli-\d+$/.test(id)) throw new Error('Use an element ID returned by browser_read.');
-          const moved = await panel.webContents.executeJavaScript(browserCursorScript(id, action === 'click'), true);
-          if (moved?.error) throw new Error(moved.error);
-          if (action === 'point') return done(200, { ok: true, x: moved.x, y: moved.y });
-          const text = action === 'type' ? String(payload.text || '') : '';
-          const result = await panel.webContents.executeJavaScript(`(() => { const el = document.querySelector('[data-nocli-browser-id="${id}"]'); if (!el) return { error: 'That page element is no longer available. Read the page again.' }; if ('${action}' === 'click') { el.click(); return { ok: true }; } el.focus(); const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set; if (!setter) return { error: 'That element cannot accept typed text.' }; setter.call(el, ${JSON.stringify(text)}); el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); return { ok: true }; })()`, true);
-          if (result?.error) throw new Error(result.error); return done(200, { ...result, x: moved.x, y: moved.y });
+        const wc = ensureBrowserPanel().webContents;
+        if (['click', 'type', 'point', 'press', 'scroll', 'find', 'dismiss', 'wait'].includes(action)) {
+          const id = String(payload.id || '');
+          const hasId = /^nocli-\d+$/.test(id);
+          if (['click', 'type', 'point'].includes(action) && !hasId) throw new Error('Use an element ID returned by browser_read.');
+          const target = hasId ? await wc.executeJavaScript(browserResolveScript(id), true) : null;
+          if (target && target.error) throw new Error(target.error);
+          if (action === 'point') { await wc.executeJavaScript(browserCursorScript(id, false), true); return done(200, { ok: true, x: target.x, y: target.y, name: target.name }); }
+          if (action === 'click') {
+            await wc.executeJavaScript(browserCursorScript(id, true), true);
+            const { x, y } = target;
+            wc.sendInputEvent({ type: 'mouseMove', x, y });
+            wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 });
+            wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 });
+            return done(200, { ok: true, clicked: target.name, x, y });
+          }
+          if (action === 'type') {
+            await wc.executeJavaScript(browserCursorScript(id, false), true);
+            const focused = await wc.executeJavaScript(`(() => { const el = document.querySelector('[data-nocli-browser-id="${id}"]'); if (!el) return { error: 'That page element is no longer available. Read the page again.' }; el.focus(); try { if (el.select) el.select(); else { const s = getSelection(); s.removeAllRanges(); const r = document.createRange(); r.selectNodeContents(el); s.addRange(r); } } catch {} return { ok: true }; })()`, true);
+            if (focused?.error) throw new Error(focused.error);
+            wc.insertText(String(payload.text || ''));
+            await wc.executeJavaScript(`(() => { const el = document.querySelector('[data-nocli-browser-id="${id}"]'); if (el) el.dispatchEvent(new Event('change', { bubbles: true })); })()`, true);
+            return done(200, { ok: true, typed: String(payload.text || '').slice(0, 80) });
+          }
+          if (action === 'press') { const key = String(payload.key || 'Enter'); wc.sendInputEvent({ type: 'keyDown', keyCode: key }); wc.sendInputEvent({ type: 'keyUp', keyCode: key }); return done(200, { ok: true, key }); }
+          if (action === 'scroll') {
+            const amount = Math.abs(Number(payload.amount) || 700);
+            const delta = String(payload.direction || 'down') === 'up' ? -amount : amount;
+            const res = await wc.executeJavaScript(`(() => { window.scrollBy(0, ${delta}); return { scrollY: Math.round(window.scrollY), height: document.body ? document.body.scrollHeight : 0 }; })()`, true);
+            return done(200, res);
+          }
+          if (action === 'find') {
+            const query = JSON.stringify(String(payload.text || '').toLowerCase());
+            const res = await wc.executeJavaScript(`(() => { const q = ${query}; if (!q) return { matches: [] }; const hits = []; const list = document.querySelectorAll('a,button,input,textarea,select,summary,[role],h1,h2,h3,label,span,div,p,li'); for (const el of list) { if (hits.length >= 20) break; const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) continue; const t = (el.innerText || el.value || el.getAttribute('aria-label') || '').replace(/\\s+/g, ' ').trim(); if (!t || t.toLowerCase().indexOf(q) < 0) continue; let id = el.dataset.nocliBrowserId; if (!id) { id = 'nocli-' + (++window.__nocliSeq); el.dataset.nocliBrowserId = id; } hits.push({ id, tag: el.tagName.toLowerCase(), text: t.slice(0, 120) }); } return { matches: hits }; })()`, true);
+            return done(200, res);
+          }
+          if (action === 'dismiss') {
+            wc.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+            wc.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+            const res = await wc.executeJavaScript(`(() => { const btns = [...document.querySelectorAll('button,[role="button"],[aria-label]')].filter((el) => { const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) return false; return /close|dismiss|cancel|later|skip|no thanks|not now|got it|accept|agree|allow|continue/i.test((el.getAttribute('aria-label') || '') + ' ' + (el.innerText || '')); }); const el = btns[0]; if (!el) return { dismissed: null }; const label = (el.getAttribute('aria-label') || el.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 40); el.click(); return { dismissed: label }; })()`, true);
+            return done(200, res);
+          }
+          if (action === 'wait') {
+            const query = JSON.stringify(String(payload.text || '').toLowerCase());
+            const timeout = Math.min(Number(payload.timeout) || 8000, 20000);
+            const start = Date.now(); let found = false;
+            while (Date.now() - start < timeout) {
+              const ok = await wc.executeJavaScript(`(() => { const q = ${query}; if (!q) return false; return ((document.body ? document.body.innerText : '').toLowerCase().indexOf(q) >= 0); })()`, true);
+              if (ok) { found = true; break; }
+              await new Promise((resolve) => setTimeout(resolve, 250));
+            }
+            return done(200, { found, waitedMs: Date.now() - start });
+          }
         }
         if (action === 'screenshot') {
-          const image = await panel.webContents.capturePage();
+          const image = await wc.capturePage();
           return done(200, { mimeType: 'image/png', data: image.toPNG().toString('base64') });
         }
         return done(404, { error: 'Unknown browser action.' });
